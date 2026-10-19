@@ -12,6 +12,8 @@ pub enum Operation {
     Glb,
     Dae,
     Dxf,
+    Stl,
+    ThreeMf,
     Texture,
 }
 pub struct Dialog {
@@ -68,6 +70,8 @@ impl Dialog {
             Operation::Glb => "glb",
             Operation::Dae => "dae",
             Operation::Dxf => "dxf",
+            Operation::Stl => "stl",
+            Operation::ThreeMf => "3mf",
             _ => "rysmo",
         }
     }
@@ -99,6 +103,13 @@ impl Dialog {
             Operation::Dxf => {
                 std::fs::write(&path, rysmo_io::dxf::export(app.editor.doc())).map_err(|e| e.to_string())?;
             }
+            Operation::Stl => {
+                std::fs::write(&path, rysmo_io::print::stl(app.editor.doc())).map_err(|e| e.to_string())?;
+            }
+            Operation::ThreeMf => {
+                let bytes = rysmo_io::print::three_mf(app.editor.doc())?;
+                std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+            }
             Operation::Obj => {
                 let mtl = path.with_extension("mtl");
                 let name = mtl.file_name().unwrap().to_string_lossy();
@@ -129,7 +140,9 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
     let title = match dialog.operation {
         Operation::Open => "Open model",
         Operation::Save => "Save model",
-        Operation::Obj | Operation::Glb | Operation::Dae | Operation::Dxf => "Export model",
+        Operation::Obj | Operation::Glb | Operation::Dae | Operation::Dxf | Operation::Stl | Operation::ThreeMf => {
+            "Export model"
+        }
         Operation::Texture => "Import texture",
     };
     let window = crate::theme::window(title)
@@ -247,6 +260,12 @@ mod tests {
         dialog.operation = Operation::Dxf;
         dialog.execute(&mut app).unwrap();
         assert!(std::fs::read_to_string(root.join("Test.dxf")).unwrap().contains("LINE"));
+        dialog.operation = Operation::Stl;
+        dialog.execute(&mut app).unwrap();
+        assert!(std::fs::read(root.join("Test.stl")).unwrap().starts_with(b"Rysmo STL"));
+        // This model has lines only, and a 3MF package needs at least one face.
+        dialog.operation = Operation::ThreeMf;
+        assert_eq!(dialog.execute(&mut app), Err("There are no faces to export.".into()));
         std::fs::remove_dir_all(root).unwrap();
     }
 

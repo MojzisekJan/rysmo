@@ -219,6 +219,10 @@ pub fn tool_key(app: &mut App3d, key: Key) {
         app.fillet = None;
         return;
     }
+    if app.print_check.is_some() && key == Key::Escape {
+        app.print_check = None;
+        return;
+    }
     if app.solid_tools.is_some() && key == Key::Escape {
         app.solid_tools = None;
         return;

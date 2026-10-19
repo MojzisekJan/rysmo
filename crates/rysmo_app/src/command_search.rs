@@ -36,6 +36,8 @@ enum File {
     Glb,
     Dae,
     Dxf,
+    Stl,
+    ThreeMf,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Command {
@@ -105,6 +107,8 @@ fn entries(app: &App3d) -> Vec<Entry> {
         (File::Glb, "Export glTF (.glb)...", ""),
         (File::Dae, "Export COLLADA (.dae)...", ""),
         (File::Dxf, "Export DXF (.dxf)...", ""),
+        (File::Stl, "Export STL for 3D printing...", ""),
+        (File::ThreeMf, "Export 3MF for 3D printing...", ""),
     ] {
         result.push(Entry {
             command: Command::File(file),
@@ -211,6 +215,8 @@ fn matches(entry: &Entry, query: &str) -> bool {
         Command::File(File::Glb) => "gltf glb export",
         Command::File(File::Dae) => "collada dae export textures",
         Command::File(File::Dxf) => "autocad dxf cad export",
+        Command::File(File::Stl) => "stl 3d print printing slicer export",
+        Command::File(File::ThreeMf) => "3mf 3d print printing slicer export",
         _ => "",
     };
     let haystack = format!("{} {} {} {}", entry.label, entry.category, entry.shortcut, aliases).to_lowercase();
@@ -269,6 +275,8 @@ fn execute(app: &mut App3d, command: Command) {
             File::Glb => crate::files::export_glb(app),
             File::Dae => crate::files::export_collada(app),
             File::Dxf => crate::files::export_dxf(app),
+            File::Stl => crate::files::export_for_print(app, crate::print_check::Format::Stl),
+            File::ThreeMf => crate::files::export_for_print(app, crate::print_check::Format::ThreeMf),
         },
         Command::Copy => {
             crate::object_clipboard::copy(app, false);

@@ -495,6 +495,7 @@ fn panels(
     }
     crate::mirror::panel(ctx, &mut app);
     crate::solid_tools::panel(ctx, &mut app);
+    crate::print_check::panel(ctx, &mut app);
     crate::fillet::panel(ctx, &mut app);
     panels::materials(ctx, &mut app);
     panels::tags(ctx, &mut app);
@@ -669,6 +670,15 @@ pub fn menus(ui: &mut egui::Ui, app: &mut App3d) {
                     action(app);
                 }
             }
+            ui.separator();
+            for (label, format) in [
+                ("STL for 3D printing...", crate::print_check::Format::Stl),
+                ("3MF for 3D printing...", crate::print_check::Format::ThreeMf),
+            ] {
+                if menu::button(ui, g::EXPORT, label, "").clicked() {
+                    files::export_for_print(app, format);
+                }
+            }
         });
         ui.separator();
         if menu::button(ui, g::HOUSE, "Welcome page", "").clicked() {
@@ -825,6 +835,7 @@ fn overlay(mut contexts: EguiContexts, mut app: ResMut<App3d>) -> Result {
     crate::object_clipboard::draw(&painter, &app);
     crate::mirror::draw(&painter, &app);
     crate::solid_tools::draw(&painter, &app);
+    crate::print_check::draw(&painter, &app);
     crate::fillet::draw(&painter, &app);
     crate::terrain_tool::draw(&painter, &app);
     crate::smoove_tool::draw(&painter, &app);

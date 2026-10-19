@@ -50,8 +50,8 @@ pub fn tool_definitions() -> Vec<Value> {
         tool(
             "export",
             "Export",
-            "Export the whole model, groups and components flattened, as Wavefront OBJ (with an MTL file next to it) or binary glTF.",
-            json!({"path": {"type": "string"}, "format": {"type": "string", "enum": ["obj", "glb"]}}),
+            "Export the whole model, groups and components flattened, as Wavefront OBJ (with an MTL file next to it), binary glTF, or STL or 3MF in millimetres for 3D printing. STL and 3MF report problems that would spoil a print (holes, reversed or inner faces).",
+            json!({"path": {"type": "string"}, "format": {"type": "string", "enum": ["obj", "glb", "stl", "3mf"]}}),
             &["path"],
         ),
         tool(
@@ -530,7 +530,8 @@ pub fn call(s: &mut Session, name: &str, args: &Value) -> R {
                 .and_then(Value::as_str)
                 .map(str::to_string)
                 .or_else(|| path.extension().map(|e| e.to_string_lossy().to_lowercase()))
-                .ok_or("give `format` (obj or glb)")?;
+                .ok_or("give `format` (obj, glb, stl or 3mf)")?;
+            let mut notes = String::new();
             match format.as_str() {
                 "obj" => {
                     let mtl = path.with_extension("mtl");
@@ -544,10 +545,27 @@ pub fn call(s: &mut Session, name: &str, args: &Value) -> R {
                         .map_err(|e| e.to_string())?;
                 }
                 "glb" => std::fs::write(&path, rysmo_io::gltf::export(s.editor.doc())).map_err(|e| e.to_string())?,
-                other => return Err(format!("unknown format \"{other}\"; use obj or glb")),
+                "stl" | "3mf" => {
+                    let check = rysmo_io::print::check(s.editor.doc());
+                    if !check.is_printable() {
+                        notes = format!(
+                            " Not ready to print: {} open edges, {} bad edges, inside out: [{}].",
+                            check.open_edges.len(),
+                            check.bad_edges.len(),
+                            check.inside_out.join(", ")
+                        );
+                    }
+                    let bytes = if format == "stl" {
+                        rysmo_io::print::stl(s.editor.doc())
+                    } else {
+                        rysmo_io::print::three_mf(s.editor.doc())?
+                    };
+                    std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+                }
+                other => return Err(format!("unknown format \"{other}\"; use obj, glb, stl or 3mf")),
             }
             Ok(Some(ToolOutput {
-                text: format!("Exported {}.", path.display()),
+                text: format!("Exported {}.{notes}", path.display()),
                 data: json!({"path": path.display().to_string()}),
             }))
         }

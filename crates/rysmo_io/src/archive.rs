@@ -2,13 +2,27 @@
 //! Entries are stored without compression to keep exporter dependencies small.
 
 pub fn zip(files: &[(String, Vec<u8>)]) -> Result<Vec<u8>, String> {
+    if files.iter().any(|(name, _)| name.contains('/')) {
+        return Err("Export bundle names must be plain file names.".into());
+    }
+    zip_tree(files)
+}
+
+/// Like [`zip`], but names may be relative paths with `/` between plain parts, as
+/// packages such as 3MF need.
+pub fn zip_tree(files: &[(String, Vec<u8>)]) -> Result<Vec<u8>, String> {
     let count = u16::try_from(files.len()).map_err(|_| "Too many export files for ZIP32.")?;
     let mut out = Vec::new();
     let mut directory = Vec::new();
     let u32_size = |n| u32::try_from(n).map_err(|_| "Export is too large for ZIP32.".to_owned());
     for (name, bytes) in files {
-        if name.is_empty() || name == "." || name == ".." || name.chars().any(|c| c.is_control() || "/\\:".contains(c))
-        {
+        let plain = |part: &str| {
+            !part.is_empty()
+                && part != "."
+                && part != ".."
+                && !part.chars().any(|c| c.is_control() || "\\:".contains(c))
+        };
+        if !name.split('/').all(plain) {
             return Err("Export bundle names must be plain file names.".into());
         }
         let name_size = u16::try_from(name.len()).map_err(|_| "Export file name is too long.")?;
@@ -73,5 +87,9 @@ mod tests {
             assert!(zip(&[(name.into(), vec![])]).is_err(), "{name:?}");
         }
         assert!(zip(&[("texture-1.png".into(), vec![1, 2, 3])]).is_ok());
+        assert!(zip_tree(&[("3D/3dmodel.model".into(), vec![])]).is_ok());
+        for name in ["/3D/a", "3D//a", "3D/../a", "3D/a\\b"] {
+            assert!(zip_tree(&[(name.into(), vec![])]).is_err(), "{name:?}");
+        }
     }
 }

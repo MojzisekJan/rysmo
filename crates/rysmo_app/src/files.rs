@@ -48,6 +48,7 @@ fn reset_interaction(app: &mut App3d) {
     app.flip = None;
     app.mirror = None;
     app.solid_tools = None;
+    app.print_check = None;
     app.fillet = None;
     app.smoove = None;
     app.terrain_last = None;
@@ -208,6 +209,21 @@ mod imp {
             .map_err(|e| e.to_string());
         report(app, result);
     }
+    pub fn export_stl(app: &mut App3d) {
+        let Some(path) = export_target(app, "stl", "STL") else { return };
+        let r = std::fs::write(&path, rysmo_io::print::stl(app.editor.doc()))
+            .map(|_| format!("Exported {} (millimetres).", path.display()))
+            .map_err(|e| format!("Cannot export: {e}"));
+        report(app, r);
+    }
+    pub fn export_3mf(app: &mut App3d) {
+        let Some(path) = export_target(app, "3mf", "3D Manufacturing Format") else { return };
+        let r = rysmo_io::print::three_mf(app.editor.doc())
+            .and_then(|bytes| std::fs::write(&path, bytes).map_err(|e| e.to_string()))
+            .map(|_| format!("Exported {} (millimetres).", path.display()))
+            .map_err(|e| format!("Cannot export: {e}"));
+        report(app, r);
+    }
     pub fn export_glb(app: &mut App3d) {
         let Some(path) = export_target(app, "glb", "glTF binary") else { return };
         let r = std::fs::write(&path, rysmo_io::gltf::export(app.editor.doc()))
@@ -277,6 +293,21 @@ mod imp {
         web::download(&name, rysmo_io::dxf::export(app.editor.doc()).as_bytes(), "application/dxf");
         app.message = Some(format!("Downloaded {name} (3D faces and lines, metres)."));
     }
+    pub fn export_stl(app: &mut App3d) {
+        let name = format!("{}.stl", stem(app));
+        web::download(&name, &rysmo_io::print::stl(app.editor.doc()), "model/stl");
+        app.message = Some(format!("Downloaded {name} (millimetres)."));
+    }
+    pub fn export_3mf(app: &mut App3d) {
+        let name = format!("{}.3mf", stem(app));
+        app.message = Some(match rysmo_io::print::three_mf(app.editor.doc()) {
+            Ok(bytes) => {
+                web::download(&name, &bytes, "model/3mf");
+                format!("Downloaded {name} (millimetres).")
+            }
+            Err(error) => format!("Cannot export 3MF: {error}"),
+        });
+    }
     pub fn export_glb(app: &mut App3d) {
         let name = format!("{}.glb", stem(app));
         web::download(&name, &rysmo_io::gltf::export(app.editor.doc()), "model/gltf-binary");
@@ -286,7 +317,12 @@ mod imp {
 
 #[cfg(target_arch = "wasm32")]
 pub use imp::open_recent;
-pub use imp::{export_collada, export_dxf, export_glb, export_obj, open, save};
+pub use imp::{export_3mf, export_collada, export_dxf, export_glb, export_obj, export_stl, open, save};
+
+/// STL and 3MF go through the printability check first.
+pub fn export_for_print(app: &mut App3d, format: crate::print_check::Format) {
+    crate::print_check::begin(app, format);
+}
 
 /// Write the DAE and content-addressed images without replacing unrelated companions.
 #[cfg(not(target_arch = "wasm32"))]
@@ -410,6 +446,12 @@ mod imp {
     }
     pub fn export_glb(app: &mut App3d) {
         portable_files::begin(app, Operation::Glb);
+    }
+    pub fn export_stl(app: &mut App3d) {
+        portable_files::begin(app, Operation::Stl);
+    }
+    pub fn export_3mf(app: &mut App3d) {
+        portable_files::begin(app, Operation::ThreeMf);
     }
 }
 

@@ -6,9 +6,10 @@
 //! - [`gltf`]: binary glTF (`.glb`) export.
 //! - [`collada`]: COLLADA (`.dae`) with texture companions.
 //! - [`dxf`]: ASCII DXF 3D faces and loose lines.
+//! - [`print`]: STL and 3MF for 3D printing, and a printability check.
 //!
 //! Exports convert from Rysmo's Z-up coordinates to the Y-up convention of OBJ and
-//! glTF and COLLADA. DXF retains Z-up coordinates.
+//! glTF and COLLADA. DXF, STL and 3MF retain Z-up coordinates.
 
 #![forbid(unsafe_code)]
 
@@ -19,6 +20,7 @@ mod exchange;
 pub mod gltf;
 pub mod native;
 pub mod obj;
+pub mod print;
 
 pub use native::{load, save};
 

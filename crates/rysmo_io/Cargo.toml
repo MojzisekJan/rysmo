@@ -1,6 +1,6 @@
 [package]
 name = "rysmo_io"
-description = "Rysmo native files and OBJ, glTF, COLLADA and DXF export"
+description = "Rysmo native files and OBJ, glTF, COLLADA, DXF, STL and 3MF export"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

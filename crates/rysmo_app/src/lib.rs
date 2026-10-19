@@ -40,6 +40,7 @@ mod object_clipboard;
 mod panels;
 mod portable_files;
 mod preferences;
+mod print_check;
 mod render;
 mod render_view;
 #[cfg(target_os = "ios")]
