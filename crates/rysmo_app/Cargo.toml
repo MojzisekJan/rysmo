@@ -23,7 +23,7 @@ serde_json.workspace = true
 # `bevy` among the plain dependencies, so it has to be listed here.)
 bevy = { version = "0.20.0", default-features = false, features = [
     "async_executor", "bevy_asset", "bevy_log", "std", "bevy_winit", "bevy_clipboard", "custom_cursor",
-    "bevy_render", "bevy_core_pipeline", "bevy_gizmos_render", "bevy_anti_alias", "bevy_pbr", "tonemapping_luts", "ktx2", "zstd_rust", "keyboard", "mouse", "touch", "gestures", "png", "jpeg",
+    "bevy_render", "bevy_core_pipeline", "bevy_gizmos_render", "bevy_anti_alias", "bevy_pbr", "bevy_post_process", "tonemapping_luts", "ktx2", "zstd_rust", "keyboard", "mouse", "touch", "gestures", "png", "jpeg",
 ] }
 bevy_egui = { version = "0.43.1", default-features = false, features = ["render", "default_fonts"] }
 egui-phosphor = "0.14.0"
