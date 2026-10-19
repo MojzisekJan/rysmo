@@ -48,6 +48,12 @@ struct MaterialLine {
     color: [f32; 4],
     #[serde(default, skip_serializing_if = "Option::is_none")]
     texture: Option<Texture>,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    glow: f32,
+}
+
+fn is_zero(v: &f32) -> bool {
+    *v == 0.0
 }
 
 #[derive(Serialize, Deserialize)]
@@ -329,6 +335,7 @@ pub fn save(doc: &Document) -> String {
             name: m.name.clone(),
             color: m.color,
             texture: m.texture,
+            glow: m.glow,
         }),
         false,
     );
@@ -479,7 +486,10 @@ pub fn load(text: &str) -> Result<Document, IoError> {
         {
             return Err(IoError::Format(format!("material {} uses image {}, which is not defined", m.id, t.image)));
         }
-        materials.insert(m.id, Material { name: m.name, color: m.color, texture: m.texture });
+        if !m.glow.is_finite() || m.glow < 0.0 {
+            return Err(IoError::Format(format!("material {} has an invalid glow", m.id)));
+        }
+        materials.insert(m.id, Material { name: m.name, color: m.color, texture: m.texture, glow: m.glow });
     }
     let mut tags = BTreeMap::new();
     for t in f.tags {
@@ -1041,6 +1051,7 @@ mod tests {
             .unwrap()
             .material;
         e.apply(Command::Paint { faces: vec![f], material: m, back: true }).unwrap();
+        e.apply(Command::SetMaterialGlow { material: m.unwrap(), glow: 1500.0 }).unwrap();
         let pl = rysmo_model::TexturePlacement {
             offset: [0.1, 0.2],
             rotation: 30.0,
@@ -1060,6 +1071,7 @@ mod tests {
         let back = load(&text).unwrap();
         assert_eq!(back.images[&img].bytes.as_slice(), bytes.as_slice());
         assert_eq!(back.materials, e.doc().materials);
+        assert_eq!(back.materials[&m.unwrap()].glow, 1500.0);
         assert_eq!(back.style, style);
         assert_eq!(back.root.mesh.face(f).unwrap().uv, Some(pl));
         assert_eq!(save(&back), text);

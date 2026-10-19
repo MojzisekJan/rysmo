@@ -2,15 +2,25 @@
 //! shadows, the sky's ambient light, ambient occlusion, tone mapping and anti-aliasing,
 //! all with Bevy's own features.
 //!
-//! In the browser (WebGL2) Bevy has no ambient occlusion and no temporal anti-aliasing:
-//! those settings fall back to none and to FXAA. Shadows work there.
+//! The sky is a gradient cubemap made from the sky colour, or Bevy's physically based
+//! atmosphere when the style asks for it on the desktop renderer.
+//!
+//! In the browser (WebGL2) Bevy has no ambient occlusion, no temporal anti-aliasing and
+//! no atmosphere: those settings fall back to none, to FXAA and to the gradient sky.
+//! Shadows and fog work there.
 
 use bevy::anti_alias::fxaa::Fxaa;
 use bevy::anti_alias::taa::TemporalAntiAliasing;
+use bevy::asset::RenderAssetUsages;
 use bevy::core_pipeline::tonemapping::Tonemapping;
+use bevy::light::atmosphere::ScatteringMedium;
+use bevy::light::{AtmosphereEnvironmentMapLight, GeneratedEnvironmentMapLight, Skybox};
 use bevy::light::{CascadeShadowConfigBuilder, DirectionalLightShadowMap};
-use bevy::pbr::ScreenSpaceAmbientOcclusion;
+use bevy::pbr::{AtmosphereSettings, DistanceFog, FogFalloff, ScreenSpaceAmbientOcclusion};
 use bevy::prelude::*;
+use bevy::render::render_resource::{
+    Extent3d, TextureDimension, TextureFormat, TextureViewDescriptor, TextureViewDimension,
+};
 use rysmo_model::{AntiAliasing, Lighting, Style, ToneMapping};
 
 use crate::state::{App3d, to_bevy};
@@ -21,6 +31,12 @@ struct SunLight;
 
 #[derive(Component)]
 struct Ground;
+
+/// The gradient sky cubemap, repainted when the sky colour changes.
+#[derive(Resource)]
+struct SkyCube(Handle<Image>);
+
+const SKY_SIZE: u32 = 64;
 
 /// Exposure for sunlit scenes: an overcast day, two stops under the sun's own EV 15.
 const SUN_EV100: f32 = 12.0;
@@ -36,14 +52,35 @@ pub fn plugin(app: &mut App) {
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct ApplyStyle;
 
-fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
+fn setup(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut images: ResMut<Assets<Image>>,
+    mut media: ResMut<Assets<ScatteringMedium>>,
+) {
+    let mut cube = Image::new_fill(
+        Extent3d { width: SKY_SIZE, height: SKY_SIZE, depth_or_array_layers: 6 },
+        TextureDimension::D2,
+        &[255; 4],
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::default(),
+    );
+    cube.texture_view_descriptor =
+        Some(TextureViewDescriptor { dimension: Some(TextureViewDimension::Cube), ..default() });
+    commands.insert_resource(SkyCube(images.add(cube)));
+    if ADVANCED {
+        // Only cameras with AtmosphereSettings render it.
+        commands.spawn(bevy::light::Atmosphere::earth(media.add(ScatteringMedium::earth(256, 256))));
+    }
     commands.spawn((
         DirectionalLight { illuminance: 0.0, shadow_maps_enabled: false, ..default() },
         Transform::default(),
         SunLight,
     ));
-    // A large ground plane just below Z = 0, so it never fights with faces on the ground.
-    let plane = meshes.add(Plane3d::default().mesh().size(2000.0, 2000.0));
+    // A ground plane just below Z = 0, so it never fights with faces on the ground. It
+    // reaches far enough to meet the horizon, where the atmosphere's haze hides its edge.
+    let plane = meshes.add(Plane3d::default().mesh().size(400_000.0, 400_000.0));
     let material = materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 1.0, ..default() });
     commands.spawn((
         Mesh3d(plane),
@@ -58,11 +95,52 @@ fn srgb(c: [f32; 3]) -> Color {
     Color::srgb(c[0], c[1], c[2])
 }
 
+/// The sky colour as a pale horizon and a deeper zenith, in sRGB.
+fn sky_gradient(sky: [f32; 3]) -> ([f32; 3], [f32; 3]) {
+    let horizon = sky.map(|c| c + (1. - c) * 0.45);
+    let zenith = [sky[0] * 0.52, sky[1] * 0.66, sky[2] * 0.92];
+    (horizon, zenith)
+}
+
+/// The sky colour seen in a direction with this elevation (sine of the angle above the horizon).
+fn sky_at(horizon: [f32; 3], zenith: [f32; 3], elevation: f32) -> [f32; 3] {
+    let t = elevation.max(0.).sqrt();
+    let haze = 1. - (-elevation * 4.).clamp(0., 1.) * 0.12;
+    std::array::from_fn(|i| (horizon[i] + (zenith[i] - horizon[i]) * t) * haze)
+}
+
+/// Paints the cubemap faces (+X, -X, +Y, -Y, +Z, -Z, Bevy's Y up) with the gradient.
+fn paint_sky(image: &mut Image, sky: [f32; 3]) {
+    let (horizon, zenith) = sky_gradient(sky);
+    let n = SKY_SIZE as usize;
+    let mut data = Vec::with_capacity(n * n * 6 * 4);
+    for face in 0..6 {
+        for j in 0..n {
+            for i in 0..n {
+                let u = 2. * (i as f32 + 0.5) / n as f32 - 1.;
+                let v = 2. * (j as f32 + 0.5) / n as f32 - 1.;
+                let dir = match face {
+                    0 => Vec3::new(1., -v, -u),
+                    1 => Vec3::new(-1., -v, u),
+                    2 => Vec3::new(u, 1., v),
+                    3 => Vec3::new(u, -1., -v),
+                    4 => Vec3::new(u, -v, 1.),
+                    _ => Vec3::new(-u, -v, -1.),
+                };
+                let c = sky_at(horizon, zenith, dir.normalize().y);
+                data.extend(c.map(|c| (c.clamp(0., 1.) * 255.).round() as u8));
+                data.push(255);
+            }
+        }
+    }
+    image.data = Some(data);
+}
+
 #[allow(clippy::too_many_arguments)]
 fn apply_style(
     mut commands: Commands,
     app: Res<App3d>,
-    mut last: Local<Option<Style>>,
+    mut last: Local<Option<(Style, bool)>>,
     studio: Option<Res<crate::studio::StudioMaps>>,
     mut clear: ResMut<ClearColor>,
     mut ambient: ResMut<GlobalAmbientLight>,
@@ -71,15 +149,30 @@ fn apply_style(
     mut suns: Query<&mut DirectionalLight, With<SunLight>>,
     mut grounds: Query<(&mut Visibility, &MeshMaterial3d<StandardMaterial>), With<Ground>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    sky_cube: Option<Res<SkyCube>>,
+    mut images: Option<ResMut<Assets<Image>>>,
 ) {
     let style = app.editor.doc().style;
-    if last.as_ref() == Some(&style) {
+    let glowing = app.editor.doc().materials.values().any(|m| m.glow > 0.0);
+    if last.as_ref() == Some(&(style, glowing)) {
         return;
     }
-    *last = Some(style);
-    clear.0 = srgb(if style.sky { style.sky_color } else { style.background });
+    let repaint = last.is_none_or(|(l, _)| l.sky_color != style.sky_color);
+    *last = Some((style, glowing));
     let sun_lit = style.lighting == Lighting::Sun;
     let studio_lit = style.lighting == Lighting::Studio;
+    let atmosphere = style.atmosphere && sun_lit && ADVANCED;
+    let (horizon, _) = sky_gradient(style.sky_color);
+    // On the desktop renderer the sky itself lights a sunlit model: soft light in the
+    // shade and reflections in glass and water. Elsewhere a flat ambient light stands in.
+    let sky_light = sun_lit && ADVANCED && (atmosphere || style.sky);
+    clear.0 = if atmosphere {
+        Color::BLACK
+    } else if style.sky {
+        srgb(horizon)
+    } else {
+        srgb(style.background)
+    };
     if let Ok(mut sun) = suns.single_mut() {
         sun.illuminance = if sun_lit { 10_000.0 * style.sun_intensity } else { 0.0 };
         sun.shadow_maps_enabled = sun_lit && style.shadows;
@@ -88,6 +181,8 @@ fn apply_style(
     ambient.color = srgb(style.sky_color);
     ambient.brightness = (if studio_lit {
         0.
+    } else if sky_light {
+        300.0
     } else if sun_lit {
         1500.0
     } else {
@@ -109,9 +204,58 @@ fn apply_style(
     // Bevy's default exposure suits indoor light; 10 000 lx of sun plus the sky would
     // wash materials out to white, so sunlit scenes start from an overcast-day exposure.
     let base = if sun_lit { SUN_EV100 } else { bevy::camera::Exposure::default().ev100 };
-    e.insert(bevy::camera::Exposure {
-        ev100: base - if style.lighting == Lighting::Flat { 0. } else { style.exposure },
-    });
+    let ev100 = base - if style.lighting == Lighting::Flat { 0. } else { style.exposure };
+    e.insert(bevy::camera::Exposure { ev100 });
+    match &sky_cube {
+        Some(cube) if style.sky && !atmosphere => {
+            if repaint && let Some(mut image) = images.as_mut().and_then(|i| i.get_mut(&cube.0)) {
+                paint_sky(&mut image, style.sky_color);
+            }
+            // Undo the exposure, so the sky shows its own colours.
+            let brightness = 1.2 * 2f32.powf(ev100);
+            e.insert(Skybox { image: Some(cube.0.clone()), brightness, ..default() });
+        }
+        _ => {
+            e.remove::<Skybox>();
+        }
+    }
+    if atmosphere {
+        e.insert(AtmosphereSettings::default());
+    } else {
+        e.remove::<(AtmosphereSettings, bevy::camera::Hdr)>();
+    }
+    // Glowing materials spill a soft glare around them.
+    if glowing && style.lighting != Lighting::Flat {
+        e.insert(bevy::post_process::bloom::Bloom::NATURAL);
+    } else {
+        e.remove::<bevy::post_process::bloom::Bloom>();
+    }
+    if style.fog {
+        e.insert(DistanceFog {
+            color: srgb(if style.sky { horizon } else { style.background }),
+            falloff: FogFalloff::from_visibility_squared(style.fog_distance),
+            ..default()
+        });
+    } else {
+        e.remove::<DistanceFog>();
+    }
+    match &sky_cube {
+        _ if atmosphere => {
+            e.remove::<GeneratedEnvironmentMapLight>();
+            e.insert(AtmosphereEnvironmentMapLight { intensity: style.ambient_intensity, ..default() });
+        }
+        Some(cube) if sky_light => {
+            e.remove::<AtmosphereEnvironmentMapLight>();
+            e.insert(GeneratedEnvironmentMapLight {
+                environment_map: cube.0.clone(),
+                intensity: 0.6 * 2f32.powf(ev100) * style.ambient_intensity,
+                ..default()
+            });
+        }
+        _ => {
+            e.remove::<(AtmosphereEnvironmentMapLight, GeneratedEnvironmentMapLight)>();
+        }
+    }
     if studio_lit && let Some(studio) = studio {
         let maps = if style.studio_environment == rysmo_model::StudioEnvironment::Warm {
             &studio.warm

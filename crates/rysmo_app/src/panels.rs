@@ -172,6 +172,24 @@ pub fn materials(ctx: &egui::Context, app: &mut App3d) {
                     app.material_editing = Some(id);
                     apply(app, Command::SetMaterial { material: id, name: None, color: Some(color) });
                 }
+                let mut glow = m.glow;
+                ui.horizontal(|ui| {
+                    ui.label("Glow");
+                    ui.add(
+                        crate::widgets::Number::new(&mut glow)
+                            .speed(10.0)
+                            .range(0.0..=rysmo_model::MAX_GLOW)
+                            .suffix(" cd/m²"),
+                    )
+                    .on_hover_text("Light the faces give off in sun or studio lighting. A lamp shade is about 2000.");
+                });
+                if glow != m.glow {
+                    if app.editor.undo_label() == Some("Glow") && app.material_editing == Some(id) {
+                        app.editor.undo();
+                    }
+                    app.material_editing = Some(id);
+                    apply(app, Command::SetMaterialGlow { material: id, glow });
+                }
             }
             if let Some(id) = app.tools.paint()
                 && let Some(mut texture) = app.editor.doc().materials.get(&id).and_then(|m| m.texture)
@@ -680,6 +698,14 @@ pub fn settings(ctx: &egui::Context, app: &mut App3d) {
                     ui.horizontal(|ui| {
                         crate::widgets::checkbox(ui, &mut style.ground, "Ground");
                         ui.color_edit_button_rgb(&mut style.ground_color);
+                    });
+                    ui.horizontal(|ui| {
+                        crate::widgets::checkbox(ui, &mut style.fog, "Fog");
+                        ui.add_enabled(
+                            style.fog,
+                            crate::widgets::Number::new(&mut style.fog_distance).range(10. ..=100_000.).suffix(" m"),
+                        )
+                        .on_hover_text("Distance at which the fog hides the model");
                     });
                     ui.separator();
                     crate::widgets::checkbox(ui, &mut style.section_planes, "Section planes");
@@ -1667,6 +1693,11 @@ fn renderer_controls(ui: &mut egui::Ui, style: &mut rysmo_model::Style) {
             });
             ui.add(crate::widgets::Slider::new(&mut style.sun_intensity, 0. ..=4.).text("Sun intensity"));
             ui.add(crate::widgets::Slider::new(&mut style.ambient_intensity, 0. ..=4.).text("Ambient light"));
+            ui.add_enabled(crate::render::ADVANCED, crate::widgets::Check::new(&mut style.atmosphere, "Atmosphere"))
+                .on_hover_text("A sky and haze computed from the sun. The sky colour is not used.");
+            if cfg!(target_arch = "wasm32") {
+                ui.small("Atmosphere requires the desktop renderer.");
+            }
             crate::widgets::section(ui, "Sun position", false, |ui| {
                 crate::widgets::checkbox(ui, &mut style.sun.from_time, "Sun from date and solar time");
                 if style.sun.from_time {

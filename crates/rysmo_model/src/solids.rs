@@ -551,7 +551,7 @@ mod tests {
         mesh.reverse_faces(&ids);
         doc.materials.insert(
             crate::MaterialId(9999),
-            crate::Material { name: "Test".into(), color: [1., 0., 0., 1.], texture: None },
+            crate::Material { name: "Test".into(), color: [1., 0., 0., 1.], texture: None, glow: 0.0 },
         );
         e = Editor::with_document(doc);
         let out = e

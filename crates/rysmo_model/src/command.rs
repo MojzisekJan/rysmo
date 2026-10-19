@@ -414,6 +414,11 @@ pub enum Command {
         material: MaterialId,
         texture: Option<Texture>,
     },
+    /// Makes a material give off light, in cd/m² (0: none).
+    SetMaterialGlow {
+        material: MaterialId,
+        glow: f32,
+    },
     /// Places the texture on faces (`None`: the default placement).
     SetTexturePlacement {
         faces: Vec<FaceId>,
@@ -569,6 +574,9 @@ pub enum CommandError {
 fn one() -> f64 {
     1.0
 }
+
+/// The brightest a material may glow, in cd/m².
+pub const MAX_GLOW: f32 = 1_000_000.0;
 
 fn invalid<T>(msg: impl Into<String>) -> Result<T, CommandError> {
     Err(CommandError::Invalid(msg.into()))
@@ -770,6 +778,7 @@ impl Command {
             Command::AddMaterial { .. } | Command::AddTexturedMaterial { .. } => "New Material",
             Command::AddImage { .. } => "Add Image",
             Command::SetMaterialTexture { .. } => "Texture",
+            Command::SetMaterialGlow { .. } => "Glow",
             Command::SetTexturePlacement { .. } => "Position Texture",
             Command::CreateSectionSlice { .. }
             | Command::AddSection { .. }
@@ -2168,7 +2177,7 @@ impl Command {
             Command::AddMaterial { name, color, texture } => {
                 check_texture(doc, texture.as_ref())?;
                 let id = MaterialId(doc.reserve_id());
-                doc.materials.insert(id, Material { name, color, texture });
+                doc.materials.insert(id, Material { name, color, texture, glow: 0.0 });
                 out.material = Some(id);
             }
             Command::AddTexturedMaterial { name, color, image_name, mime, data, size } => {
@@ -2187,7 +2196,8 @@ impl Command {
                     id
                 };
                 let material = MaterialId(doc.reserve_id());
-                doc.materials.insert(material, Material { name, color, texture: Some(Texture { image, size }) });
+                doc.materials
+                    .insert(material, Material { name, color, texture: Some(Texture { image, size }), glow: 0.0 });
                 out.image = Some(image);
                 out.material = Some(material);
             }
@@ -2206,6 +2216,16 @@ impl Command {
                     .get_mut(&material)
                     .ok_or_else(|| CommandError::Invalid(format!("no material {material}")))?;
                 m.texture = texture;
+            }
+            Command::SetMaterialGlow { material, glow } => {
+                if !glow.is_finite() || !(0.0..=MAX_GLOW).contains(&glow) {
+                    return invalid("a glow must be between 0 and 1000000 cd/m²");
+                }
+                let m = doc
+                    .materials
+                    .get_mut(&material)
+                    .ok_or_else(|| CommandError::Invalid(format!("no material {material}")))?;
+                m.glow = glow;
             }
             Command::SetTexturePlacement { faces, placement } => {
                 if let Some(p) = placement

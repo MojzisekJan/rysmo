@@ -5,6 +5,9 @@
 //! In the flat lighting the faces are unlit and shaded here from a fixed light, which is
 //! the default look and the same on every GPU. In sun lighting the materials are
 //! lit by the sun and the sky, and can receive shadows and ambient occlusion.
+//!
+//! Faces of a glowing material give off their light: lit, they shine with it, and each
+//! occurrence of them carries a point light of the same output at their centre.
 
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
@@ -16,7 +19,7 @@ use bevy::image::{
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 use rysmo_math::DVec3;
-use rysmo_mesh::{DefinitionId, EdgeId, Element, FaceId, ImageId, InstanceId, triangulate_face};
+use rysmo_mesh::{DefinitionId, EdgeId, Element, FaceId, ImageId, InstanceId, MaterialId, triangulate_face};
 use rysmo_model::{FaceStyle, Lighting};
 
 use crate::state::App3d;
@@ -38,7 +41,14 @@ enum Group {
     Textured(ImageId),
     /// Blended faces, with their texture if they have one.
     SeeThrough(Option<ImageId>),
+    /// Faces of a glowing material, with its texture if it has one.
+    Glowing(MaterialId, Option<ImageId>),
 }
+
+/// The most glowing occurrences that carry a light, the brightest first.
+const MAX_LIGHTS: usize = 64;
+/// How many of those lights cast shadows, when shadows are on.
+const SHADOWED_LIGHTS: usize = 8;
 
 #[derive(Resource, Default)]
 struct FaceMeshes {
@@ -256,6 +266,14 @@ fn rebuild_faces(
     let highlighted: BTreeSet<FaceId> = preview.faces.iter().copied().collect();
     let lit_instances: BTreeSet<InstanceId> = preview.instances.iter().copied().collect();
     let mut groups: HashMap<Group, Buffers> = HashMap::new();
+    // Glowing area by occurrence and material: total area and area-weighted centre.
+    let mut glows: HashMap<(usize, MaterialId), (f64, DVec3)> = HashMap::new();
+    let glowing = |m: Option<MaterialId>| {
+        m.filter(|m| {
+            lit && matches!(style.faces, FaceStyle::Shaded | FaceStyle::Textured)
+                && doc.materials.get(m).is_some_and(|m| m.glow > 0.0)
+        })
+    };
     let background = [style.background[0], style.background[1], style.background[2], 1.0];
     let colour = |m: Option<rysmo_mesh::MaterialId>, default: [f32; 3]| -> ([f32; 4], Option<rysmo_model::Texture>) {
         let rgba = [default[0], default[1], default[2], 1.0];
@@ -276,7 +294,7 @@ fn rebuild_faces(
     };
     if style.faces != FaceStyle::Wireframe {
         let mut active_seen = false;
-        for occ in doc.occurrences(editor.context()) {
+        for (occ_index, occ) in doc.occurrences(editor.context()).into_iter().enumerate() {
             let Some(_def) = doc.def(occ.definition) else { continue };
             let evaluated = doc.effective_mesh(occ.definition);
             let mesh = &*evaluated;
@@ -316,7 +334,10 @@ fn rebuild_faces(
                     if !occ.in_context {
                         color = fade(color);
                     }
-                    let group = if color[3] < 0.999 {
+                    let glow = glowing(material).filter(|_| !face.hidden && occ.in_context);
+                    let group = if let Some(m) = glow {
+                        Group::Glowing(m, texture.map(|t| t.image))
+                    } else if color[3] < 0.999 {
                         Group::SeeThrough(texture.map(|t| t.image))
                     } else if let Some(t) = texture {
                         Group::Textured(t.image)
@@ -349,6 +370,13 @@ fn rebuild_faces(
                         let polygon = rysmo_model::sections::clip_triangle(points, &section_planes);
                         for i in 1..polygon.len().saturating_sub(1) {
                             let triangle = [polygon[0], polygon[i], polygon[i + 1]];
+                            if let Some(m) = glow {
+                                let [a, b, c] = triangle.map(|p| p.0);
+                                let area = (b - a).cross(c - a).length() / 2.0;
+                                let entry = glows.entry((occ_index, m)).or_insert((0.0, DVec3::ZERO));
+                                entry.0 += area;
+                                entry.1 += (a + b + c) / 3.0 * area;
+                            }
                             for samples in &sample_weights {
                                 for sample in samples {
                                     let point =
@@ -391,12 +419,24 @@ fn rebuild_faces(
             continue;
         }
         let texture = match group {
-            Group::Textured(id) | Group::SeeThrough(Some(id)) => state.images.get(&id).map(|(_, h)| h.clone()),
+            Group::Textured(id) | Group::SeeThrough(Some(id)) | Group::Glowing(_, Some(id)) => {
+                state.images.get(&id).map(|(_, h)| h.clone())
+            }
             _ => None,
+        };
+        // Emission in nits, scaled by the exposure like the lights.
+        let emissive = match group {
+            Group::Glowing(m, _) => doc.materials.get(&m).map_or(LinearRgba::BLACK, |m| {
+                let c = LinearRgba::from(Color::srgb(m.color[0], m.color[1], m.color[2]));
+                c * m.glow
+            }),
+            _ => LinearRgba::BLACK,
         };
         let material = materials.add(StandardMaterial {
             base_color: Color::WHITE,
-            base_color_texture: texture,
+            base_color_texture: texture.clone(),
+            emissive,
+            emissive_texture: texture.filter(|_| emissive != LinearRgba::BLACK),
             unlit,
             perceptual_roughness: 0.85,
             reflectance: 0.2,
@@ -406,6 +446,31 @@ fn rebuild_faces(
         });
         let e = commands.spawn((Mesh3d(meshes.add(buf.into_mesh())), MeshMaterial3d(material), to_y_up)).id();
         state.entities.push(e);
+    }
+    // A Lambertian face of luminance L and area A gives off π·L·A lumens.
+    let mut lights: Vec<(f32, Color, DVec3, f64)> = glows
+        .into_iter()
+        .filter(|(_, (area, _))| *area > 1e-9)
+        .filter_map(|((_, m), (area, sum))| {
+            let mat = doc.materials.get(&m)?;
+            let flux = std::f32::consts::PI * mat.glow * area as f32;
+            Some((flux, Color::srgb(mat.color[0], mat.color[1], mat.color[2]), sum / area, area))
+        })
+        .collect();
+    lights.sort_by(|a, b| b.0.total_cmp(&a.0));
+    for (rank, (flux, color, centre, area)) in lights.into_iter().take(MAX_LIGHTS).enumerate() {
+        // Out to where the light falls to about 0.05 lx.
+        let range = (flux / (4.0 * std::f32::consts::PI * 0.05)).sqrt().clamp(1.0, 200.0);
+        let light = PointLight {
+            color,
+            intensity: flux,
+            range,
+            radius: (area / std::f64::consts::PI).sqrt().min(0.5) as f32 * 0.5,
+            shadow_maps_enabled: style.shadows && rank < SHADOWED_LIGHTS,
+            ..default()
+        };
+        let at = Vec3::new(centre.x as f32, centre.z as f32, -centre.y as f32);
+        state.entities.push(commands.spawn((light, Transform::from_translation(at))).id());
     }
     state.key = Some(key);
 }

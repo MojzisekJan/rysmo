@@ -302,6 +302,24 @@ fn material_edit() {
 }
 
 #[test]
+fn material_glow() {
+    let mut e = Editor::new();
+    let m = e
+        .apply(Command::AddMaterial { name: "Lamp".into(), color: [1.0, 0.8, 0.6, 1.0], texture: None })
+        .unwrap()
+        .material
+        .unwrap();
+    assert_eq!(e.doc().materials[&m].glow, 0.0);
+    e.apply(Command::SetMaterialGlow { material: m, glow: 2000.0 }).unwrap();
+    assert_eq!(e.doc().materials[&m].glow, 2000.0);
+    round_trip(&mut e);
+    for bad in [-1.0, f32::NAN, f32::INFINITY, crate::MAX_GLOW * 2.0] {
+        assert!(e.apply(Command::SetMaterialGlow { material: m, glow: bad }).is_err());
+    }
+    assert_eq!(e.doc().materials[&m].glow, 2000.0);
+}
+
+#[test]
 fn place_another_instance() {
     let mut e = Editor::new();
     let b = add_box(&mut e, 0.0);

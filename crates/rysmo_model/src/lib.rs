@@ -36,7 +36,7 @@ pub use rysmo_mesh::{
     TextId, VertexId,
 };
 
-pub use command::{Command, CommandError, Outcome};
+pub use command::{Command, CommandError, MAX_GLOW, Outcome};
 pub use document::{Definition, Document, Guide, Instance, Material, Occurrence, Tag, corners};
 pub use rysmo_mesh::{ImageId, TexturePlacement};
 pub use style::{

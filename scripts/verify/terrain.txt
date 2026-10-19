@@ -1,0 +1,59 @@
+# From Scratch draws a 6 x 4 m terrain grid; Smoove raises two hills in it after the group is opened.
+wait 30
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 5
+type from scratch
+wait 3
+key Enter
+wait 5
+type 500
+key Enter
+wait 3
+click 450 520
+move 800 600
+wait 3
+type 6000
+key Enter
+wait 3
+move 700 450
+wait 3
+type 4000
+key Enter
+wait 10
+move 1200 19
+wait 5
+shot target/verify/terrain-grid.png
+dclick 700 640
+wait 5
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 5
+type smoove
+wait 3
+key Enter
+wait 5
+type 2000
+key Enter
+wait 3
+click 700 640
+move 700 450
+wait 5
+type 1500
+key Enter
+wait 5
+click 1000 720
+move 1000 600
+wait 5
+type 900
+key Enter
+wait 5
+click 184 57
+wait 10
+move 1200 19
+wait 5
+shot target/verify/terrain-smoove.png
+save target/verify/terrain.rysmo
+exit

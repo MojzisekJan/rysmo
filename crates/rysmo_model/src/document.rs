@@ -22,6 +22,13 @@ pub struct Material {
     /// An image laid over the colour, if the material is textured.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub texture: Option<crate::Texture>,
+    /// Light the faces give off, in cd/m²; 0 for none.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub glow: f32,
+}
+
+fn is_zero(v: &f32) -> bool {
+    *v == 0.0
 }
 
 /// A visibility tag (layer). Instances on a hidden tag are not drawn.

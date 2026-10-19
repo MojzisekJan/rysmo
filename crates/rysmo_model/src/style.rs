@@ -175,6 +175,12 @@ pub struct Style {
     pub sky_color: [f32; 3],
     pub ground: bool,
     pub ground_color: [f32; 3],
+    /// Haze that fades distant geometry into the horizon colour.
+    pub fog: bool,
+    /// Distance, in metres, at which the fog hides geometry almost completely.
+    pub fog_distance: f32,
+    /// A physically based sky and aerial haze lit by the sun (desktop renderer, Sun lighting).
+    pub atmosphere: bool,
     /// How see-through faces are in X-ray, 0..1.
     pub xray_opacity: f32,
     pub lighting: Lighting,
@@ -222,6 +228,9 @@ impl Default for Style {
             sky_color: [0.84, 0.89, 0.94],
             ground: false,
             ground_color: [0.82, 0.80, 0.74],
+            fog: false,
+            fog_distance: 400.,
+            atmosphere: false,
             xray_opacity: 0.5,
             lighting: Lighting::Flat,
             shadows: false,
@@ -323,6 +332,8 @@ impl Style {
             && (-180. ..=180.).contains(&self.studio_rotation)
             && self.exposure.is_finite()
             && (-4. ..=4.).contains(&self.exposure)
+            && self.fog_distance.is_finite()
+            && (10. ..=100_000.).contains(&self.fog_distance)
             && self.render_scale.is_finite()
             && (0.5..=1.5).contains(&self.render_scale)
             && [0, 512, 1024, 2048, 4096, 8192].contains(&self.texture_limit)
