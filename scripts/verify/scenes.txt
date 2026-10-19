@@ -1,0 +1,41 @@
+# Scenes: save two views and restore the first.
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key Space
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type scenes
+wait 3
+key Enter
+wait 6
+log before-scenes
+click 1074 158
+wait 4
+log scene-1
+click 285 19
+wait 3
+move 336 240
+wait 6
+move 560 240
+wait 2
+click 589 240
+wait 4
+log top
+click 1074 158
+wait 4
+log scene-2
+shot target/verify/scenes-2.png
+click 39 96
+wait 30
+log restored-1
+click 110 96
+wait 30
+log restored-2
+save target/verify/scenes.rysmo
+exit

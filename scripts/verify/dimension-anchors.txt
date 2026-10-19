@@ -1,0 +1,38 @@
+# Dimensions from an edge midpoint to a circle centre, placed in a fixed plane.
+wait 30
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key KeyC
+click 900 420
+move 960 420
+wait 3
+type 500
+key Enter
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type dimensions
+wait 3
+key Enter
+wait 3
+move 600 530
+wait 5
+click 600 530
+move 900 443
+wait 5
+move 900 421
+wait 5
+shot target/verify/dimension-anchors-0.png
+click 900 421
+move 760 650
+wait 3
+click 760 650
+log anchors
+shot target/verify/dimension-anchors.png
+save target/verify/dimension-anchors.rysmo
+exit

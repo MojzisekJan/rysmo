@@ -1,0 +1,129 @@
+# Dimensions: edge shortcut, circle diameter, Escape, geometry updates and detaching.
+wait 30
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key KeyC
+click 900 420
+move 960 420
+wait 3
+type 500
+key Enter
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type dimensions
+wait 3
+key Enter
+wait 3
+click 580 526
+move 600 600
+wait 3
+click 600 600
+log edge
+click 900 443
+move 960 500
+wait 3
+click 960 500
+log diameter
+click 563 450
+move 640 470
+wait 3
+key Escape
+wait 3
+log escape
+shot target/verify/dimensions-1.png
+key Space
+key Space
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type settings
+wait 3
+key Enter
+wait 10
+click 859 228
+wait 5
+wheel 640 500 -12
+wait 5
+shot target/verify/dimension-visibility-0.png
+click 370 441
+wait 3
+click 340 526
+wait 3
+click 382 489
+wait 3
+log select-all
+click 402 518
+wait 3
+log update
+save target/verify/dimension-visibility.rysmo
+click 322 575
+wait 3
+click 960 153
+wait 3
+key Space
+click 285 19
+wait 3
+click 329 194
+wait 5
+click 621 314
+wait 5
+click 285 19
+wait 3
+click 325 50
+wait 5
+drag 100 120 1270 760
+wait 3
+log right-view
+shot target/verify/dimension-visibility-right.png
+key Escape
+click 285 19
+wait 3
+click 329 194
+wait 5
+click 618 194
+wait 5
+drag 100 120 1270 760
+wait 3
+log top-view
+shot target/verify/dimension-visibility-top.png
+key Escape
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type settings
+wait 3
+key Enter
+wait 10
+click 859 228
+wait 5
+wheel 640 500 -12
+wait 5
+click 322 463
+wait 3
+click 322 520
+wait 3
+shot target/verify/dimension-visibility-small.png
+click 960 153
+wait 3
+key Space
+click 285 19
+wait 3
+click 329 194
+wait 5
+click 615 338
+wait 5
+wheel 640 500 -14
+wait 5
+drag 100 120 1270 760
+wait 3
+log box-far
+shot target/verify/dimension-visibility.png
+exit

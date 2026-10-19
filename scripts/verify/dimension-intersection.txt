@@ -1,0 +1,57 @@
+# Dimensions to where two diagonals cross, and to where two inferred axis lines cross.
+wait 30
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key KeyL
+click 500 499
+wait 2
+click 757 500
+wait 2
+key Escape
+click 707 560
+wait 2
+click 563 450
+wait 2
+key Escape
+click 900 420
+move 960 420
+wait 3
+type 500
+key Enter
+key Escape
+wait 3
+log lines
+shot target/verify/dimension-intersection-0.png
+save target/verify/dimension-intersection-lines.rysmo
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type dimensions
+wait 3
+key Enter
+wait 3
+move 628 500
+wait 5
+shot target/verify/dimension-intersection-1.png
+click 628 500
+move 900 420
+wait 8
+move 850 480
+wait 3
+move 809 550
+wait 5
+shot target/verify/dimension-intersection-2.png
+click 809 550
+move 760 650
+wait 3
+click 760 650
+wait 3
+log intersection
+shot target/verify/dimension-intersection.png
+save target/verify/dimension-intersection.rysmo
+exit

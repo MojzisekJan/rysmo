@@ -1,0 +1,68 @@
+# Shadows: sun lighting, date, solar hour, latitude and north angle move the shadow.
+wait 30
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key KeyP
+click 620 500
+move 620 400
+wait 3
+type 1000
+key Enter
+key KeyH
+drag 640 400 380 400
+wait 3
+key Space
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type settings
+wait 3
+key Enter
+wait 10
+click 650 228
+wait 5
+drag 626 154 1000 154
+wait 5
+click 656 347
+wait 4
+click 640 404
+wait 10
+shot target/verify/shadows-0.png
+click 614 405
+wait 3
+click 990 433
+wait 5
+click 622 542
+wait 10
+shot target/verify/shadows-1.png
+click 763 627
+hold SuperLeft
+key KeyA
+unhold SuperLeft
+type 8
+key Enter
+wait 10
+shot target/verify/shadows-8h.png
+click 763 627
+hold SuperLeft
+key KeyA
+unhold SuperLeft
+type 17
+key Enter
+wait 10
+shot target/verify/shadows-17h.png
+click 763 598
+hold SuperLeft
+key KeyA
+unhold SuperLeft
+type 355
+key Enter
+wait 10
+shot target/verify/shadows-winter.png
+save target/verify/shadows.rysmo
+exit

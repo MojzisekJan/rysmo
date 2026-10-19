@@ -1,0 +1,47 @@
+# Undo everything, then redo it: the model must come back identical.
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key KeyP
+click 620 500
+move 620 400
+wait 3
+type 1000
+key Enter
+key Space
+dclick 625 398
+wait 2
+key KeyG
+wait 4
+key KeyM
+key ControlLeft
+click 625 398
+move 800 450
+wait 3
+key ArrowRight
+type 3000
+key Enter
+log built
+save target/verify/undo-a.rysmo
+key Escape
+hold ControlLeft
+key KeyZ
+key KeyZ
+key KeyZ
+key KeyZ
+unhold ControlLeft
+log undone
+hold ControlLeft
+hold ShiftLeft
+key KeyZ
+key KeyZ
+key KeyZ
+key KeyZ
+unhold ShiftLeft
+unhold ControlLeft
+log redone
+save target/verify/undo-b.rysmo
+exit

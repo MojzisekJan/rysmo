@@ -1,0 +1,36 @@
+# Components: make one from a face, copy it (shared definition), explode one copy.
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key Space
+dclick 627 502
+wait 3
+key KeyG
+wait 6
+log component
+key KeyM
+key ControlLeft
+click 627 502
+move 800 560
+wait 3
+key ArrowRight
+type 3000
+key Enter
+log copied
+save target/verify/components-a.rysmo
+key Space
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type explode
+wait 3
+key Enter
+wait 4
+log exploded
+save target/verify/components-b.rysmo
+shot target/verify/components.png
+exit

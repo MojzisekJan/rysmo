@@ -1,0 +1,28 @@
+# A right-click low in the window: the menu flips above the pointer and stays open after the release.
+wait 30
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key KeyP
+click 620 500
+move 620 400
+wait 3
+type 800
+key Enter
+key Space
+wait 3
+move 640 545
+wait 3
+press right
+wait 3
+release right
+wait 6
+log context
+shot target/verify/context-menu.png
+key Escape
+wait 3
+shot target/verify/context-menu-closed.png
+exit

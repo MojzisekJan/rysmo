@@ -1,0 +1,71 @@
+# Tags: add a tag, put a component on it, hide the tag.
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key Space
+dclick 627 502
+wait 3
+key KeyG
+wait 6
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type tags
+wait 3
+key Enter
+wait 6
+click 1120 202
+wait 3
+type Walls
+wait 2
+click 1216 202
+wait 4
+log tag-added
+click 1164 188
+wait 3
+log assigned
+click 1033 188
+wait 4
+log tag-hidden
+shot target/verify/tags-1.png
+save target/verify/tags.rysmo
+click 1033 188
+wait 4
+log tag-shown
+click 627 502
+wait 3
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type hide groups
+wait 3
+key Enter
+wait 4
+log instance-hidden
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type show hidden geometry
+wait 3
+key Enter
+wait 5
+shot target/verify/tags-hidden-shown.png
+click 627 502
+wait 3
+log hidden-not-selectable
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type unhide all groups
+wait 3
+key Enter
+wait 4
+log instance-unhidden
+exit

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <title>Rysmo</title>
+  <meta name="theme-color" content="#20252c">
+  <link data-trunk rel="copy-dir" href="brand">
+  <link data-trunk rel="copy-file" href="web_diagnostics.mjs">
+  <link rel="icon" type="image/svg+xml" href="brand/favicon.svg">
+  <link rel="icon" type="image/x-icon" href="brand/favicon.ico">
+  <link rel="apple-touch-icon" sizes="180x180" href="brand/apple-touch-icon.png">
+  <link data-trunk rel="rust" data-bin="rysmo" data-cargo-profile="web-release" data-wasm-opt="z" data-initializer="loader.mjs">
+  <style>
+    /* The viewport's sky and panel colours, so the loader hands over without a flash. */
+    :root { --sky: #d6e3f0; --panel: #f7f7f7; --fg: #1d2025; --dim: #5e646c; --track: #c3ccd6; --accent: #3d7bd9; --error: #c0392b; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: var(--sky); }
+    /* Bevy sizes the canvas to its parent. */
+    #rysmo { display: block; width: 100%; height: 100%; touch-action: none; outline: none; }
+    #loading { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+               justify-content: center; gap: 12px; background: var(--sky); color: var(--fg);
+               font: 15px system-ui, -apple-system, "Segoe UI", sans-serif; }
+    #loading .logo { width: 96px; height: 96px; }
+    #loading .name { font-size: 22px; font-weight: 600; letter-spacing: 0.02em; }
+    #loading .bar { width: 260px; max-width: 70vw; height: 4px; border-radius: 2px; background: var(--track); overflow: hidden; }
+    #loading .fill { height: 100%; width: 0; background: var(--accent); transition: width 0.15s; }
+    #loading.waiting .fill { width: 30%; animation: sweep 1.2s ease-in-out infinite; }
+    @keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+    #loading .status { color: var(--dim); font-size: 13px; min-height: 1.3em; text-align: center; max-width: 80vw; }
+    #loading.failed .status { color: var(--error); }
+    #loading.failed .bar { display: none; }
+  </style>
+</head>
+<body>
+  <canvas id="rysmo" tabindex="0" role="application" aria-label="Rysmo 3D editor"></canvas>
+  <div id="loading" class="waiting">
+    <img class="logo" src="brand/logo.svg" width="96" height="96" alt="">
+    <div class="name">Rysmo</div>
+    <div class="bar"><div class="fill"></div></div>
+    <div class="status">Loading...</div>
+    <noscript>Rysmo needs JavaScript and WebGL2.</noscript>
+  </div>
+  <script>
+    // Before downloading megabytes, check that the browser can draw at all.
+    (function () {
+      const gl = document.createElement("canvas").getContext("webgl2");
+      if (!gl) {
+        const l = document.getElementById("loading");
+        l.className = "failed";
+        l.querySelector(".status").textContent = "This browser has no WebGL2, which Rysmo needs.";
+      }
+    })();
+  </script>
+  <script type="module" src="web_diagnostics.mjs"></script>
+</body>
+</html>

@@ -1,0 +1,83 @@
+# Styles: face modes, edges, profiles, edge colours, background, sky and ground.
+wait 30
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key KeyP
+click 620 500
+move 620 400
+wait 3
+type 1000
+key Enter
+key KeyH
+drag 640 400 380 400
+wait 3
+key Space
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type settings
+wait 3
+key Enter
+wait 10
+click 650 228
+wait 5
+wheel 640 500 -30
+wait 5
+click 362 605
+wait 5
+wheel 640 500 -30
+wait 5
+drag 626 154 1000 154
+wait 5
+shot target/verify/styles-0.png
+click 656 305
+wait 4
+click 640 362
+wait 6
+shot target/verify/styles-shaded.png
+click 656 305
+wait 4
+click 640 390
+wait 6
+shot target/verify/styles-monochrome.png
+click 656 305
+wait 4
+click 640 418
+wait 6
+shot target/verify/styles-hidden-line.png
+click 656 305
+wait 4
+click 640 446
+wait 6
+shot target/verify/styles-wireframe.png
+click 656 305
+wait 4
+click 640 474
+wait 6
+shot target/verify/styles-xray.png
+click 656 305
+wait 4
+click 640 334
+wait 6
+shot target/verify/styles-textured.png
+click 614 334
+click 614 362
+wait 6
+shot target/verify/styles-profiles.png
+click 614 334
+click 656 412
+wait 4
+click 640 497
+wait 6
+shot target/verify/styles-by-axis.png
+click 614 481
+click 614 509
+wait 6
+shot target/verify/styles-ground.png
+save target/verify/styles.rysmo
+exit

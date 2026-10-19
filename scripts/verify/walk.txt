@@ -1,0 +1,59 @@
+# Position Camera on the ground, then Look Around and Walk, with a typed eye height.
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key KeyP
+click 620 500
+move 620 400
+wait 3
+type 1000
+key Enter
+key Space
+log start
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type position camera
+wait 3
+key Enter
+wait 3
+click 300 650
+wait 6
+log positioned
+type 1800
+key Enter
+wait 4
+log eye-1800
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type look around
+wait 3
+key Enter
+wait 3
+drag 640 400 700 400 10
+log looked
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type walk
+wait 3
+key Enter
+wait 3
+move 685 440
+wait 2
+press left
+wait 2
+move 685 380
+wait 40
+release left
+wait 3
+log walked
+shot target/verify/walk.png
+exit

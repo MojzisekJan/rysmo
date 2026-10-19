@@ -1,0 +1,15 @@
+[package]
+name = "rysmo_mobile"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "staticlib"]
+
+[target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
+rysmo_app = { path = "../rysmo_app" }
+bevy = { version = "0.20.0", default-features = false, features = ["std"] }
+
+[lints.rust]
+unsafe_code = "deny"

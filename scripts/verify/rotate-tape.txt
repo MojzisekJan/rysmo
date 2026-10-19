@@ -1,0 +1,33 @@
+# Rotate a selection by a typed angle; Tape Measure guide at a typed distance.
+wait 30
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key Space
+dclick 627 502
+wait 3
+log selected
+key KeyQ
+click 627 502
+wait 2
+click 700 520
+move 640 440
+wait 3
+type 90
+key Enter
+log rotated
+save target/verify/rotated.rysmo
+key Escape
+key KeyT
+click 500 498
+move 650 470
+wait 3
+type 750
+key Enter
+log tape
+shot target/verify/rotate-tape.png
+save target/verify/tape.rysmo
+exit

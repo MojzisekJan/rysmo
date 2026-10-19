@@ -1,0 +1,50 @@
+# Camera: standard views and parallel projection from the menu, Zoom Extents,
+# Previous view, wheel zoom, and orbiting and panning with the navigation tools.
+wait 30
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key KeyP
+click 620 500
+move 620 400
+wait 3
+type 1000
+key Enter
+key Space
+log start
+click 285 19
+wait 3
+move 336 240
+wait 6
+move 560 240
+wait 2
+click 589 240
+wait 3
+log top
+click 285 19
+wait 3
+click 342 209
+wait 3
+log parallel
+shot target/verify/camera-top.png
+click 285 19
+wait 3
+click 331 271
+wait 3
+log previous
+hold ShiftLeft
+key KeyZ
+unhold ShiftLeft
+log extents
+wheel 640 400 3
+log wheel
+key KeyO
+drag 640 400 740 400 10
+log orbit
+key KeyH
+drag 640 400 700 450 10
+log pan
+exit

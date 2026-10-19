@@ -1,0 +1,41 @@
+# Zoom Window, a typed field of view, and orbiting with the middle button mid-line.
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key Space
+log start
+hold ControlLeft
+hold ShiftLeft
+key KeyW
+unhold ShiftLeft
+unhold ControlLeft
+wait 2
+drag 480 430 780 580 10
+wait 4
+log zoom-window
+key KeyZ
+type 45deg
+key Enter
+wait 3
+log fov-45
+key KeyL
+click 640 420
+move 700 440
+wait 2
+press middle
+move 760 440
+wait 2
+move 820 440
+wait 2
+release middle
+wait 2
+log orbited-mid-line
+key ArrowRight
+type 1000
+key Enter
+key Escape
+log line-finished
+exit

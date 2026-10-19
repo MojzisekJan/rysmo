@@ -1,0 +1,17 @@
+# Push/Pull a circle: a cylinder whose side edges are soft and smooth.
+key KeyC
+click 640 520
+move 743 551
+wait 3
+type 500
+key Enter
+key KeyP
+click 670 525
+move 670 455
+wait 3
+type 800
+key Enter
+log cylinder
+save target/verify/pp-cylinder.rysmo
+shot target/verify/pp-cylinder.png
+exit

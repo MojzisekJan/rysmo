@@ -1,0 +1,23 @@
+# Scale a 2 x 1 m rectangle by its corner grip: typed 2, then corrected to 0.5.
+wait 30
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key Space
+dclick 627 502
+key KeyS
+click 706 561
+move 760 600
+wait 3
+type 2
+key Enter
+log corner-2
+save target/verify/scale-a.rysmo
+type 0.5
+key Enter
+log corrected-0.5
+save target/verify/scale-b.rysmo
+exit

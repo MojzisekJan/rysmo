@@ -1,0 +1,42 @@
+# Entity Info: change a selected circle's radius and segment count.
+key KeyC
+click 640 520
+move 743 551
+wait 3
+type 1000
+key Enter
+key Space
+click 640 462
+wait 3
+log selected
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type inspector
+wait 3
+key Enter
+wait 6
+click 1060 403
+wait 3
+key Backspace
+key Backspace
+key Backspace
+key Backspace
+key Backspace
+type 600
+key Enter
+wait 4
+log radius
+click 1042 373
+wait 3
+key Backspace
+key Backspace
+key Backspace
+type 12
+key Enter
+wait 4
+log segments
+shot target/verify/curve-edit.png
+save target/verify/curve-edit.rysmo
+exit

@@ -1,0 +1,48 @@
+# Follow Me: sweep a vertical 200 x 300 mm rectangle around a 1 m circle.
+wait 30
+key KeyC
+click 640 520
+move 743 551
+wait 3
+type 1000
+key Enter
+log circle
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type rotated
+wait 3
+key Enter
+wait 3
+click 743 551
+move 790 565
+wait 3
+key ArrowRight
+type 200
+key Enter
+log edge
+key ArrowUp
+move 745 470
+wait 3
+type 300
+key Enter
+log profile
+key Space
+click 640 462
+wait 3
+log path-selected
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type follow
+wait 3
+key Enter
+wait 3
+click 760 538
+wait 5
+log swept
+shot target/verify/follow-me.png
+save target/verify/follow-me.rysmo
+exit

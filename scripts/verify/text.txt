@@ -1,0 +1,96 @@
+# Text: screen text, Escape, leader text, area text, editing and Undo.
+wait 30
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type text
+wait 3
+key Enter
+wait 3
+click 300 250
+wait 5
+type Plan A
+key Enter
+key Enter
+wait 3
+log screen
+click 300 330
+wait 5
+type temp
+key Escape
+wait 3
+log cancel
+click 627 502
+move 720 440
+wait 3
+click 720 440
+wait 5
+type Hello
+key Enter
+key Enter
+wait 3
+log leader
+dclick 600 525
+wait 5
+shot target/verify/text-area.png
+key Enter
+key Enter
+wait 3
+log area
+shot target/verify/text-1.png
+dclick 318 259
+wait 5
+shot target/verify/text-edit.png
+log edit-open
+click 1100 300
+hold SuperLeft
+key KeyA
+unhold SuperLeft
+type Plan B
+hold ControlLeft
+key Enter
+unhold ControlLeft
+wait 3
+log edit
+click 1100 230
+wait 3
+hold ControlLeft
+key KeyZ
+unhold ControlLeft
+wait 3
+log undo
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type settings
+wait 3
+key Enter
+wait 10
+click 859 228
+wait 5
+click 535 322
+hold SuperLeft
+key KeyA
+unhold SuperLeft
+type 20
+key Enter
+wait 3
+wheel 640 500 -12
+wait 5
+shot target/verify/text-settings.png
+click 381 240
+wait 3
+log update
+click 960 153
+wait 3
+shot target/verify/text.png
+save target/verify/text.rysmo
+exit

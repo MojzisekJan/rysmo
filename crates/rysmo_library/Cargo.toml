@@ -1,0 +1,13 @@
+[package]
+name = "rysmo_library"
+description = "Rysmo's starter materials: colours and procedurally generated textures"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+png.workspace = true
+
+[lints]
+workspace = true

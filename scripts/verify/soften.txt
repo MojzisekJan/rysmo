@@ -1,0 +1,66 @@
+# Soften/Smooth: independent flags on one edge, then by angle on everything.
+wait 30
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key KeyP
+click 620 500
+move 620 400
+wait 3
+type 1000
+key Enter
+key Space
+click 495 450
+wait 3
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type inspector
+wait 3
+key Enter
+wait 10
+log edge
+shot target/verify/soften-0.png
+click 966 347
+wait 3
+save target/verify/soften-a.rysmo
+click 966 347
+wait 3
+click 966 375
+wait 3
+save target/verify/soften-b.rysmo
+click 966 375
+wait 3
+hold SuperLeft
+key KeyA
+unhold SuperLeft
+wait 5
+log all
+shot target/verify/soften-1.png
+click 1115 503
+hold SuperLeft
+key KeyA
+unhold SuperLeft
+type 80
+key Enter
+wait 3
+click 1033 532
+wait 4
+save target/verify/soften-c.rysmo
+click 1115 503
+hold SuperLeft
+key KeyA
+unhold SuperLeft
+type 100
+key Enter
+wait 3
+click 1033 532
+wait 4
+log soft
+save target/verify/soften-d.rysmo
+shot target/verify/soften.png
+exit

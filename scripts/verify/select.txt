@@ -1,0 +1,94 @@
+# Select: window and crossing boxes, Shift toggling and triple-click connected.
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key KeyL
+move 600 528
+wait 3
+click 603 530
+move 655 478
+wait 3
+click 659 475
+wait 2
+key Escape
+key Space
+drag 490 440 670 540 10
+wait 2
+log window
+key Escape
+drag 670 540 490 440 10
+wait 2
+log crossing
+key Escape
+click 560 495
+wait 2
+log one
+hold ShiftLeft
+click 700 500
+unhold ShiftLeft
+wait 2
+log shift-add
+wait 40
+hold ShiftLeft
+click 700 500
+unhold ShiftLeft
+wait 2
+log shift-toggle-off
+key Escape
+move 560 495
+wait 2
+press left
+wait 1
+release left
+wait 1
+press left
+wait 1
+release left
+wait 1
+press left
+wait 1
+release left
+wait 3
+log triple
+key Escape
+wait 40
+click 560 495
+wait 40
+hold ControlLeft
+click 700 500
+unhold ControlLeft
+wait 2
+log ctrl-add
+wait 40
+hold ControlLeft
+hold ShiftLeft
+click 700 500
+unhold ShiftLeft
+unhold ControlLeft
+wait 2
+log ctrl-shift-remove
+key Escape
+wait 40
+dclick 560 495
+wait 3
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type make group
+wait 3
+key Enter
+wait 4
+log grouped
+key Escape
+wait 40
+dclick 560 495
+wait 4
+log in-group
+key Escape
+wait 4
+log closed
+exit

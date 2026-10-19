@@ -1,0 +1,70 @@
+# Follow Me interactively: a profile at the start of an L-shaped path, traced by hovering.
+wait 30
+key KeyL
+click 527 512
+move 600 534
+wait 3
+type 2000
+key Enter
+move 740 530
+wait 3
+key ArrowLeft
+type 1000
+key Enter
+key Escape
+log path
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type rotated
+wait 3
+key Enter
+wait 3
+move 527 512
+wait 3
+click 527 512
+move 545 500
+wait 3
+key ArrowLeft
+type 500
+key Enter
+key ArrowUp
+move 550 440
+wait 3
+type 800
+key Enter
+log profile
+shot target/verify/follow-me-drag-0.png
+key Space
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type follow
+wait 3
+key Enter
+wait 3
+move 541 465
+wait 3
+click 541 465
+wait 3
+log profile-clicked
+shot target/verify/follow-me-drag-click.png
+move 600 532
+wait 3
+move 640 545
+wait 3
+move 700 564
+wait 3
+move 760 553
+wait 3
+move 772 539
+wait 5
+shot target/verify/follow-me-drag-1.png
+click 772 539
+wait 5
+log swept
+shot target/verify/follow-me-drag.png
+save target/verify/follow-me-drag.rysmo
+exit

@@ -1,0 +1,22 @@
+# Rotate with the Right arrow: about the red axis, standing the rectangle up.
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 1000,300
+key Enter
+key Space
+dclick 550 507
+wait 3
+key KeyQ
+key ArrowRight
+click 500 499
+wait 2
+click 519 484
+move 505 440
+wait 3
+type 90
+key Enter
+log rotated
+save target/verify/rotate-plane.rysmo
+exit

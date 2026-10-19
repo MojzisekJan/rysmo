@@ -1,0 +1,64 @@
+# Hide a selected face and its edges, then Unhide All Geometry.
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key Space
+dclick 627 502
+wait 3
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type hide selected geometry
+wait 3
+key Enter
+wait 4
+log hidden
+save target/verify/hide-a.rysmo
+shot target/verify/hide.png
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type unhide all geometry
+wait 3
+key Enter
+wait 4
+log unhidden
+save target/verify/hide-b.rysmo
+dclick 627 502
+wait 3
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type hide selected geometry
+wait 3
+key Enter
+wait 4
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type show hidden geometry
+wait 3
+key Enter
+wait 5
+shot target/verify/hide-shown.png
+click 627 502
+wait 3
+log hidden-face-picked
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type unhide selected geometry
+wait 3
+key Enter
+wait 4
+log face-unhidden
+save target/verify/hide-c.rysmo
+exit

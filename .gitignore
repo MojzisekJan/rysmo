@@ -1,0 +1,37 @@
+# Cargo build output, including per-crate and cross-compilation targets.
+target/
+
+# Trunk web output.
+/crates/rysmo_app/dist/
+
+# Rust profiling output and rustfmt recovery files.
+*.profraw
+*.profdata
+**/*.rs.bk
+
+# Local documents, references and backups. Keep shared test models tracked.
+/.local/
+*.rysmo.bak
+/docs/reference/*.pdf
+
+# Python helper caches and virtual environments.
+__pycache__/
+*.py[cod]
+/.venv/
+/venv/
+
+# Local environment overrides and platform signing credentials.
+.env
+.env.*
+!.env.example
+*.keystore
+*.jks
+*.p12
+*.mobileprovision
+
+# Operating-system and editor temporary files.
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.swo

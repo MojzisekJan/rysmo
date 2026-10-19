@@ -1,0 +1,18 @@
+# Offset a rectangle's face inwards by a typed 100 mm.
+wait 30
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key KeyF
+click 627 502
+move 640 505
+wait 3
+type 100
+key Enter
+log offset
+save target/verify/offset.rysmo
+shot target/verify/offset.png
+exit

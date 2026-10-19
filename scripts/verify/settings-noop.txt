@@ -1,0 +1,31 @@
+# Opening Settings and looking through its tabs must not change the model or history.
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 1000,1000
+key Enter
+log before
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type settings
+wait 3
+key Enter
+wait 6
+click 355 229
+wait 4
+click 436 229
+wait 4
+click 518 229
+wait 4
+click 610 229
+wait 6
+shot target/verify/settings-appearance.png
+click 702 229
+wait 4
+click 795 229
+wait 4
+log after
+exit

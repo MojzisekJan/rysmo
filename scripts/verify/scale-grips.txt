@@ -1,0 +1,15 @@
+# Shows the Scale grips of a selected rectangle so later scripts know where they are.
+wait 30
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key Space
+dclick 627 502
+key KeyS
+move 900 650
+wait 4
+shot target/verify/scale-grips.png
+exit

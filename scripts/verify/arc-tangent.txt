@@ -1,0 +1,59 @@
+# Arc: a tangent arc from the end of a line, then segments edited in Properties.
+wait 30
+key KeyL
+click 527 512
+move 600 534
+wait 3
+type 1000
+key Enter
+key Escape
+key KeyA
+move 625 541
+wait 5
+shot target/verify/arc-start.png
+click 625 541
+move 680 500
+wait 3
+type 1000
+key Enter
+log chord-typed
+move 680 545
+wait 3
+move 688 557
+wait 5
+shot target/verify/arc-tangent-0.png
+click 688 557
+wait 3
+log arc
+save target/verify/arc-tangent.rysmo
+key Space
+click 716 514
+wait 3
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type inspector
+wait 3
+key Enter
+wait 10
+shot target/verify/arc-tangent-info.png
+click 1054 368
+hold SuperLeft
+key KeyA
+unhold SuperLeft
+type 24
+key Enter
+wait 4
+log segments
+click 1068 397
+hold SuperLeft
+key KeyA
+unhold SuperLeft
+type 800
+key Enter
+wait 4
+log radius
+shot target/verify/arc-tangent.png
+save target/verify/arc-tangent-edited.rysmo
+exit

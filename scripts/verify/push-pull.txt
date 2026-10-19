@@ -1,0 +1,52 @@
+# Push/Pull: repeat by double-click, Ctrl new starting face, a hole through, a cylinder.
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key KeyP
+click 620 500
+move 620 400
+wait 3
+type 1000
+key Enter
+log box
+dclick 600 470
+wait 4
+log repeat-front
+save target/verify/pp-a.rysmo
+key ControlLeft
+click 585 430
+move 585 380
+wait 3
+type 300
+key Enter
+log new-base
+save target/verify/pp-b.rysmo
+key ControlLeft
+log ctrl-off
+click 585 400
+move 585 450
+wait 3
+type 300
+key Enter
+log flush
+save target/verify/pp-c.rysmo
+key KeyR
+click 690 505
+move 715 530
+wait 3
+type 400,300
+key Enter
+log hole-outline
+key KeyP
+click 702 509
+move 680 502
+wait 3
+type 2000
+key Enter
+log hole
+save target/verify/pp-d.rysmo
+shot target/verify/push-pull-d.png
+exit

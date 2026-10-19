@@ -1,0 +1,40 @@
+# Editing tools: Move copy and array, Push/Pull with a new starting face and repeat.
+wait 30
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 1000,1000
+key Enter
+log square
+shot target/verify/editing-0.png
+key Space
+dclick 578 488
+wait 3
+log selected
+key KeyM
+key ControlLeft
+click 578 488
+move 700 560
+wait 3
+key ArrowRight
+type 1500
+key Enter
+log copied
+type 3x
+key Enter
+log array
+shot target/verify/editing-1.png
+key KeyP
+click 578 488
+move 560 430
+wait 3
+type 500
+key Enter
+log pulled
+key Space
+key KeyP
+key ControlLeft
+log new-base-mode
+save target/verify/editing.rysmo
+exit

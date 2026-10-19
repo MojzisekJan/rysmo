@@ -1,0 +1,69 @@
+# Drawing tools on faces and the ground: Rectangle, Circle, Polygon, Arc,
+# with typed values and immediate corrections. Run with scripts/verify.sh.
+wait 30
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key KeyP
+click 620 500
+move 620 400
+wait 3
+type 1000
+key Enter
+key KeyR
+click 590 395
+move 660 405
+wait 3
+type 500,300
+key Enter
+log rect-on-top
+type 600,400
+key Enter
+log rect-corrected
+key KeyC
+click 600 470
+move 650 470
+wait 3
+type 200
+key Enter
+log circle
+type 12s
+key Enter
+log circle-12s
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type polygon
+wait 3
+key Enter
+wait 3
+log polygon-tool
+click 300 620
+move 360 620
+wait 3
+type 300
+key Enter
+log polygon
+type 8s
+key Enter
+log polygon-8s
+key KeyA
+click 900 650
+move 1000 650
+wait 3
+type 1000
+key Enter
+log arc-chord
+move 950 600
+wait 3
+type 500
+key Enter
+log arc
+shot target/verify/drawing.png
+key Escape
+save target/verify/drawing.rysmo
+exit

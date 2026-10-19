@@ -1,0 +1,65 @@
+# Polygon on a vertical face, then its radius and side count changed in the Inspector.
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key KeyP
+click 620 500
+move 620 400
+wait 3
+type 1000
+key Enter
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type polygon
+wait 3
+key Enter
+wait 3
+click 600 470
+move 650 485
+wait 3
+type 300
+key Enter
+log polygon
+key Space
+click 631 479
+wait 3
+log selected
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type inspector
+wait 3
+key Enter
+wait 6
+click 1057 403
+wait 3
+key Delete
+key Delete
+key Delete
+key Delete
+key Backspace
+key Backspace
+key Backspace
+key Backspace
+type 400
+key Enter
+wait 4
+log radius
+click 1042 373
+wait 3
+key Delete
+key Delete
+key Backspace
+key Backspace
+type 8
+key Enter
+wait 4
+log sides
+save target/verify/polygon-edit.rysmo
+exit

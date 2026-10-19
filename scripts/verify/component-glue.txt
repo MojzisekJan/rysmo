@@ -1,0 +1,69 @@
+# Components: browser placement, glue to a face with a cut opening, Make Unique.
+wait 30
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key KeyP
+click 620 500
+move 620 400
+wait 3
+type 1000
+key Enter
+key KeyR
+click 850 600
+move 900 620
+wait 3
+type 400,300
+key Enter
+key Space
+dclick 870 610
+wait 3
+key KeyG
+wait 6
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type components
+wait 3
+key Enter
+wait 8
+log component
+shot target/verify/component-glue-0.png
+click 1015 213
+wait 5
+shot target/verify/component-glue-1.png
+click 1016 415
+wait 4
+click 1000 472
+wait 4
+click 976 445
+wait 4
+log glue-set
+click 1097 213
+wait 4
+move 590 470
+wait 5
+move 600 470
+wait 5
+shot target/verify/component-glue-preview.png
+click 600 470
+wait 6
+log placed
+shot target/verify/component-glue.png
+save target/verify/component-glue.rysmo
+key Space
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type make unique
+wait 3
+key Enter
+wait 4
+log unique
+save target/verify/component-glue-unique.rysmo
+exit

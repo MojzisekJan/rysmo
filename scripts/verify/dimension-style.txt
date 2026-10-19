@@ -1,0 +1,59 @@
+# Dimension font size, endpoints and text position from the Inspector.
+wait 30
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type dimensions
+wait 3
+key Enter
+wait 3
+click 580 526
+move 600 600
+wait 3
+click 600 600
+key Space
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type inspector
+wait 3
+key Enter
+wait 10
+wheel 1100 450 -10
+wait 5
+shot target/verify/dimension-style-0.png
+click 1108 387
+wait 3
+hold SuperLeft
+key KeyA
+unhold SuperLeft
+type 24
+key Enter
+wait 3
+log font
+click 966 583
+wait 3
+log position
+click 1015 477
+wait 5
+shot target/verify/dimension-style-1.png
+click 989 534
+wait 5
+shot target/verify/dimension-style.png
+save target/verify/dimension-style.rysmo
+hold ControlLeft
+key KeyZ
+key KeyZ
+key KeyZ
+unhold ControlLeft
+wait 3
+save target/verify/dimension-style-undo.rysmo
+exit

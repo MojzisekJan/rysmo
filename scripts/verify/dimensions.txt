@@ -1,0 +1,93 @@
+# Dimensions: edge shortcut, circle diameter, Escape, geometry updates and detaching.
+wait 30
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key KeyC
+click 900 420
+move 960 420
+wait 3
+type 500
+key Enter
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type dimensions
+wait 3
+key Enter
+wait 3
+click 580 526
+move 600 600
+wait 3
+click 600 600
+log edge
+click 900 443
+move 960 500
+wait 3
+click 960 500
+log diameter
+click 563 450
+move 640 470
+wait 3
+key Escape
+wait 3
+log escape
+shot target/verify/dimensions-1.png
+key Space
+click 732 530
+key KeyM
+click 732 530
+move 800 545
+wait 3
+type 500
+key Enter
+wait 3
+log moved
+key Space
+click 851 420
+key Delete
+wait 3
+log detached
+hold ControlLeft
+key KeyZ
+unhold ControlLeft
+wait 3
+log undo
+click 570 590
+wait 3
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type inspector
+wait 3
+key Enter
+wait 10
+shot target/verify/dimensions-info.png
+log info
+click 1100 320
+type Wall <>
+click 996 413
+wait 3
+log override
+click 966 520
+wait 3
+log aligned
+key Escape
+key Space
+click 788 546
+key KeyM
+click 788 546
+move 830 560
+wait 3
+type 500
+key Enter
+wait 3
+log override-moved
+shot target/verify/dimensions.png
+save target/verify/dimensions.rysmo
+exit

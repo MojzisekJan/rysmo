@@ -1,0 +1,19 @@
+# A line between the midpoints of a rectangle's long edges splits the face and the edges.
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key KeyL
+move 600 528
+wait 3
+click 603 530
+move 655 478
+wait 3
+click 659 475
+wait 2
+key Escape
+log split
+save target/verify/line-split.rysmo
+exit

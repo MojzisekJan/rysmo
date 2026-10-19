@@ -1,0 +1,90 @@
+# Texture Position: numeric per-face placement in Properties, then pins in the model.
+wait 30
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key KeyB
+wait 6
+click 1115 317
+wait 6
+click 1150 347
+wait 4
+click 627 502
+wait 4
+click 1252 118
+wait 3
+key Space
+click 627 502
+wait 3
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type inspector
+wait 3
+key Enter
+wait 10
+shot target/verify/texture-position-0.png
+wheel 1100 450 -10
+wait 5
+shot target/verify/texture-position-1.png
+click 1115 440
+hold SuperLeft
+key KeyA
+unhold SuperLeft
+type 45
+key Enter
+wait 4
+click 1041 469
+hold SuperLeft
+key KeyA
+unhold SuperLeft
+type 2
+key Enter
+wait 4
+click 1077 382
+hold SuperLeft
+key KeyA
+unhold SuperLeft
+type 100
+key Enter
+wait 6
+log numeric
+shot target/verify/texture-position-2.png
+save target/verify/texture-position.rysmo
+click 1035 353
+wait 6
+shot target/verify/texture-position-pins.png
+drag 630 482 690 470
+wait 5
+click 197 246
+wait 5
+log fixed-pins
+save target/verify/texture-position-fixed.rysmo
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type position texture
+wait 3
+key Enter
+wait 6
+shot target/verify/texture-position-pins2.png
+log before-toggle
+click 121 169
+wait 5
+log after-toggle
+shot target/verify/texture-position-unfixed.png
+wait 60
+shot target/verify/texture-position-unfixed2.png
+drag 709 497 740 530
+wait 10
+shot target/verify/texture-position-free.png
+click 197 246
+wait 5
+log free-pins
+save target/verify/texture-position-free.rysmo
+exit

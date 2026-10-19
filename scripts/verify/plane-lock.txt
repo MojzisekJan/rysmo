@@ -1,0 +1,12 @@
+# Rectangle with the Right arrow: a vertical rectangle perpendicular to red.
+key KeyR
+key ArrowRight
+click 500 500
+move 520 400
+wait 3
+type 2000,1000
+key Enter
+log vertical
+shot target/verify/plane-lock.png
+save target/verify/plane-lock.rysmo
+exit

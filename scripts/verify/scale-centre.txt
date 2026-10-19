@@ -1,0 +1,20 @@
+# Scale about the centre (Ctrl) by the far red edge grip, typed 2.
+wait 30
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key Space
+dclick 627 502
+key KeyS
+key ControlLeft
+click 732 528
+move 780 550
+wait 3
+type 2
+key Enter
+log centre-edge-2
+save target/verify/scale-c.rysmo
+exit

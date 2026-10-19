@@ -1,0 +1,16 @@
+[package]
+name = "rysmo_tools"
+description = "Rysmo interactive tools, the VCB parser and touch gestures, with no UI toolkit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+rysmo_math.workspace = true
+rysmo_mesh.workspace = true
+rysmo_model.workspace = true
+rysmo_infer.workspace = true
+
+[lints]
+workspace = true

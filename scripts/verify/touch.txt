@@ -1,0 +1,39 @@
+# Touch: one-finger orbit, pinch zoom, two-finger pan and a two-finger tap undo.
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key Space
+log start
+swipe 1 640 400 740 400 10
+wait 3
+log one-finger-orbit
+touch 1 start 600 400
+touch 2 start 700 400
+touch 1 move 560 400
+touch 2 move 740 400
+touch 1 move 520 400
+touch 2 move 780 400
+touch 1 end 520 400
+touch 2 end 780 400
+wait 3
+log pinch-out
+touch 1 start 600 400
+touch 2 start 700 400
+touch 1 move 600 440
+touch 2 move 700 440
+touch 1 move 600 480
+touch 2 move 700 480
+touch 1 end 600 480
+touch 2 end 700 480
+wait 3
+log two-finger-pan
+touch 1 start 600 400
+touch 2 start 700 400
+touch 1 end 600 400
+touch 2 end 700 400
+wait 3
+log two-finger-tap
+exit

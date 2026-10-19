@@ -1,0 +1,312 @@
+//! The browser side: the page's canvas, files, storage, and handing over from the
+//! loading screen.
+//!
+//! The open document is autosaved into IndexedDB at the configured interval and comes
+//! back on the next visit; the recent files are kept there too. Where the browser has
+//! the File System Access API, Open and Save work on the real file and Save writes it in
+//! place; elsewhere Open uses a file input and Save downloads. The JavaScript half is
+//! `web_files.js`. See docs/web.md.
+
+use std::cell::RefCell;
+
+use bevy::prelude::*;
+use wasm_bindgen::JsValue;
+use wasm_bindgen::prelude::wasm_bindgen;
+
+use crate::files;
+use crate::state::App3d;
+
+#[wasm_bindgen(module = "/src/web_files.js")]
+extern "C" {
+    fn install_shortcuts();
+    fn set_unsaved_changes(dirty: bool);
+    fn set_render_diagnostics(text: &str);
+    async fn restore() -> JsValue;
+    async fn recent_names() -> JsValue;
+    fn autosave(name: &str, text: &str, dirty: bool);
+    fn get_autosave_settings() -> JsValue;
+    fn set_autosave_settings(enabled: bool, minutes: u32);
+    fn forget_file();
+    async fn pick_open() -> JsValue;
+    async fn pick_texture_image() -> JsValue;
+    async fn open_recent(name: &str) -> JsValue;
+    async fn save(name: &str, text: &str, save_as: bool) -> JsValue;
+    /// Hands the browser a file to keep in its downloads.
+    pub fn download(name: &str, bytes: &[u8], mime: &str);
+}
+
+/// What the asynchronous side found, for the next frame.
+enum Arrived {
+    Restored { name: String, text: String, dirty: bool },
+    Opened { name: String, text: String },
+    Saved { name: String, how: String, revision: u64 },
+    Recent(Vec<String>),
+    Texture { name: String, bytes: Vec<u8> },
+}
+
+thread_local! {
+    static ARRIVED: RefCell<Vec<Arrived>> = const { RefCell::new(Vec::new()) };
+}
+
+fn arrive(a: Arrived) {
+    ARRIVED.with(|q| q.borrow_mut().push(a));
+}
+
+#[derive(Resource, Default)]
+struct Autosave {
+    /// Capture the session generation; its initial value is not a sentinel.
+    startup_generation: u64,
+    /// The last recovery snapshot.
+    written: u64,
+    timer: crate::autosave::Timer,
+    preferences: Option<crate::autosave::Settings>,
+    written_camera: Option<rysmo_math::OrbitCamera>,
+}
+
+pub fn plugin(app: &mut App) {
+    app.init_resource::<Autosave>()
+        .add_systems(Startup, start)
+        .add_systems(Update, (take_arrived, autosave_now, hide_loader, unload_guard).chain())
+        .add_systems(Last, render_diagnostics);
+}
+
+/// Whether the page's address has `?name` (or `&name`) in its query.
+pub fn query_has(name: &str) -> bool {
+    web_sys::window()
+        .and_then(|w| w.location().search().ok())
+        .and_then(|s| web_sys::UrlSearchParams::new_with_str(&s).ok())
+        .is_some_and(|p| p.has(name))
+}
+
+/// Whether the browser runs on a touch screen, such as an iPad (which reports itself as
+/// a Mac but has touch points), so the tablet layout can start before the first touch.
+pub fn touch_device() -> bool {
+    field(&field(&js_sys::global(), "navigator"), "maxTouchPoints").as_f64().is_some_and(|n| n > 0.)
+}
+
+/// Whether the browser runs on a Mac, iPad or iPhone, where shortcuts read Cmd.
+pub fn apple_platform() -> bool {
+    let platform = field(&field(&js_sys::global(), "navigator"), "platform").as_string().unwrap_or_default();
+    ["Mac", "iPad", "iPhone"].iter().any(|name| platform.starts_with(name))
+}
+
+fn field(v: &JsValue, key: &str) -> JsValue {
+    js_sys::Reflect::get(v, &key.into()).unwrap_or(JsValue::UNDEFINED)
+}
+
+fn strings(v: &JsValue) -> Vec<String> {
+    js_sys::Array::from(v).iter().filter_map(|s| s.as_string()).collect()
+}
+
+/// `[name, text]` from JavaScript.
+fn pair(v: &JsValue) -> Option<(String, String)> {
+    if v.is_null() || v.is_undefined() {
+        return None;
+    }
+    let a = js_sys::Array::from(v);
+    Some((a.get(0).as_string()?, a.get(1).as_string()?))
+}
+
+/// Brings back the document from the last visit (unless the address asks for the demo)
+/// and the recent list.
+fn start(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>) {
+    let settings = js_sys::Array::from(&get_autosave_settings());
+    app.autosave_settings = crate::autosave::Settings {
+        enabled: settings.get(0).as_bool().unwrap_or(true),
+        minutes: settings.get(1).as_f64().unwrap_or(1.) as u32,
+    };
+    auto.preferences = Some(app.autosave_settings);
+    auto.startup_generation = app.document_generation;
+    install_shortcuts();
+    let keep_demo = query_has("demo");
+    wasm_bindgen_futures::spawn_local(async move {
+        let state = restore().await;
+        arrive(Arrived::Recent(strings(&field(&state, "recent"))));
+        let doc = field(&state, "current");
+        if !keep_demo
+            && !doc.is_null()
+            && !doc.is_undefined()
+            && let (Some(name), Some(text)) = (field(&doc, "name").as_string(), field(&doc, "text").as_string())
+        {
+            let dirty = field(&doc, "dirty").as_bool().unwrap_or(false);
+            arrive(Arrived::Restored { name, text, dirty });
+        }
+    });
+}
+
+fn refresh_recent() {
+    wasm_bindgen_futures::spawn_local(async {
+        arrive(Arrived::Recent(strings(&recent_names().await)));
+    });
+}
+
+/// File > Open: the browser's picker. The file arrives a few frames later.
+pub fn pick_file() {
+    wasm_bindgen_futures::spawn_local(async {
+        if let Some((name, text)) = pair(&pick_open().await) {
+            arrive(Arrived::Opened { name, text });
+        }
+        refresh_recent();
+    });
+}
+
+/// File > Open Recent.
+pub fn open_recent_file(name: String) {
+    wasm_bindgen_futures::spawn_local(async move {
+        if let Some((name, text)) = pair(&open_recent(&name).await) {
+            arrive(Arrived::Opened { name, text });
+        }
+        refresh_recent();
+    });
+}
+
+/// File > Save (in place where it can) and Save As (always asks).
+pub fn save_file(name: String, text: String, save_as: bool, revision: u64) {
+    wasm_bindgen_futures::spawn_local(async move {
+        if let Some((name, how)) = pair(&save(&name, &text, save_as).await) {
+            arrive(Arrived::Saved { name, how, revision });
+        }
+        refresh_recent();
+    });
+}
+
+/// File > New: the next save asks for a file.
+pub fn new_document() {
+    forget_file();
+}
+
+fn take_arrived(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>) {
+    let arrived: Vec<Arrived> = ARRIVED.with(|q| q.borrow_mut().drain(..).collect());
+    for a in arrived {
+        match a {
+            Arrived::Restored { name, text, dirty } if app.accepts_recovery(auto.startup_generation) => {
+                match files::open_text(&mut app, &text, &name) {
+                    Ok(_) => {
+                        if dirty {
+                            app.editor.mark_dirty();
+                        }
+                        auto.written = app.editor.revision();
+                        auto.written_camera = Some(app.camera);
+                        app.message = Some(format!("Restored {name} from the last visit."));
+                    }
+                    Err(e) => app.message = Some(e),
+                }
+            }
+            Arrived::Restored { .. } => {}
+            Arrived::Opened { name, text } => {
+                let r = files::open_text(&mut app, &text, &name);
+                app.message = Some(r.unwrap_or_else(|e| e));
+            }
+            Arrived::Saved { name, how, revision } => {
+                // Only clean if nothing changed while the browser was saving.
+                if app.editor.revision() == revision {
+                    app.editor.mark_saved();
+                }
+                app.path = Some(name.clone().into());
+                app.message = Some(match how.as_str() {
+                    "download" => format!("Downloaded {name}."),
+                    _ => format!("Saved {name}."),
+                });
+                // Write the clean state into the autosave copy too.
+                auto.written = u64::MAX;
+            }
+            Arrived::Recent(list) => app.recent = list,
+            Arrived::Texture { name, bytes } => {
+                app.message = Some(match files::import_texture_bytes(&mut app, &name, bytes) {
+                    Ok(()) => format!("Loaded texture {name}."),
+                    Err(e) => e,
+                });
+            }
+        }
+    }
+}
+
+/// Keeps an independent recovery snapshot without postponing continuous edits.
+fn autosave_now(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>, time: Res<Time<Real>>) {
+    if app.welcome && app.path.is_none() && app.accepts_recovery(auto.startup_generation) {
+        return;
+    }
+    let settings = app.autosave_settings;
+    if auto.preferences != Some(settings) {
+        set_autosave_settings(settings.enabled, settings.minutes);
+        auto.preferences = Some(settings);
+    }
+    let revision = app.editor.revision();
+    let pending = revision != auto.written || auto.written_camera != Some(app.camera);
+    if auto.timer.due(time.elapsed_secs_f64(), pending, app.document_generation, settings) {
+        let name = app
+            .path
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "Untitled.rysmo".into());
+        let camera = app.camera;
+        app.editor.set_camera(camera);
+        let text = rysmo_io::save(app.editor.doc());
+        autosave(&name, &text, app.editor.is_dirty());
+        auto.written = revision;
+        auto.written_camera = Some(camera);
+    }
+}
+
+/// Removes the loading screen once the first frames are drawn.
+fn hide_loader(mut frames: Local<u32>) {
+    *frames += 1;
+    if *frames == 3
+        && let Some(el) = web_sys::window().and_then(|w| w.document()).and_then(|d| d.get_element_by_id("loading"))
+    {
+        el.remove();
+    }
+}
+
+pub fn pick_texture() {
+    wasm_bindgen_futures::spawn_local(async {
+        let result = pick_texture_image().await;
+        if !result.is_null() && !result.is_undefined() {
+            let values = js_sys::Array::from(&result);
+            if let Some(name) = values.get(0).as_string() {
+                let bytes = js_sys::Uint8Array::new(&values.get(1)).to_vec();
+                arrive(Arrived::Texture { name, bytes });
+            }
+        }
+    });
+}
+
+fn unload_guard(app: Res<App3d>) {
+    set_unsaved_changes(app.editor.is_dirty());
+}
+
+/// Measure completed editor updates separately from browser animation callbacks.
+fn render_diagnostics(
+    app: Res<App3d>,
+    time: Res<Time<Real>>,
+    cameras: Query<&Transform, With<crate::viewport::MainCamera>>,
+    meshes: Query<&Mesh3d>,
+    mut enabled: Local<Option<bool>>,
+    mut sample: Local<(u64, f64, u64)>,
+) {
+    if !*enabled.get_or_insert_with(|| query_has("diagnostics")) {
+        return;
+    }
+    sample.0 += 1;
+    let now = time.elapsed_secs_f64();
+    let elapsed = now - sample.1;
+    if elapsed < 1. {
+        return;
+    }
+    let camera_synced = cameras
+        .single()
+        .is_ok_and(|camera| camera.translation.distance(crate::state::to_bevy(app.camera.eye())) < 0.01);
+    set_render_diagnostics(&format!(
+        "Editor updates: {:.1} FPS\nEditor frame: {} / revision {}\nRoot instances: {} / mesh entities: {}\nCamera synced: {} / 3D scale: {:.0}%",
+        (sample.0 - sample.2) as f64 / elapsed,
+        sample.0,
+        app.editor.revision(),
+        app.editor.doc().root.instances.len(),
+        meshes.iter().count(),
+        camera_synced,
+        app.editor.doc().style.render_scale * 100.,
+    ));
+    sample.1 = now;
+    sample.2 = sample.0;
+}

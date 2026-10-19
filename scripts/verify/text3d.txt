@@ -1,0 +1,42 @@
+# 3D Text: dialog options, preview, placement, Escape and Undo.
+wait 30
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type 3d text
+wait 3
+key Enter
+wait 10
+shot target/verify/text3d-0.png
+click 640 245
+type AB
+click 670 344
+hold SuperLeft
+key KeyA
+unhold SuperLeft
+type 50cm
+click 581 382
+click 670 476
+hold SuperLeft
+key KeyA
+unhold SuperLeft
+type 5cm
+click 645 306
+click 809 568
+wait 5
+move 600 450
+wait 5
+shot target/verify/text3d-preview.png
+log preview
+click 600 450
+wait 10
+log placed
+shot target/verify/text3d.png
+save target/verify/text3d.rysmo
+hold ControlLeft
+key KeyZ
+unhold ControlLeft
+wait 5
+log undo
+exit

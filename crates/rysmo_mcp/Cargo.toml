@@ -1,0 +1,23 @@
+[package]
+name = "rysmo_mcp"
+description = "Rysmo MCP server: the headless editor over JSON-RPC, on stdio or TCP"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "rysmo-mcp"
+path = "src/main.rs"
+
+[dependencies]
+rysmo_math.workspace = true
+rysmo_mesh.workspace = true
+rysmo_model.workspace = true
+rysmo_io.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+getrandom = "0.3"
+
+[lints]
+workspace = true

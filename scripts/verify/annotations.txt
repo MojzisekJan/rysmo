@@ -1,0 +1,52 @@
+# Dimensions between two corners and by an edge shortcut; a text attached to a face.
+wait 30
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type dimensions
+wait 3
+key Enter
+wait 3
+click 500 499
+click 706 561
+move 720 620
+wait 3
+type 300
+key Enter
+log two-points
+shot target/verify/annotations-0.png
+click 516 487
+move 470 440
+wait 3
+click 470 440
+log edge
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type text
+wait 3
+key Enter
+wait 3
+log text-tool
+click 627 502
+move 720 440
+wait 3
+click 720 440
+wait 5
+shot target/verify/annotations-text.png
+type Hello
+key Enter
+key Enter
+wait 3
+log text
+shot target/verify/annotations.png
+save target/verify/annotations.rysmo
+exit

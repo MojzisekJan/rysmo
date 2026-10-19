@@ -1,0 +1,54 @@
+# Section Plane placed on a box face from Search Commands; the cut is active.
+wait 30
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key KeyP
+click 620 500
+move 620 400
+wait 3
+type 1000
+key Enter
+key Space
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type section plane
+wait 3
+key Enter
+wait 3
+log section-tool
+move 600 470
+wait 3
+click 600 470
+wait 4
+log placed
+shot target/verify/section.png
+save target/verify/section.rysmo
+click 744 517
+wait 3
+hold SuperLeft
+key KeyA
+unhold SuperLeft
+type -0.5757
+key Enter
+wait 5
+log offset
+shot target/verify/section-cut.png
+click 694 185
+wait 5
+shot target/verify/section-nocut.png
+click 694 185
+click 694 157
+wait 5
+shot target/verify/section-hidden.png
+click 694 157
+click 694 213
+wait 5
+shot target/verify/section-noedges.png
+save target/verify/section-settings.rysmo
+exit

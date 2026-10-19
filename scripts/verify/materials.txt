@@ -1,0 +1,42 @@
+# Materials: add a library material, paint a face, check the face material.
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key KeyB
+wait 6
+click 1115 317
+wait 6
+shot target/verify/materials-0.png
+click 1150 347
+wait 4
+log brick-chosen
+click 627 502
+wait 4
+log painted
+shot target/verify/materials-1.png
+save target/verify/materials.rysmo
+click 1178 282
+hold SuperLeft
+key KeyA
+unhold SuperLeft
+type 0.5
+key Enter
+wait 4
+click 1095 332
+hold SuperLeft
+key KeyA
+unhold SuperLeft
+type 900
+key Enter
+wait 6
+shot target/verify/materials-2.png
+save target/verify/materials-b.rysmo
+hold ControlLeft
+key KeyZ
+unhold ControlLeft
+wait 4
+save target/verify/materials-c.rysmo
+exit

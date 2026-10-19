@@ -1,0 +1,13 @@
+# Rectangle golden-section snap: a second click near 1.618 : 1 makes it exact.
+key KeyR
+click 500 500
+move 670 495
+wait 2
+move 672 493
+wait 4
+shot target/verify/rect-golden.png
+click 672 493
+wait 3
+log golden
+save target/verify/rect-golden.rysmo
+exit

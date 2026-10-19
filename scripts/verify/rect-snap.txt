@@ -1,0 +1,14 @@
+# Rectangle square snap: a second click near square proportions makes an exact square.
+key KeyR
+click 500 500
+move 640 480
+wait 2
+move 654 474
+wait 4
+log hover
+shot target/verify/rect-snap.png
+click 654 474
+wait 3
+log square
+save target/verify/rect-snap.rysmo
+exit

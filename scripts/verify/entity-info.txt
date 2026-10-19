@@ -1,0 +1,54 @@
+# Entity Info: an instance's name, tag and material in Properties.
+wait 30
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key Space
+dclick 627 502
+wait 3
+key KeyG
+wait 6
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type tags
+wait 3
+key Enter
+wait 6
+click 1120 202
+wait 3
+type Walls
+wait 2
+click 1216 202
+wait 4
+click 1252 118
+wait 3
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type inspector
+wait 3
+key Enter
+wait 10
+shot target/verify/entity-info-0.png
+click 1008 396
+wait 4
+click 990 453
+wait 4
+log tagged
+save target/verify/entity-info.rysmo
+click 1015 273
+wait 5
+shot target/verify/entity-info-rename.png
+type Desk
+key Enter
+wait 4
+log renamed
+save target/verify/entity-info-b.rysmo
+shot target/verify/entity-info.png
+exit

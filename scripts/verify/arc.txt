@@ -1,0 +1,17 @@
+# Arc: chord 1000, radius typed as 600r, then 8s; then a tangent arc from a line end.
+key KeyA
+click 500 500
+move 600 530
+wait 3
+type 1000
+key Enter
+move 560 470
+wait 3
+type 600r
+key Enter
+log arc-radius
+type 8s
+key Enter
+log arc-8s
+save target/verify/arc.rysmo
+exit

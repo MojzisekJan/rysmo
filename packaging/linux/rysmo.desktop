@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Rysmo
+Comment=Sketch and model in 3D
+Exec=rysmo %f
+Icon=rysmo
+Terminal=false
+Categories=Graphics;3DGraphics;
+StartupWMClass=rysmo

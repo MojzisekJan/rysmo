@@ -1,0 +1,86 @@
+# Scenes restore hidden geometry and the drawing style, and Update stores new ones.
+wait 30
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+key Space
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type scenes
+wait 3
+key Enter
+wait 6
+click 1074 158
+wait 4
+save target/verify/scenes-state-a.rysmo
+dclick 627 502
+wait 3
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type hide selected geometry
+wait 3
+key Enter
+wait 4
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type settings
+wait 3
+key Enter
+wait 10
+click 650 228
+wait 5
+click 520 289
+wait 5
+click 960 153
+wait 4
+save target/verify/scenes-state-b.rysmo
+shot target/verify/scenes-state-b.png
+click 39 96
+wait 30
+save target/verify/scenes-state-c.rysmo
+shot target/verify/scenes-state-c.png
+dclick 627 515
+wait 3
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type hide selected geometry
+wait 3
+key Enter
+wait 4
+wheel 1120 400 -10
+wait 5
+shot target/verify/scenes-state-panel.png
+click 1089 468
+wait 5
+shot target/verify/scenes-state-update.png
+click 515 511
+wait 4
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type unhide all geometry
+wait 3
+key Enter
+wait 4
+save target/verify/scenes-state-d.rysmo
+click 39 96
+wait 30
+save target/verify/scenes-state-e.rysmo
+hold ControlLeft
+key KeyZ
+unhold ControlLeft
+wait 4
+save target/verify/scenes-state-f.rysmo
+exit

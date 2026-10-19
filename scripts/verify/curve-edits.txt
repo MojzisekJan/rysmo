@@ -1,0 +1,94 @@
+# Curve segments and radius in Properties: an extruded circle, then a flat one.
+wait 30
+key KeyC
+click 640 520
+move 700 520
+wait 3
+type 500
+key Enter
+key KeyP
+click 670 525
+move 670 455
+wait 3
+type 1000
+key Enter
+key Space
+wait 3
+shot target/verify/curve-edits-0.png
+log extruded
+click 640 551
+wait 3
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 3
+type inspector
+wait 3
+key Enter
+wait 8
+log rim
+shot target/verify/curve-edits-1.png
+click 1054 368
+hold SuperLeft
+key KeyA
+unhold SuperLeft
+type 12
+key Enter
+wait 4
+log segments-extruded
+shot target/verify/curve-edits-2.png
+click 1067 397
+hold SuperLeft
+key KeyA
+unhold SuperLeft
+type 300
+key Enter
+wait 4
+log radius-extruded
+shot target/verify/curve-edits-3.png
+save target/verify/curve-edits.rysmo
+key KeyC
+click 800 650
+move 900 650
+wait 3
+type 800
+key Enter
+key Space
+wait 3
+click 800 650
+wait 3
+click 1054 492
+hold SuperLeft
+key KeyA
+unhold SuperLeft
+type 8
+key Enter
+wait 4
+log segments-flat
+shot target/verify/curve-edits-4.png
+click 400 300
+wait 2
+key KeyM
+move 790 581
+wait 3
+click 790 581
+move 820 560
+wait 3
+click 820 560
+wait 3
+key Space
+wait 3
+click 913 650
+wait 4
+log deformed
+shot target/verify/curve-edits-5.png
+save target/verify/curve-edits-deformed.rysmo
+hold ControlLeft
+key KeyZ
+unhold ControlLeft
+wait 4
+click 913 650
+wait 4
+log undone
+shot target/verify/curve-edits-6.png
+exit

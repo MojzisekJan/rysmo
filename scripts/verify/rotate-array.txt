@@ -1,0 +1,27 @@
+# Rotate: Ctrl copy by 90 degrees, then 3x for a radial array of four.
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 1000,300
+key Enter
+key Space
+dclick 550 507
+wait 3
+log selected
+key KeyQ
+key ControlLeft
+click 500 499
+wait 2
+click 598 529
+move 520 440
+wait 3
+type 90
+key Enter
+log copy-90
+type 3x
+key Enter
+log array
+save target/verify/rotate-array.rysmo
+shot target/verify/rotate-array.png
+exit
