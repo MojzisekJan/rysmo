@@ -1,0 +1,21 @@
+# An open rectangle: Export STL opens the print check with 4 open edges marked in red.
+wait 30
+key KeyR
+click 500 500
+move 700 560
+wait 3
+type 2000,1000
+key Enter
+wait 5
+hold ShiftLeft
+key KeyS
+unhold ShiftLeft
+wait 5
+type stl
+wait 3
+key Enter
+wait 10
+move 1200 19
+wait 5
+shot target/verify/print-check.png
+exit
