@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rysmo</title>
+  <meta name="description" content="A free 3D modeller for architecture. Runs in the browser.">
+  <meta name="theme-color" content="#20252c">
+  <meta property="og:title" content="Rysmo">
+  <meta property="og:description" content="A free 3D modeller for architecture. Runs in the browser.">
+  <meta property="og:image" content="https://mojzisekjan.github.io/rysmo/screenshot.png">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <style>
+    :root {
+      --bg: #ffffff; --fg: #1d2025; --dim: #5e646c; --line: #e3e6ea; --soft: #f4f6f8;
+      --accent: #3d7bd9; --accent-fg: #ffffff;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #1b1f24; --fg: #e8eaed; --dim: #a0a6ae; --line: #2e343c; --soft: #232830;
+              --accent: #5b93e6; --accent-fg: #0f1318; }
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body { margin: 0; background: var(--bg); color: var(--fg);
+           font: 17px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    a { color: var(--accent); }
+    .wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
+    header { display: flex; align-items: center; justify-content: space-between; padding: 18px 0; }
+    .brand { display: flex; align-items: center; gap: 10px; color: var(--fg); text-decoration: none;
+             font-weight: 650; font-size: 20px; }
+    .brand img { width: 32px; height: 32px; }
+    nav a { color: var(--dim); text-decoration: none; margin-left: 20px; }
+    nav a:hover { color: var(--fg); }
+    .hero { padding: 48px 0 32px; max-width: 680px; }
+    h1 { font-size: clamp(32px, 6vw, 48px); line-height: 1.1; margin: 0 0 16px; letter-spacing: -0.02em; }
+    .lead { color: var(--dim); font-size: 19px; margin: 0 0 28px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+    .button { display: inline-block; padding: 11px 20px; border-radius: 8px; text-decoration: none;
+              font-weight: 600; border: 1px solid var(--line); color: var(--fg); }
+    .button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+    .button:hover { filter: brightness(1.08); }
+    .note { color: var(--dim); font-size: 14px; margin-top: 12px; }
+    .shot { display: block; width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12); }
+    .points { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 32px;
+              padding: 56px 0; }
+    .points h2 { font-size: 18px; margin: 0 0 6px; }
+    .points p { margin: 0; color: var(--dim); }
+    footer { border-top: 1px solid var(--line); padding: 24px 0 40px; color: var(--dim); font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <a class="brand" href="./"><img src="logo.svg" alt="">Rysmo</a>
+      <nav>
+        <a href="editor/">Editor</a>
+        <a href="https://github.com/MojzisekJan/rysmo">GitHub</a>
+      </nav>
+    </header>
+
+    <section class="hero">
+      <h1>A 3D modeller for architecture</h1>
+      <p class="lead">Buildings, rooms and furniture drawn to exact sizes. Draw on the model,
+        push and pull faces, and type sizes as you go.</p>
+      <div class="actions">
+        <a class="button primary" href="editor/">Open the editor</a>
+        <a class="button" href="https://github.com/MojzisekJan/rysmo">Source code</a>
+      </div>
+      <p class="note">Free, runs in the browser. Nothing to install.</p>
+    </section>
+
+    <a href="editor/"><img class="shot" src="screenshot.png" width="1280" height="800"
+      alt="The Rysmo editor with a box, a cut-out and three cylinders"></a>
+
+    <section class="points">
+      <div>
+        <h2>Draw on the model</h2>
+        <p>Lines and shapes snap to faces, edges and axes. Push and pull a face to give it depth.</p>
+      </div>
+      <div>
+        <h2>Exact sizes</h2>
+        <p>Type a length, an angle or a count while you draw. Measure and place guides with the tape.</p>
+      </div>
+      <div>
+        <h2>Take it further</h2>
+        <p>Export to OBJ, glTF, COLLADA and DXF, or to STL and 3MF for 3D printing.</p>
+      </div>
+    </section>
+
+    <footer>
+      Rysmo is free software under the GPL-3.0-or-later. Written in Rust with Bevy and egui.
+    </footer>
+  </div>
+</body>
+</html>
