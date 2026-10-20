@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Publish site/ and the web build (crates/rysmo_app/dist, see build-web.sh) to the gh-pages branch.
+# Publish site/, the manual built from the in-app help and the web build (crates/rysmo_app/dist, see build-web.sh) to the gh-pages branch.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 dist=crates/rysmo_app/dist
 [[ -f $dist/index.html ]] || { echo "No web build in $dist; run scripts/build-web.sh first." >&2; exit 1; }
 out=$(mktemp -d)
 trap 'rm -rf "$out"' EXIT
-cp site/index.html "$out/"
+cp site/index.html site/site.css site/theme.js "$out/"
+python3 scripts/build-manual.py "$out/manual"
 cp docs/screenshot.png "$out/"
 cp crates/rysmo_app/brand/logo.svg crates/rysmo_app/brand/favicon.svg "$out/"
 cp -R "$dist" "$out/editor"

@@ -3,93 +3,220 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Rysmo</title>
-  <meta name="description" content="A free 3D modeller for architecture. Runs in the browser.">
-  <meta name="theme-color" content="#20252c">
+  <title>Rysmo: a 3D modeller for architecture</title>
+  <meta name="description" content="A free 3D modeller for architecture. Draw on the model, push and pull faces, type exact sizes. Runs in the browser and on the desktop.">
   <meta property="og:title" content="Rysmo">
   <meta property="og:description" content="A free 3D modeller for architecture. Runs in the browser.">
   <meta property="og:image" content="https://mojzisekjan.github.io/rysmo/screenshot.png">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
-  <style>
-    :root {
-      --bg: #ffffff; --fg: #1d2025; --dim: #5e646c; --line: #e3e6ea; --soft: #f4f6f8;
-      --accent: #3d7bd9; --accent-fg: #ffffff;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root { --bg: #1b1f24; --fg: #e8eaed; --dim: #a0a6ae; --line: #2e343c; --soft: #232830;
-              --accent: #5b93e6; --accent-fg: #0f1318; }
-    }
-    * { box-sizing: border-box; }
-    html { -webkit-text-size-adjust: 100%; }
-    body { margin: 0; background: var(--bg); color: var(--fg);
-           font: 17px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
-    a { color: var(--accent); }
-    .wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
-    header { display: flex; align-items: center; justify-content: space-between; padding: 18px 0; }
-    .brand { display: flex; align-items: center; gap: 10px; color: var(--fg); text-decoration: none;
-             font-weight: 650; font-size: 20px; }
-    .brand img { width: 32px; height: 32px; }
-    nav a { color: var(--dim); text-decoration: none; margin-left: 20px; }
-    nav a:hover { color: var(--fg); }
-    .hero { padding: 48px 0 32px; max-width: 680px; }
-    h1 { font-size: clamp(32px, 6vw, 48px); line-height: 1.1; margin: 0 0 16px; letter-spacing: -0.02em; }
-    .lead { color: var(--dim); font-size: 19px; margin: 0 0 28px; }
-    .actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
-    .button { display: inline-block; padding: 11px 20px; border-radius: 8px; text-decoration: none;
-              font-weight: 600; border: 1px solid var(--line); color: var(--fg); }
-    .button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
-    .button:hover { filter: brightness(1.08); }
-    .note { color: var(--dim); font-size: 14px; margin-top: 12px; }
-    .shot { display: block; width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line);
-            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12); }
-    .points { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 32px;
-              padding: 56px 0; }
-    .points h2 { font-size: 18px; margin: 0 0 6px; }
-    .points p { margin: 0; color: var(--dim); }
-    footer { border-top: 1px solid var(--line); padding: 24px 0 40px; color: var(--dim); font-size: 14px; }
-  </style>
+  <link rel="stylesheet" href="site.css">
+  <script>
+    // Apply the saved theme before the first paint; without one the page follows the system.
+    document.documentElement.classList.add('js');
+    try { var t = localStorage.getItem('rysmo-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+  <script src="theme.js" defer></script>
 </head>
 <body>
+  <div class="top">
+    <div class="wrap">
+      <header>
+        <a class="brand" href="./"><img src="logo.svg" alt="">Rysmo</a>
+        <nav>
+          <a class="section-link" href="#modelling">Modelling</a>
+          <a class="section-link" href="#materials">Materials</a>
+          <a class="section-link" href="#export">Export</a>
+          <a href="manual/">Manual</a>
+          <a class="github" href="https://github.com/MojzisekJan/rysmo">GitHub</a>
+          <button class="theme-toggle" type="button" aria-label="Switch theme">
+            <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>
+            <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
+          </button>
+          <a class="button primary" href="editor/">Open editor</a>
+        </nav>
+      </header>
+    </div>
+  </div>
+
+  <div class="hero-band">
+    <div class="wrap">
+      <section class="hero">
+        <h1>A 3D modeller for architecture</h1>
+        <p class="lead">Buildings, rooms and furniture drawn to exact sizes. Draw on the model,
+          push and pull faces, and type sizes as you go.</p>
+        <div class="actions">
+          <a class="button primary" href="editor/">Open the editor</a>
+          <a class="button" href="https://github.com/MojzisekJan/rysmo">Source code</a>
+        </div>
+        <p class="note">Free and open source. The editor runs in the browser, nothing to install.</p>
+      </section>
+    </div>
+  </div>
+
   <div class="wrap">
-    <header>
-      <a class="brand" href="./"><img src="logo.svg" alt="">Rysmo</a>
-      <nav>
-        <a href="editor/">Editor</a>
-        <a href="https://github.com/MojzisekJan/rysmo">GitHub</a>
-      </nav>
-    </header>
-
-    <section class="hero">
-      <h1>A 3D modeller for architecture</h1>
-      <p class="lead">Buildings, rooms and furniture drawn to exact sizes. Draw on the model,
-        push and pull faces, and type sizes as you go.</p>
-      <div class="actions">
-        <a class="button primary" href="editor/">Open the editor</a>
-        <a class="button" href="https://github.com/MojzisekJan/rysmo">Source code</a>
-      </div>
-      <p class="note">Free, runs in the browser. Nothing to install.</p>
-    </section>
-
     <a href="editor/"><img class="shot" src="screenshot.png" width="1280" height="800"
       alt="The Rysmo editor with a modern house, a pool and garden lights at dusk"></a>
 
+    <div class="platforms" aria-label="Platforms">
+      <span>Runs on</span>
+      <strong>Web browser</strong>
+      <strong>Linux</strong>
+      <strong>Windows</strong>
+      <strong>macOS</strong>
+      <strong>Tablets</strong>
+    </div>
+
     <section class="points">
       <div>
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 16l8 4 8-4-8-4z"/><path d="M4 16V9l8-4 8 4v7"/><path d="M12 12V5"/></svg></div>
         <h2>Draw on the model</h2>
         <p>Lines and shapes snap to faces, edges and axes. Push and pull a face to give it depth.</p>
       </div>
       <div>
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 15h18v5H3z"/><path d="M7 15v2.5M11 15v3.5M15 15v2.5M19 15v3.5"/><path d="M5 5h14M5 3v4M19 3v4"/></svg></div>
         <h2>Exact sizes</h2>
-        <p>Type a length, an angle or a count while you draw. Measure and place guides with the tape.</p>
+        <p>Type a length, an angle or a count while you draw.</p>
       </div>
       <div>
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v3h16v-3"/></svg></div>
         <h2>Take it further</h2>
         <p>Export to OBJ, glTF, COLLADA and DXF, or to STL and 3MF for 3D printing.</p>
       </div>
     </section>
 
+    <section class="block" id="modelling">
+      <p class="eyebrow">Modelling</p>
+      <h2>Draw an outline, then pull it into 3D</h2>
+      <p class="intro">Draw a closed shape on any face and push or pull it to give it depth.</p>
+      <div class="cards">
+        <div class="card">
+          <h3>Drawing tools</h3>
+          <p>Everything snaps to endpoints, faces, axes and guides.</p>
+          <ul class="tags"><li>Line</li><li>Freehand</li><li>Arc</li><li>Rectangle</li>
+            <li>Circle</li><li>Polygon</li><li>Fillet</li></ul>
+        </div>
+        <div class="card">
+          <h3>Editing tools</h3>
+          <p>Move, Rotate and Scale also make copies. Type <code>5x</code> for five.</p>
+          <ul class="tags"><li>Push/Pull</li><li>Offset</li><li>Follow Me</li><li>Move</li>
+            <li>Rotate</li><li>Scale</li><li>Flip</li></ul>
+        </div>
+        <div class="card">
+          <h3>Solid tools</h3>
+          <p>Union, subtract, intersect, trim and split two closed groups.</p>
+        </div>
+        <div class="card">
+          <h3>Components</h3>
+          <p>Edit one window and every copy changes. A component can cut its own opening in a wall.</p>
+        </div>
+        <div class="card">
+          <h3>Terrain</h3>
+          <p>Ground from scratch or from contour lines.</p>
+          <ul class="tags"><li>Smoove</li><li>Stamp</li><li>Drape</li><li>Add detail</li></ul>
+        </div>
+        <div class="card">
+          <h3>Dimensions and text</h3>
+          <p>Dimensions, labels and 3D text. The tape measure places guides.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="sizes">
+      <div class="split">
+        <div>
+          <p class="eyebrow">Measurements</p>
+          <h2>Type the size, press Enter</h2>
+          <p>Just type while a tool runs, no need to click the box. Metric, feet and inches,
+            or fractions down to 1/64".</p>
+        </div>
+        <div class="vcb" aria-label="Examples of typed values">
+          <div class="vcb-row"><code>125cm</code><span>A length with units</span></div>
+          <div class="vcb-row"><code>5' 3 1/2"</code><span>Feet and inches</span></div>
+          <div class="vcb-row"><code>4.2,3.5</code><span>Width and depth of a rectangle</span></div>
+          <div class="vcb-row"><code>5x</code><span>Five copies</span></div>
+          <div class="vcb-row"><code>24s</code><span>Segments of a circle</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="materials">
+      <p class="eyebrow">Materials and light</p>
+      <h2>Colours, textures and a sun that moves</h2>
+      <div class="cards two">
+        <div class="card">
+          <h3>Materials</h3>
+          <p>Brick, wood, concrete, metal, grass and paving, or your own PNG and JPEG.
+            Drag pins on a face to place the texture.</p>
+        </div>
+        <div class="card">
+          <h3>Light and atmosphere</h3>
+          <p>Sun or studio light with shadows. Sky, fog and glowing lamps.</p>
+        </div>
+        <div class="card">
+          <h3>Scenes</h3>
+          <p>Save views and switch between them with tabs.</p>
+        </div>
+        <div class="card">
+          <h3>Sections</h3>
+          <p>Cut through the model for plans and elevations without changing it.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="export">
+      <p class="eyebrow">Export</p>
+      <h2>Send the model to other software</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Format</th><th>Use it for</th></tr></thead>
+          <tbody>
+            <tr><td>glTF (.glb)</td><td>Game engines, Blender, the web</td></tr>
+            <tr><td>OBJ + MTL</td><td>Almost any 3D program</td></tr>
+            <tr><td>COLLADA (.dae)</td><td>Older 3D tools</td></tr>
+            <tr><td>DXF (.dxf)</td><td>CAD programs</td></tr>
+            <tr><td>STL, 3MF</td><td>3D printing, with a check for holes and inside-out parts</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="block" id="agents">
+      <div class="split">
+        <div>
+          <p class="eyebrow">AI agents</p>
+          <h2>Let an agent model with you</h2>
+          <p>Rysmo has an <a href="https://modelcontextprotocol.io">MCP</a> server, so an AI agent
+            such as Claude can build models, even in the window you have open.
+            <a href="https://github.com/MojzisekJan/rysmo/blob/main/docs/mcp.md">Setup</a></p>
+        </div>
+        <pre><code>claude mcp add rysmo -- rysmo-mcp</code></pre>
+      </div>
+    </section>
+
+    <section class="block" id="build">
+      <div class="split">
+        <div>
+          <p class="eyebrow">Desktop</p>
+          <h2>Build it yourself</h2>
+          <p>Needs <a href="https://rustup.rs">Rust</a>. Written with Bevy and egui.</p>
+        </div>
+        <pre><code>git clone https://github.com/MojzisekJan/rysmo
+cd rysmo
+cargo run -p rysmo_app --release</code></pre>
+      </div>
+    </section>
+
+    <section class="cta">
+      <h2>Start drawing</h2>
+      <div class="actions">
+        <a class="button primary" href="editor/">Open the editor</a>
+        <a class="button" href="manual/">Read the manual</a>
+      </div>
+    </section>
+
     <footer>
-      Rysmo is free software under the GPL-3.0-or-later. Written in Rust with Bevy and egui.
+      <span>Rysmo is free software under the GPL-3.0-or-later. Written in Rust with Bevy and egui.</span>
+      <a href="https://github.com/MojzisekJan/rysmo">github.com/MojzisekJan/rysmo</a>
     </footer>
   </div>
 </body>
