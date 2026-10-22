@@ -242,19 +242,30 @@ mod imp {
     use crate::web;
 
     pub fn open(app: &mut App3d) {
-        web::pick_file();
+        web::pick_file(crate::autosave::DocumentVersion {
+            generation: app.document_generation,
+            revision: app.editor.revision(),
+        });
         app.message = Some("Choose a .rysmo file.".into());
     }
 
     pub fn open_recent(app: &mut App3d, name: &str) {
-        web::open_recent_file(name.to_string());
+        web::open_recent_file(
+            name.to_string(),
+            crate::autosave::DocumentVersion { generation: app.document_generation, revision: app.editor.revision() },
+        );
         app.message = Some(format!("Opening {name}..."));
     }
 
     pub fn save(app: &mut App3d, save_as: bool) {
         let name = format!("{}.rysmo", stem(app));
         let text = document_text(app);
-        web::save_file(name, text, save_as, app.editor.revision());
+        web::save_file(
+            name,
+            text,
+            save_as,
+            crate::autosave::DocumentVersion { generation: app.document_generation, revision: app.editor.revision() },
+        );
     }
 
     pub fn export_obj(app: &mut App3d) {

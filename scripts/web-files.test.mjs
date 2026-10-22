@@ -3,9 +3,10 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
 const source = await readFile(new URL("../crates/rysmo_app/src/web_files.js", import.meta.url), "utf8");
-async function fixture({ embedded=false, pickerError=null, readError=false, cancelInput=false, diagnosticsPanel=null, storage=null }={}) {
+async function fixture({ embedded=false, pickerError=null, readError=false, cancelInput=false, diagnosticsPanel=null, storage=null, indexedDB=null }={}) {
   const calls={open:0,save:0,inputs:0,downloads:[],writes:[],attached:0,removed:0};
-  const window={addEventListener(){},showOpenFilePicker:async()=>{calls.open++;if(pickerError)throw pickerError;return [{name:"picked.rysmo",getFile:async()=>({text:async()=>"model"})}];},showSaveFilePicker:async()=>{calls.save++;return {name:"saved.rysmo",queryPermission:async()=>"granted",createWritable:async()=>({write:async text=>calls.writes.push(text),close:async()=>{}})};}};
+  const listeners = new Map();
+  const window={addEventListener(type, callback){listeners.set(type, callback);},showOpenFilePicker:async()=>{calls.open++;if(pickerError)throw pickerError;return [{name:"picked.rysmo",getFile:async()=>({text:async()=>"model"})}];},showSaveFilePicker:async()=>{calls.save++;return {name:"saved.rysmo",queryPermission:async()=>"granted",createWritable:async()=>({write:async text=>calls.writes.push(text),close:async()=>{}})};}};
   window.top=embedded?{}:window;
   if (storage) window.localStorage = storage;
   const document={getElementById:()=>diagnosticsPanel,body:{appendChild(node){node.attached=true;calls.attached++;}},createElement(type){
@@ -13,13 +14,13 @@ async function fixture({ embedded=false, pickerError=null, readError=false, canc
     if(type==="a")return {click(){calls.downloads.push(this.download);},remove(){}};
     throw Error(`Unexpected element ${type}`);
   }};
-  const context=vm.createContext({window,document,indexedDB:{open(){throw Error("storage unavailable");}},console:{warn(){}},URL:{createObjectURL(){return "blob:test";},revokeObjectURL(){}},Blob,TextEncoder,Uint8Array,setTimeout(){},queueMicrotask});
+  const context=vm.createContext({window,document,indexedDB:indexedDB || {open(){throw Error("storage unavailable");}},console:{warn(){}},URL:{createObjectURL(){return "blob:test";},revokeObjectURL(){}},Blob,TextEncoder,Uint8Array,setTimeout(){},queueMicrotask});
   const module=new vm.SourceTextModule(source,{context});await module.link(()=>{});await module.evaluate();
-  return {api:module.namespace,calls};
+  return {api:module.namespace,calls,window,listeners};
 }
 test("cross-origin embed opens via input even when storage is unavailable",async()=>{
   const {api,calls}=await fixture({embedded:true});
-  assert.equal(JSON.stringify(await api.pick_open()),JSON.stringify(["fixture.rysmo","fixture model"]));
+  assert.equal(JSON.stringify((await api.pick_open()).slice(0, 2)),JSON.stringify(["fixture.rysmo","fixture model"]));
   assert.equal(calls.open,0);assert.equal(calls.inputs,1);assert.equal(calls.attached,1);assert.equal(calls.removed,1);
 });
 test("blocked top-level picker falls back; user cancellation does not reopen it",async()=>{
@@ -112,4 +113,161 @@ test("workspace preferences survive reload and report unavailable storage", asyn
   const blocked=await fixture({storage:{getItem(){throw Error("blocked")},setItem(){throw Error("blocked")}}});
   assert.equal(blocked.api.load_preferences(),null);
   assert.equal(blocked.api.save_preferences(text),false);
+});
+
+
+function recoveryDatabase({ aborts = 0, openFailures = 0 } = {}) {
+  const stores = new Map(["state", "files", "handles"].map(name => [name, new Map()]));
+  return { stores, open() {
+    const request = {};
+    queueMicrotask(() => {
+      if (openFailures-- > 0) {
+        request.error = Error("storage temporarily blocked");
+        request.onerror();
+        return;
+      }
+      request.result = {transaction(name, mode) {
+        const transaction = {};
+        transaction.objectStore = () => ({
+          get(key) {
+            const get = {};
+            queueMicrotask(() => { get.result = stores.get(name).get(key); get.onsuccess(); });
+            return get;
+          },
+          put(value, key) {
+            assert.equal(mode, "readwrite");
+            queueMicrotask(() => {
+              if (aborts-- > 0) { transaction.onabort(); return; }
+              stores.get(name).set(key, JSON.parse(JSON.stringify(value)));
+              transaction.oncomplete();
+            });
+          },
+        });
+        return transaction;
+      }};
+      request.onsuccess();
+    });
+    return request;
+  }};
+}
+
+test("recovery acknowledges commits, restores dirty state and keeps the previous copy on abort", async () => {
+  const db = recoveryDatabase();
+  const { api } = await fixture({ indexedDB: db });
+  assert.equal(await api.autosave("work.rysmo", "first", true), true);
+  const restored = await api.restore();
+  assert.equal(restored.current.name, "work.rysmo");
+  assert.equal(restored.current.text, "first");
+  assert.equal(restored.current.dirty, true);
+  // This transaction aborts without an error event, as IndexedDB permits.
+  const blocked = recoveryDatabase({ aborts: 1 });
+  blocked.stores.get("state").set("current", {name: "older.rysmo", text: "old", dirty: true});
+  const retry = await fixture({ indexedDB: blocked });
+  assert.equal(await retry.api.autosave("work.rysmo", "new", true), false);
+  assert.equal((await retry.api.restore()).current.text, "old");
+  assert.equal(await retry.api.autosave("work.rysmo", "new", false), true);
+  assert.equal((await retry.api.restore()).current.dirty, false);
+});
+
+test("a failed database open can recover on the next autosave attempt", async () => {
+  const { api } = await fixture({ indexedDB: recoveryDatabase({openFailures: 1}) });
+  assert.equal(await api.autosave("work.rysmo", "draft", true), false);
+  assert.equal(await api.autosave("work.rysmo", "draft", true), true);
+  assert.equal((await api.restore()).current.text, "draft");
+});
+
+test("beforeunload warns only while the document has unsaved changes", async () => {
+  const { api, listeners } = await fixture();
+  let prevented = 0;
+  const event = {preventDefault(){prevented++;}};
+  const unload = listeners.get("beforeunload");
+  unload(event);
+  assert.equal(prevented, 0);
+  api.set_unsaved_changes(true);
+  unload(event);
+  assert.equal(prevented, 1);
+  assert.equal(event.returnValue, "");
+  api.set_unsaved_changes(false);
+  unload(event);
+  assert.equal(prevented, 1);
+});
+
+test("a Save As completing after New cannot attach its handle to the new document", async () => {
+  const { api, window, calls } = await fixture();
+  let finish;
+  const gate = new Promise(resolve => { finish = resolve; });
+  const handle = {name:"old.rysmo", queryPermission:async()=>"granted", createWritable:async()=>({write:async text=>calls.writes.push(text), close:async()=>{}})};
+  let picks = 0;
+  window.showSaveFilePicker = async () => { picks++; await gate; return handle; };
+  const pending = api.save("old.rysmo", "old contents", true);
+  api.forget_file();
+  finish();
+  assert.equal((await pending)[0], "old.rysmo");
+  await api.save("new.rysmo", "new contents", false);
+  assert.equal(picks, 2);
+  assert.deepEqual(calls.writes, ["old contents", "new contents"]);
+});
+
+test("an in-place save keeps its original handle while another file is opened", async () => {
+  const { api, window, calls } = await fixture();
+  let release;
+  const gate = new Promise(resolve => {release = resolve;});
+  let writes = 0;
+  const original = {name:"original.rysmo", queryPermission:async()=>"granted", createWritable:async()=>({write:async text=>{writes++; if(writes===2) await gate; calls.writes.push(text);},close:async()=>{}})};
+  window.showSaveFilePicker = async () => original;
+  await api.save("original.rysmo", "first", true);
+  const pending = api.save("original.rysmo", "second", false);
+  const opened = await api.pick_open();
+  api.accept_open_file(opened[2]);
+  release();
+  assert.equal((await pending)[0], "original.rysmo");
+  assert.equal(calls.downloads.length, 0);
+  assert.deepEqual(calls.writes, ["first", "second"]);
+});
+
+
+test("restored handles are used only after the editor accepts the recovery model", async () => {
+  let writes = 0;
+  const handle = {name:"restored.rysmo", queryPermission:async()=>"granted", createWritable:async()=>({write:async()=>{writes++;},close:async()=>{}})};
+  const db = recoveryDatabase();
+  db.stores.get("state").set("current", {name:"restored.rysmo", text:"model", dirty:true});
+  db.stores.get("handles").set("restored.rysmo", handle);
+  const rejected = await fixture({indexedDB:db});
+  await rejected.api.restore();
+  assert.equal((await rejected.api.save("draft.rysmo", "draft", false))[1], "picked");
+  assert.equal(writes, 0);
+  const accepted = await fixture({indexedDB:db});
+  const restored = await accepted.api.restore();
+  accepted.api.accept_open_file(restored.token);
+  assert.equal((await accepted.api.save("restored.rysmo", "updated", false))[1], "file");
+  assert.equal(writes, 1);
+});
+
+test("a rejected Open keeps the previous file handle", async () => {
+  const {api,window,calls} = await fixture();
+  const handle = {name:"valid.rysmo", queryPermission:async()=>"granted", createWritable:async()=>({write:async text=>calls.writes.push(text),close:async()=>{}})};
+  window.showSaveFilePicker = async () => handle;
+  await api.save("valid.rysmo", "valid", true);
+  const opened = await api.pick_open();
+  // Parsing failed, so the editor rejects the staged handle.
+  api.reject_open_file(opened[2]);
+  assert.equal((await api.save("valid.rysmo", "still valid", false))[0], "valid.rysmo");
+  assert.deepEqual(calls.writes, ["valid", "still valid"]);
+});
+
+test("overlapping Open results keep separate handles until accepted or rejected", async () => {
+  const {api,window} = await fixture();
+  const writes = [];
+  let next = 0;
+  window.showOpenFilePicker = async () => {
+    const name = `file-${++next}.rysmo`;
+    return [{name, getFile:async()=>({text:async()=>"model"}), queryPermission:async()=>"granted", createWritable:async()=>({write:async text=>writes.push([name,text]),close:async()=>{}})}];
+  };
+  const first = await api.pick_open();
+  const second = await api.pick_open();
+  assert.notEqual(first[2], second[2]);
+  api.accept_open_file(first[2]);
+  api.reject_open_file(second[2]);
+  assert.equal((await api.save(first[0], "updated", false))[0], "file-1.rysmo");
+  assert.deepEqual(writes, [["file-1.rysmo", "updated"]]);
 });

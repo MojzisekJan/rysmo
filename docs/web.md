@@ -50,7 +50,10 @@ the Rust half is `web.rs`.
   to the open document go into IndexedDB
   (database `rysmo`, store `state`, key `current`, with its name and whether it has
   unsaved changes). The next visit opens it again, with its title and unsaved mark, and
-  says "Restored ... from the last visit". `?demo` in the address opens the demo
+  says "Restored ... from the last visit". A snapshot counts as saved only after
+  IndexedDB commits it. Failed writes show a message and retry after five seconds;
+  the previous recovery copy is retained. If browser storage remains blocked, use
+  Save to keep a model file. `?demo` in the address opens the demo
   instead.
 - **Recent files.** Files opened or saved are listed under File > Open Recent (up to
   eight). IndexedDB keeps a copy of each one's text, so they reopen without asking the
@@ -186,3 +189,38 @@ download `.rysmo`. This setting is currently browser-only; native recovery and
 additional interchange exporters are not implemented.
 
 The web build defaults to one Cargo job to limit peak memory during the WASM release link. Set `CARGO_BUILD_JOBS` explicitly to use more jobs on a larger build host. Native builds keep Cargo's normal defaults.
+
+
+## Recovery regression checks, 2026-10-22
+
+The asynchronous Save result identifies both the document generation and revision.
+New/Open can reuse revision numbers, so a late result from another document must
+not rename the current model or clear its unsaved flag. JavaScript keeps the file
+handle captured when Save began and does not attach a late Save As handle to a
+replacement document. Open results also carry the document version from before
+opening the picker. If the model changed in the meantime, the result is rejected
+instead of discarding those edits. File handles are staged under separate tokens
+and accepted only after the editor parses and installs the model. Failed or
+rejected Open/restore operations keep the previous handle.
+
+Failed IndexedDB opens can be retried; aborted transactions
+report failure even without an error event. Recovery tracks the dirty flag as well
+as geometry and camera changes so saving a file updates the recovery metadata.
+
+The JavaScript tests cover storage commits/aborts, retry after a blocked database
+open, dirty-state restore, beforeunload, and saves spanning document replacement.
+The shared Rust check script also runs the actual autosave module's five tests as
+a standalone binary, without linking Bevy's GPU dependencies.
+
+A visual browser check was attempted on this date, but the browser tool could not
+verify its administrator-enforced access policy for the local HTTP URL. No browser
+interaction, rendering result or performance measurement is claimed for this pass.
+The local `dist` package predates these fixes; use `scripts/build-web.sh` before
+publishing another web release.
+
+
+Verification for these fixes passed with 611 headless library tests, five actual
+recovery-module tests and 18 JavaScript tests. Strict Clippy passed for native
+workspace targets and the browser app; the `web-release` compilation check passed.
+These are automated source/module checks, not a substitute for the blocked browser
+interaction test described above.

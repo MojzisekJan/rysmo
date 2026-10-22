@@ -11,6 +11,14 @@
 let database = null;
 // The handle of the file the open document came from or was saved to, if any.
 let current = null;
+let session = 0;
+const pendingFiles = new Map();
+let nextFile = 0;
+function stage_file(handle) {
+  const token = ++nextFile;
+  pendingFiles.set(token, handle);
+  return token;
+}
 const RECENT_MAX = 8;
 
 function open() {
@@ -24,6 +32,9 @@ function open() {
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
+  }).catch(error => {
+    database = null;
+    throw error;
   });
   return database;
 }
@@ -45,6 +56,7 @@ async function put(store, key, value) {
     else transaction.objectStore(store).put(value, key);
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error || new Error("storage transaction aborted"));
   });
 }
 
@@ -72,13 +84,15 @@ async function remember(name, text, handle) {
 }
 
 // {current: {name, text, dirty} or null, recent: [names]}, with the current file's
-// handle back in `current`.
+// handle staged until Rust accepts the parsed model.
 export async function restore() {
+  const started = session;
   try {
     const doc = (await get("state", "current")) || null;
     const recent = (await get("state", "recent")) || [];
-    if (doc) current = (await get("handles", doc.name)) || null;
-    return { current: doc, recent };
+    const handle = doc ? (await get("handles", doc.name)) || null : null;
+    const token = doc && session === started ? stage_file(handle) : null;
+    return { current: doc, recent, token };
   } catch (error) {
     warn("the browser's storage is not available", error);
     return { current: null, recent: [] };
@@ -93,13 +107,32 @@ export async function recent_names() {
   }
 }
 
-export function autosave(name, text, dirty) {
-  put("state", "current", { name, text, dirty }).catch((error) => warn("could not keep the model", error));
+export async function autosave(name, text, dirty) {
+  try {
+    await put("state", "current", { name, text, dirty });
+    return true;
+  } catch (error) {
+    warn("could not keep the model", error);
+    return false;
+  }
 }
 
 // A new, empty document: no file behind it.
 export function forget_file() {
+  session++;
   current = null;
+  pendingFiles.clear();
+}
+
+// The editor calls this only after parsing and replacing the document successfully.
+export function accept_open_file(token) {
+  if (!pendingFiles.has(token)) return;
+  current = pendingFiles.get(token);
+  session++;
+  pendingFiles.delete(token);
+}
+export function reject_open_file(token) {
+  pendingFiles.delete(token);
 }
 
 const types = [{ description: "Rysmo model", accept: { "application/json": [".rysmo"] } }];
@@ -110,9 +143,9 @@ export async function pick_open() {
     try {
       const [handle] = await window.showOpenFilePicker({ types });
       const text = await (await handle.getFile()).text();
-      current = handle;
+      const token = stage_file(handle);
       await remember(handle.name, text, handle);
-      return [handle.name, text];
+      return [handle.name, text, token];
     } catch (error) {
       if (error?.name === "AbortError") return null;
       warn("could not open through the file picker, choosing another way", error);
@@ -130,9 +163,9 @@ export async function pick_open() {
       if (!file) return finish(null);
       try {
         const text = await file.text();
-        current = null;
+        const token = stage_file(null);
         await remember(file.name, text, null);
-        finish([file.name, text]);
+        finish([file.name, text, token]);
       } catch (error) {
         warn("could not read the selected file", error);
         finish(null);
@@ -148,9 +181,10 @@ export async function open_recent(name) {
   try {
     const text = await get("files", name);
     if (text === undefined) return null;
-    current = (await get("handles", name)) || null;
-    await remember(name, text, current);
-    return [name, text];
+    const handle = (await get("handles", name)) || null;
+    const token = stage_file(handle);
+    await remember(name, text, handle);
+    return [name, text, token];
   } catch (error) {
     warn("could not open the recent file", error);
     return null;
@@ -170,11 +204,13 @@ async function write(handle, text) {
 // Saves the document. Returns [name, how] with how "file" (written in place), "picked"
 // (written to a newly chosen file) or "download", or null when the user cancels.
 export async function save(name, text, save_as) {
-  if (current && !save_as) {
+  const started = session;
+  const file = current;
+  if (file && !save_as) {
     try {
-      await write(current, text);
-      await remember(current.name, text, current);
-      return [current.name, "file"];
+      await write(file, text);
+      await remember(file.name, text, file);
+      return [file.name, "file"];
     } catch (error) {
       warn("could not write the file, choosing another way", error);
     }
@@ -183,7 +219,7 @@ export async function save(name, text, save_as) {
     try {
       const handle = await window.showSaveFilePicker({ suggestedName: name, types });
       await write(handle, text);
-      current = handle;
+      if (session === started) current = handle;
       await remember(handle.name, text, handle);
       return [handle.name, "picked"];
     } catch (error) {
@@ -192,7 +228,7 @@ export async function save(name, text, save_as) {
     }
   }
   download(name, new TextEncoder().encode(text), "application/json");
-  current = null;
+  if (session === started) current = null;
   await remember(name, text, null);
   return [name, "download"];
 }

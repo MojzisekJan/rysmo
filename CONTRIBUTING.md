@@ -37,6 +37,7 @@ scripts/check-rust.sh --offline
 
 The script checks formatting, runs workspace Clippy with `-D warnings`, executes
 all eight headless library suites, and checks the browser app with `web-release`.
+The script also runs the browser recovery module's standalone tests.
 Clippy also type-checks native application tests and examples. Running the full
 GPU-linked application tests or checking GUI behaviour requires a suitable host;
 these are additional checks for changes to the application.

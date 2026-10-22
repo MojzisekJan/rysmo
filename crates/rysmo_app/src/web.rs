@@ -13,6 +13,7 @@ use bevy::prelude::*;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
 
+use crate::autosave::DocumentVersion;
 use crate::files;
 use crate::state::App3d;
 
@@ -23,10 +24,12 @@ extern "C" {
     fn set_render_diagnostics(text: &str);
     async fn restore() -> JsValue;
     async fn recent_names() -> JsValue;
-    fn autosave(name: &str, text: &str, dirty: bool);
+    async fn autosave(name: &str, text: &str, dirty: bool) -> JsValue;
     fn get_autosave_settings() -> JsValue;
     fn set_autosave_settings(enabled: bool, minutes: u32);
     fn forget_file();
+    fn accept_open_file(token: f64);
+    fn reject_open_file(token: f64);
     async fn pick_open() -> JsValue;
     async fn pick_texture_image() -> JsValue;
     async fn open_recent(name: &str) -> JsValue;
@@ -37,9 +40,10 @@ extern "C" {
 
 /// What the asynchronous side found, for the next frame.
 enum Arrived {
-    Restored { name: String, text: String, dirty: bool },
-    Opened { name: String, text: String },
-    Saved { name: String, how: String, revision: u64 },
+    Restored { name: String, text: String, dirty: bool, token: f64 },
+    Opened { name: String, text: String, token: f64, version: DocumentVersion },
+    Saved { name: String, how: String, version: DocumentVersion },
+    Autosaved { version: DocumentVersion, camera: rysmo_math::OrbitCamera, dirty: bool, success: bool },
     Recent(Vec<String>),
     Texture { name: String, bytes: Vec<u8> },
 }
@@ -57,10 +61,12 @@ struct Autosave {
     /// Capture the session generation; its initial value is not a sentinel.
     startup_generation: u64,
     /// The last recovery snapshot.
-    written: u64,
+    written: Option<DocumentVersion>,
+    in_flight: bool,
     timer: crate::autosave::Timer,
     preferences: Option<crate::autosave::Settings>,
     written_camera: Option<rysmo_math::OrbitCamera>,
+    written_dirty: Option<bool>,
 }
 
 pub fn plugin(app: &mut App) {
@@ -129,7 +135,10 @@ fn start(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>) {
             && let (Some(name), Some(text)) = (field(&doc, "name").as_string(), field(&doc, "text").as_string())
         {
             let dirty = field(&doc, "dirty").as_bool().unwrap_or(false);
-            arrive(Arrived::Restored { name, text, dirty });
+            let token = field(&state, "token").as_f64().unwrap_or(0.);
+            arrive(Arrived::Restored { name, text, dirty, token });
+        } else if let Some(token) = field(&state, "token").as_f64() {
+            reject_open_file(token);
         }
     });
 }
@@ -141,30 +150,34 @@ fn refresh_recent() {
 }
 
 /// File > Open: the browser's picker. The file arrives a few frames later.
-pub fn pick_file() {
-    wasm_bindgen_futures::spawn_local(async {
-        if let Some((name, text)) = pair(&pick_open().await) {
-            arrive(Arrived::Opened { name, text });
+pub fn pick_file(version: DocumentVersion) {
+    wasm_bindgen_futures::spawn_local(async move {
+        let result = pick_open().await;
+        if let Some((name, text)) = pair(&result) {
+            let token = js_sys::Array::from(&result).get(2).as_f64().unwrap_or(0.);
+            arrive(Arrived::Opened { name, text, token, version });
         }
         refresh_recent();
     });
 }
 
 /// File > Open Recent.
-pub fn open_recent_file(name: String) {
+pub fn open_recent_file(name: String, version: DocumentVersion) {
     wasm_bindgen_futures::spawn_local(async move {
-        if let Some((name, text)) = pair(&open_recent(&name).await) {
-            arrive(Arrived::Opened { name, text });
+        let result = open_recent(&name).await;
+        if let Some((name, text)) = pair(&result) {
+            let token = js_sys::Array::from(&result).get(2).as_f64().unwrap_or(0.);
+            arrive(Arrived::Opened { name, text, token, version });
         }
         refresh_recent();
     });
 }
 
 /// File > Save (in place where it can) and Save As (always asks).
-pub fn save_file(name: String, text: String, save_as: bool, revision: u64) {
+pub fn save_file(name: String, text: String, save_as: bool, version: DocumentVersion) {
     wasm_bindgen_futures::spawn_local(async move {
         if let Some((name, how)) = pair(&save(&name, &text, save_as).await) {
-            arrive(Arrived::Saved { name, how, revision });
+            arrive(Arrived::Saved { name, how, version });
         }
         refresh_recent();
     });
@@ -175,31 +188,56 @@ pub fn new_document() {
     forget_file();
 }
 
-fn take_arrived(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>) {
+fn take_arrived(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>, time: Res<Time<Real>>) {
     let arrived: Vec<Arrived> = ARRIVED.with(|q| q.borrow_mut().drain(..).collect());
     for a in arrived {
         match a {
-            Arrived::Restored { name, text, dirty } if app.accepts_recovery(auto.startup_generation) => {
+            Arrived::Restored { name, text, dirty, token } if app.accepts_recovery(auto.startup_generation) => {
                 match files::open_text(&mut app, &text, &name) {
                     Ok(_) => {
+                        accept_open_file(token);
                         if dirty {
                             app.editor.mark_dirty();
                         }
-                        auto.written = app.editor.revision();
+                        auto.written = Some(DocumentVersion {
+                            generation: app.document_generation,
+                            revision: app.editor.revision(),
+                        });
                         auto.written_camera = Some(app.camera);
+                        auto.written_dirty = Some(dirty);
                         app.message = Some(format!("Restored {name} from the last visit."));
                     }
-                    Err(e) => app.message = Some(e),
+                    Err(e) => {
+                        reject_open_file(token);
+                        app.message = Some(e);
+                    }
                 }
             }
-            Arrived::Restored { .. } => {}
-            Arrived::Opened { name, text } => {
+            Arrived::Restored { token, .. } => reject_open_file(token),
+            Arrived::Opened { name, text, token, version } => {
+                let current = DocumentVersion { generation: app.document_generation, revision: app.editor.revision() };
+                if current != version {
+                    reject_open_file(token);
+                    app.message = Some(
+                        "The model changed while choosing a file. Open it again to replace the current model.".into(),
+                    );
+                    continue;
+                }
                 let r = files::open_text(&mut app, &text, &name);
+                if r.is_ok() {
+                    accept_open_file(token);
+                } else {
+                    reject_open_file(token);
+                }
                 app.message = Some(r.unwrap_or_else(|e| e));
             }
-            Arrived::Saved { name, how, revision } => {
+            Arrived::Saved { name, how, version } => {
+                let current = DocumentVersion { generation: app.document_generation, revision: app.editor.revision() };
+                if !version.same_document(current) {
+                    continue;
+                }
                 // Only clean if nothing changed while the browser was saving.
-                if app.editor.revision() == revision {
+                if current == version {
                     app.editor.mark_saved();
                 }
                 app.path = Some(name.clone().into());
@@ -208,7 +246,25 @@ fn take_arrived(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>) {
                     _ => format!("Saved {name}."),
                 });
                 // Write the clean state into the autosave copy too.
-                auto.written = u64::MAX;
+                auto.written = None;
+            }
+            Arrived::Autosaved { version, camera, dirty, success } => {
+                auto.in_flight = false;
+                let current = DocumentVersion { generation: app.document_generation, revision: app.editor.revision() };
+                if !version.same_document(current) {
+                    continue;
+                }
+                if success {
+                    auto.written = Some(version);
+                    auto.written_camera = Some(camera);
+                    auto.written_dirty = Some(dirty);
+                } else {
+                    auto.timer.retry(time.elapsed_secs_f64());
+                    app.message = Some(
+                        "Browser recovery could not be saved. Use Save to keep a model file; recovery will retry."
+                            .into(),
+                    );
+                }
             }
             Arrived::Recent(list) => app.recent = list,
             Arrived::Texture { name, bytes } => {
@@ -231,8 +287,13 @@ fn autosave_now(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>, time: Res<Ti
         set_autosave_settings(settings.enabled, settings.minutes);
         auto.preferences = Some(settings);
     }
-    let revision = app.editor.revision();
-    let pending = revision != auto.written || auto.written_camera != Some(app.camera);
+    if auto.in_flight {
+        return;
+    }
+    let version = DocumentVersion { generation: app.document_generation, revision: app.editor.revision() };
+    let pending = auto.written != Some(version)
+        || auto.written_camera != Some(app.camera)
+        || auto.written_dirty != Some(app.editor.is_dirty());
     if auto.timer.due(time.elapsed_secs_f64(), pending, app.document_generation, settings) {
         let name = app
             .path
@@ -243,9 +304,12 @@ fn autosave_now(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>, time: Res<Ti
         let camera = app.camera;
         app.editor.set_camera(camera);
         let text = rysmo_io::save(app.editor.doc());
-        autosave(&name, &text, app.editor.is_dirty());
-        auto.written = revision;
-        auto.written_camera = Some(camera);
+        let dirty = app.editor.is_dirty();
+        auto.in_flight = true;
+        wasm_bindgen_futures::spawn_local(async move {
+            let success = autosave(&name, &text, dirty).await.as_bool().unwrap_or(false);
+            arrive(Arrived::Autosaved { version, camera, dirty, success });
+        });
     }
 }
 
