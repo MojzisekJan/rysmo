@@ -3,6 +3,7 @@ name = "rysmo_app"
 description = "Rysmo desktop and mobile application: Bevy viewport, egui panels"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 

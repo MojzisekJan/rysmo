@@ -14,6 +14,7 @@ use crate::y_up;
 
 /// An OBJ export: the OBJ text, the MTL text, and the texture images the MTL names
 /// (file name and bytes), to be written beside them.
+#[must_use]
 pub struct ObjExport {
     pub obj: String,
     pub mtl: String,

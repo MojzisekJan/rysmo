@@ -8,9 +8,13 @@ Written in Rust with Bevy and egui.
 
 **[Open the editor in your browser](https://mojzisekjan.github.io/rysmo/editor/)**
 
+Requires Rust 1.97.1 or newer.
+
 ```sh
 cargo run -p rysmo_app --release
 ```
+
+Build, verification and Rust review conventions are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

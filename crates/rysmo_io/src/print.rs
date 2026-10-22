@@ -15,6 +15,7 @@ const MM: f64 = 1000.;
 
 /// What stands between the model and a clean print.
 #[derive(Clone, Debug, Default, PartialEq)]
+#[must_use]
 pub struct PrintCheck {
     /// Edges with a face on one side only: holes in the surface.
     pub open_edges: Vec<[DVec3; 2]>,

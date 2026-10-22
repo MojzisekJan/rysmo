@@ -2,6 +2,7 @@
 name = "rysmo_mobile"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 
 [lib]
@@ -13,3 +14,10 @@ bevy = { version = "0.20.0", default-features = false, features = ["std"] }
 
 [lints.rust]
 unsafe_code = "deny"
+
+# This adapter cannot inherit the workspace unsafe-code forbid because it exports
+# the platform entry-point symbol. Keep the same Clippy guardrails explicitly.
+[lints.clippy]
+dbg_macro = "deny"
+todo = "warn"
+unimplemented = "warn"

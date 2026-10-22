@@ -5,6 +5,7 @@ use rysmo_model::Document;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
 
+#[must_use]
 pub struct ColladaExport {
     pub dae: String,
     pub images: Vec<(String, Vec<u8>)>,

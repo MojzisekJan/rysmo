@@ -71,15 +71,21 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
         return;
     }
     if app.unsaved.saving && !app.editor.is_dirty() {
-        let action = app.unsaved.pending.take().unwrap();
-        app.unsaved.saving = false;
-        perform(app, action);
+        if let Some(action) = app.unsaved.pending.take() {
+            app.unsaved.saving = false;
+            perform(app, action);
+        }
         return;
     }
     // The mobile save picker is an in-app dialog and must remain interactive.
     #[cfg(any(target_os = "android", target_os = "ios"))]
     if app.unsaved.saving && app.portable_files.is_some() {
         return;
+    }
+    enum Choice {
+        Save,
+        Discard,
+        Cancel,
     }
     let mut choice = None;
     egui::Modal::new(egui::Id::new("unsaved_changes")).show(ctx, |ui| {
@@ -90,34 +96,35 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
         ui.add_space(12.);
         ui.horizontal(|ui| {
             if ui.button("Save").clicked() {
-                choice = Some(0);
+                choice = Some(Choice::Save);
             }
             if ui.button("Discard").clicked() {
-                choice = Some(1);
+                choice = Some(Choice::Discard);
             }
             if ui.button("Cancel").clicked() {
-                choice = Some(2);
+                choice = Some(Choice::Cancel);
             }
         });
     });
     if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
-        choice = Some(2);
+        choice = Some(Choice::Cancel);
     }
     match choice {
-        Some(0) => {
+        Some(Choice::Save) => {
             app.unsaved.saving = true;
             files::save(app, false);
         }
-        Some(1) => {
-            let action = app.unsaved.pending.take().unwrap();
-            app.unsaved.saving = false;
-            perform(app, action);
+        Some(Choice::Discard) => {
+            if let Some(action) = app.unsaved.pending.take() {
+                app.unsaved.saving = false;
+                perform(app, action);
+            }
         }
-        Some(2) => {
+        Some(Choice::Cancel) => {
             app.unsaved.pending = None;
             app.unsaved.saving = false;
         }
-        _ => {}
+        None => {}
     }
 }
 

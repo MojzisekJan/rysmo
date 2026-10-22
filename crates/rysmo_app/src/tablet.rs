@@ -3,8 +3,8 @@
 //! tool, a status bar whose Measurements button opens a keypad, a tabbed sidebar for
 //! the model panels, and a bar of actions for the current selection.
 //!
-//! It follows tablet modellers such as Shapr3D and SketchUp for iPad. Fingers and a
-//! pencil work alike; modifier keys become named modes, so nothing has to be held.
+//! Fingers and a pencil work alike; modifier keys become named modes, so nothing
+//! has to be held.
 use bevy_egui::egui;
 use rysmo_tools::{Key, ToolKind as T};
 

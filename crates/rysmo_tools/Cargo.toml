@@ -3,6 +3,7 @@ name = "rysmo_tools"
 description = "Rysmo interactive tools, the VCB parser and touch gestures, with no UI toolkit"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 

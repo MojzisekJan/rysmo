@@ -3,6 +3,7 @@ name = "rysmo_mcp"
 description = "Rysmo MCP server: the headless editor over JSON-RPC, on stdio or TCP"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 

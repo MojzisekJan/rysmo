@@ -8,11 +8,17 @@ fn main() {
         println!("cargo:warning=Windows icon resources are embedded on the native Windows build host.");
         return;
     }
-    let out = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
-    let icon = std::path::PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap()).join("brand/favicon.ico");
+    let out = std::path::PathBuf::from(
+        std::env::var_os("OUT_DIR").expect("Cargo must provide OUT_DIR for the Windows resource build"),
+    );
+    let icon = std::path::PathBuf::from(
+        std::env::var_os("CARGO_MANIFEST_DIR").expect("Cargo must provide CARGO_MANIFEST_DIR"),
+    )
+    .join("brand/favicon.ico");
     let rc = out.join("rysmo.rc");
     let res = out.join("rysmo.res");
-    std::fs::write(&rc, format!("1 ICON \"{}\"\n", icon.display().to_string().replace('\\', "/"))).unwrap();
+    std::fs::write(&rc, format!("1 ICON \"{}\"\n", icon.display().to_string().replace('\\', "/")))
+        .expect("Could not write the Windows icon resource file");
     let status = std::process::Command::new("rc.exe")
         .arg("/nologo")
         .arg("/fo")

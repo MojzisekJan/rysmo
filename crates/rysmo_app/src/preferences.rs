@@ -121,8 +121,33 @@ pub fn set_layout(ctx: &egui::Context, value: Layout) {
 pub struct Store {
     initialized: bool,
     saved: String,
+    retry: Option<(String, f64)>,
     reset_requested: bool,
     pub error: Option<String>,
+}
+impl Store {
+    /// Cache only successful writes and throttle retries for unavailable storage.
+    fn save(&mut self, text: String, now: f64, write: impl FnOnce(&str) -> Result<(), String>) {
+        if text == self.saved {
+            self.error = None;
+            self.retry = None;
+            return;
+        }
+        if self.retry.as_ref().is_some_and(|(pending, after)| pending == &text && now < *after) {
+            return;
+        }
+        match write(&text) {
+            Ok(()) => {
+                self.saved = text;
+                self.error = None;
+                self.retry = None;
+            }
+            Err(error) => {
+                self.error = Some(error);
+                self.retry = Some((text, now + 5.));
+            }
+        }
+    }
 }
 pub fn begin(ctx: &egui::Context, app: &mut crate::state::App3d) {
     if app.preference_store.initialized {
@@ -151,15 +176,17 @@ pub fn end(ctx: &egui::Context, app: &mut crate::state::App3d) {
     if ctx.input(|i| i.pointer.any_down()) {
         return;
     }
-    let text = serde_json::to_string(&app.preferences).unwrap_or_default();
+    let text = match serde_json::to_string(&app.preferences) {
+        Ok(text) => text,
+        Err(error) => {
+            app.preference_store.error = Some(format!("Could not serialize preferences: {error}"));
+            return;
+        }
+    };
     if cfg!(test) {
         return;
     }
-    if text != app.preference_store.saved {
-        let result = write(&text);
-        app.preference_store.error = result.err();
-        app.preference_store.saved = text;
-    }
+    app.preference_store.save(text, ctx.input(|i| i.time), write);
 }
 pub fn reset_layout(ctx: &egui::Context, app: &mut crate::state::App3d) {
     app.preference_store.reset_requested = true;
@@ -174,6 +201,21 @@ pub fn reset_layout(ctx: &egui::Context, app: &mut crate::state::App3d) {
     app.show_scenes = false;
     app.show_components = false;
 }
+/// Flush the latest UI snapshot before the native window exits.
+pub fn flush(app: &mut crate::state::App3d) {
+    if cfg!(test) {
+        return;
+    }
+    match serde_json::to_string(&app.preferences) {
+        Ok(text) => {
+            // A close request gets one final attempt, even during the retry delay.
+            app.preference_store.retry = None;
+            app.preference_store.save(text, 0., write);
+        }
+        Err(error) => app.preference_store.error = Some(format!("Could not serialize preferences: {error}")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -189,6 +231,38 @@ mod tests {
         assert_eq!(serde_json::from_str::<Preferences>(&serde_json::to_string(&p).unwrap()).unwrap(), p);
     }
     #[test]
+    fn failed_writes_remain_pending_and_retry_without_a_busy_loop() {
+        let mut store = Store::default();
+        store.save("preferences".into(), 10., |_| Err("Storage unavailable".into()));
+        assert!(store.saved.is_empty(), "A failed write must not be recorded as persisted");
+        assert_eq!(store.error.as_deref(), Some("Storage unavailable"));
+        store.save("preferences".into(), 14., |_| panic!("Retries must be throttled"));
+        store.save("preferences".into(), 15., |_| Ok(()));
+        assert_eq!(store.saved, "preferences");
+        assert!(store.error.is_none());
+        store.save("preferences".into(), 16., |_| panic!("Unchanged preferences must not be rewritten"));
+    }
+
+    #[test]
+    fn new_preferences_bypass_a_previous_write_failure() {
+        let mut store = Store::default();
+        store.save("old".into(), 10., |_| Err("Storage unavailable".into()));
+        store.save("new".into(), 11., |_| Ok(()));
+        assert_eq!(store.saved, "new");
+        assert!(store.error.is_none());
+    }
+
+    #[test]
+    fn reverting_to_saved_preferences_clears_a_pending_failure() {
+        let mut store = Store::default();
+        store.save("saved".into(), 0., |_| Ok(()));
+        store.save("changed".into(), 1., |_| Err("Storage unavailable".into()));
+        store.save("saved".into(), 2., |_| panic!("Already persisted preferences need no write"));
+        assert!(store.error.is_none());
+        assert!(store.retry.is_none());
+    }
+
+    #[test]
     fn recent_files_are_deduplicated_and_bounded() {
         let mut p = Preferences::default();
         for i in 0..10 {
@@ -198,15 +272,5 @@ mod tests {
         assert_eq!(p.recent[0], "5");
         assert_eq!(p.recent.len(), 8);
         assert_eq!(p.recent.iter().filter(|n| *n == "5").count(), 1);
-    }
-}
-
-/// Flush the latest UI snapshot before the native window exits.
-pub fn flush(app: &mut crate::state::App3d) {
-    if cfg!(test) {
-        return;
-    }
-    if let Ok(text) = serde_json::to_string(&app.preferences) {
-        app.preference_store.error = write(&text).err();
     }
 }

@@ -3,6 +3,7 @@ name = "rysmo_io"
 description = "Rysmo native files and OBJ, glTF, COLLADA, DXF, STL and 3MF export"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 
