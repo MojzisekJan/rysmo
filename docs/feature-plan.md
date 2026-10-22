@@ -26,4 +26,5 @@ successful visual verification. No external publication is implied.
 
 The seven workflows are implemented. Tests and actual format limits are recorded
 in `docs/verification/editor-expansion-2026-10-22.md` and
-`docs/editor-expansion.md`. Release packaging is the final verification step.
+`docs/editor-expansion.md`. The optimized web package and its static module/asset checks pass; the browser
+verification boundary is documented in the record.

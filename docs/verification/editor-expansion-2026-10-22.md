@@ -43,5 +43,22 @@ check is blocked. No browser screenshot, frame-rate measurement or interactive
 button-by-button verification is claimed. Native GUI tests are type-checked by
 Clippy; the full GPU-linked application test binary is not executed here.
 
-Release linking and package validation are the final step; their result will be
-added after the build. Nothing has been published externally.
+## Release package
+
+The offline optimized web build completed successfully from code commit
+`ea26b0c`. Cargo release compilation took 7 min 11 s; the subsequent optimizer and
+packager completed successfully. The final archive is
+`target/web/rysmo-itch.zip` (approximately 13.6 MB, including corresponding source).
+
+- Optimized WASM: 28,889,773 bytes.
+- Gzip WASM: 10,366,262 bytes; +1.34% against the previous 10,228,712-byte build.
+- Static package validator: all 18 asset hashes verified, two JavaScript modules
+  linked, nine direct WASM→JavaScript imports resolved, WASM module compiled.
+- ZIP CRCs, root `index.html` and clean source revision verified.
+- The final documentation-only commit is included by repackaging the identical
+  compiled application; no second release link is needed.
+
+A fresh browser access attempt against the local server was also blocked by the
+unavailable admin policy check. The temporary tab and server were closed. Static
+validation does not exercise editor startup or WebGL. Nothing has been published
+externally.
