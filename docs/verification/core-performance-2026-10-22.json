@@ -1,0 +1,81 @@
+{
+  "date": "2026-10-22",
+  "core_revision": "1905d671709e7b09f47eeecb2e137ef4d0e5a061",
+  "compiler": "rustc 1.98.1",
+  "profile": "dev: opt-level=1 for workspace crates, debug assertions enabled",
+  "cpu": "AMD Ryzen 5 40 with Radeon Graphics (as reported by /proc/cpuinfo)",
+  "peak_process_rss_kib": 43400,
+  "notes": [
+    "Native CPU-only baseline, not browser FPS or GPU memory.",
+    "Load parses and validates already-read in-memory text; Save serializes to memory.",
+    "Clone includes destruction; Move, Undo and Redo exclude editor setup and equality checks.",
+    "Three load/save warm-up cycles and 21 measured samples; no isolated-host guarantee.",
+    "Both workloads have 1200 root instances and 7200 faces across 1201 occurrences including the empty root."
+  ],
+  "reports": [
+    {
+      "file": "target/web-test/grid-flat-100.rysmo",
+      "bytes": 135386,
+      "occurrences": 1201,
+      "occurrence_faces": 7200,
+      "samples": 21,
+      "debug_assertions": true,
+      "load": {
+        "median_ms": 2.165397,
+        "p95_ms": 2.521035
+      },
+      "save": {
+        "median_ms": 1.384557,
+        "p95_ms": 1.5887069999999999
+      },
+      "clone_and_drop": {
+        "median_ms": 0.338317,
+        "p95_ms": 0.431906
+      },
+      "move_instance": {
+        "median_ms": 0.34837399999999996,
+        "p95_ms": 0.5488230000000001
+      },
+      "undo": {
+        "median_ms": 0.015156000000000001,
+        "p95_ms": 0.021442
+      },
+      "redo": {
+        "median_ms": 0.003422,
+        "p95_ms": 0.007194
+      }
+    },
+    {
+      "file": "target/web-test/grid-unique-100.rysmo",
+      "bytes": 1894606,
+      "occurrences": 1201,
+      "occurrence_faces": 7200,
+      "samples": 21,
+      "debug_assertions": true,
+      "load": {
+        "median_ms": 63.587054,
+        "p95_ms": 67.574781
+      },
+      "save": {
+        "median_ms": 19.419217,
+        "p95_ms": 20.621904999999998
+      },
+      "clone_and_drop": {
+        "median_ms": 12.615022,
+        "p95_ms": 14.070469000000001
+      },
+      "move_instance": {
+        "median_ms": 8.285415,
+        "p95_ms": 10.093428
+      },
+      "undo": {
+        "median_ms": 0.009917,
+        "p95_ms": 0.02207
+      },
+      "redo": {
+        "median_ms": 0.00852,
+        "p95_ms": 0.010197000000000001
+      }
+    }
+  ]
+}

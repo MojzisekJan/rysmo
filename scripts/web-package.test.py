@@ -3,6 +3,9 @@ import base64
 import hashlib
 import json
 import importlib.util
+import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -61,6 +64,48 @@ class ModuleCacheTest(unittest.TestCase):
                 package_web.fingerprint_local_modules(dist)
                 self.assertEqual(snapshot, (script.read_bytes(), index.read_bytes()))
             self.assertNotIn("original.js", index.read_text())
+
+class BuiltModuleTest(unittest.TestCase):
+    @unittest.skipUnless(os.environ.get("NODE") or shutil.which("node"), "Node.js is required for module validation")
+    def test_built_module_checks_detect_missing_exports_and_corrupt_assets(self):
+        node = os.environ.get("NODE") or shutil.which("node")
+        checker = Path(__file__).with_name("check-web-dist.mjs").resolve()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "snippets").mkdir()
+            snippet = b"export function good() {}\n"
+            digest = hashlib.sha256(snippet).hexdigest()[:16]
+            empty_wasm = b"\0asm\x01\0\0\0"
+            def prepare(imports, wasm=empty_wasm):
+                (root / "snippets/a.js").write_bytes(snippet)
+                (root / "rysmo-abc.js").write_text(imports + f" from './snippets/a.js?v={digest}';\n")
+                (root / "app.wasm").write_bytes(wasm)
+                (root / "index.html").write_text(f'<meta content="{len(wasm)}"><script src="rysmo-abc.js"></script>')
+                assets = {p.relative_to(root).as_posix(): {"bytes": p.stat().st_size, "sha256": hashlib.sha256(p.read_bytes()).hexdigest()}
+                          for p in root.rglob("*") if p.is_file() and p.name != "build-info.json"}
+                (root / "build-info.json").write_text(json.dumps({"revision": "fixture", "tracked_changes": False, "assets": assets}))
+            def check():
+                return subprocess.run([node, "--experimental-vm-modules", str(checker), str(root)], text=True, capture_output=True, timeout=20)
+            prepare("import { good }")
+            result = check()
+            self.assertEqual(result.returncode, 0, result.stderr)
+            prepare("import { missing }")
+            result = check()
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("does not provide an export", result.stderr)
+            # A direct WASM namespace import bypasses named JavaScript import checks.
+            module, name = b"./snippets/a.js", b"missing"
+            payload = b"\x01" + bytes([len(module)]) + module + bytes([len(name)]) + name + b"\0\0"
+            wasm = empty_wasm + b"\x01\x04\x01\x60\0\0" + b"\x02" + bytes([len(payload)]) + payload
+            prepare("import * as namespace", wasm)
+            result = check()
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Missing WASM import", result.stderr)
+            prepare("import { good }")
+            (root / "snippets/a.js").write_text("corrupted")
+            result = check()
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Wrong size", result.stderr)
 
 if __name__ == "__main__":
     unittest.main()

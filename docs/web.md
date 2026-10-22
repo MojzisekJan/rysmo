@@ -215,8 +215,7 @@ a standalone binary, without linking Bevy's GPU dependencies.
 A visual browser check was attempted on this date, but the browser tool could not
 verify its administrator-enforced access policy for the local HTTP URL. No browser
 interaction, rendering result or performance measurement is claimed for this pass.
-The local `dist` package predates these fixes; use `scripts/build-web.sh` before
-publishing another web release.
+The local package was rebuilt later in this session; see the release-candidate checks below.
 
 
 Verification for these fixes passed with 611 headless library tests, five actual
@@ -224,3 +223,70 @@ recovery-module tests and 18 JavaScript tests. Strict Clippy passed for native
 workspace targets and the browser app; the `web-release` compilation check passed.
 These are automated source/module checks, not a substitute for the blocked browser
 interaction test described above.
+
+
+## Release-candidate checks, 2026-10-22
+
+The full `web-release` build completed with the recovery fixes from `1905d67`,
+including linking, wasm-bindgen and `wasm-opt`. The optimized WASM is 28,462,234
+bytes, about 27.1 MiB, or 9.8 MiB with gzip. The upload package is
+`target/web/rysmo-itch.zip`, with `index.html` at its root, the GPL source archive
+and build metadata. Its exact size and revision are in `target/web/build-report.json`.
+No upload or publication was performed.
+
+After building, run the optional static package check with Node.js:
+
+```sh
+node --experimental-vm-modules scripts/check-web-dist.mjs
+```
+
+It verifies every manifest asset's size and SHA-256, loader size metadata, local
+JavaScript import fingerprints and named exports. It also compiles the actual
+WASM module and checks its direct snippet imports against the packaged JavaScript
+exports. It does not evaluate the editor, instantiate WebGL or simulate browser
+interaction. Packaging tests use small fixtures to reject missing JavaScript
+exports, missing direct WASM imports and corrupt files.
+
+The candidate passed this check with two linked JavaScript modules and nine direct
+WASM-to-JavaScript imports. ZIP CRC and archive/manifest hash checks also passed.
+A browser access-policy failure still blocks visual, file-picker, iframe and
+renderer FPS verification. A successful static check does not remove that gap.
+
+## Repeatable native core baseline
+
+Generate the benchmark models and run the headless example:
+
+```sh
+python3 scripts/create-web-benchmark.py
+cargo run -p rysmo_io --example benchmark_core --offline --locked -- \
+  target/web-test/grid-flat-100.rysmo target/web-test/grid-unique-100.rysmo
+```
+
+Both models have 1,200 cube instances and 7,200 faces across their occurrences.
+The first shares one definition; the second stores 1,200 independent definitions.
+Generated coordinates use the native format's nine-decimal precision, avoiding
+normalization differences such as `3.9000000000000004` becoming `3.9` on save.
+The benchmark requires an identical load/save round trip, then verifies the
+original and moved documents after every Undo and Redo.
+
+The recorded run used Rust 1.98.1, the normal dev profile with workspace code at
+optimization level 1 and debug assertions enabled, on the host's reported
+AMD Ryzen 5 40. Each result has 21 samples after three load/save warm-up cycles.
+These are native CPU timings on a shared host, not browser timings. Load parses
+already-read text and Save serializes to memory; disk and IndexedDB are excluded.
+Clone includes destruction; edit timings exclude editor setup and equality checks.
+
+| Median, milliseconds | Shared definition | Independent definitions |
+| --- | ---: | ---: |
+| Load and validate | 2.17 | 63.59 |
+| Serialize | 1.38 | 19.42 |
+| Clone and destroy | 0.34 | 12.62 |
+| Move one instance | 0.35 | 8.29 |
+| Undo | 0.015 | 0.010 |
+| Redo | 0.003 | 0.009 |
+
+Peak RSS for this benchmark process was 43,400 KiB, about 42.4 MiB; it is not the
+editor's memory footprint. Full results including the 95th percentile are in
+[core-performance-2026-10-22.json](verification/core-performance-2026-10-22.json).
+The comparison identifies geometry storage and snapshot copying as useful next
+profiling targets. It does not measure a speedup from a production code change.
