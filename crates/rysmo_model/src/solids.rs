@@ -77,38 +77,38 @@ fn collect<'a>(
     path.remove(&instance.definition);
     Ok(())
 }
-fn operand(
-    doc: &Document,
-    owner: Option<DefinitionId>,
-    id: InstanceId,
-    shift: DVec3,
-    budget: &mut usize,
-) -> Result<Operand, CommandError> {
+fn prepare_operand(doc: &Document, owner: Option<DefinitionId>, id: InstanceId) -> Result<Vec<Leaf<'_>>, CommandError> {
     let instance = doc.def(owner).and_then(|d| d.instances.get(&id)).ok_or_else(|| invalid("Missing solid operand"))?;
     let mut leaves = Vec::new();
     collect(doc, instance, DMat4::IDENTITY, None, &mut Default::default(), &mut leaves, &mut 4096)?;
     if leaves.is_empty() {
         return Err(invalid("Solid operand contains no geometry"));
     }
-    let triangles: usize = leaves
-        .iter()
-        .map(|leaf| {
-            leaf.definition
-                .mesh
-                .faces()
-                .map(|(_, f)| (f.loops().map(|l| l.len()).sum::<usize>() + 2 * f.holes.len()).saturating_sub(2))
-                .sum::<usize>()
-        })
-        .sum();
-    let vertices: usize = leaves.iter().map(|leaf| leaf.definition.mesh.vertex_count()).sum();
-    if triangles > MAX_OPERAND_TRIANGLES || vertices > 16384 {
-        return Err(invalid(format!(
-            "Operand has {triangles} triangles / {vertices} vertices; limits are 4096 / 16384"
-        )));
+    let mut triangles = 0usize;
+    let mut vertices = 0usize;
+    for leaf in &leaves {
+        vertices = vertices.saturating_add(leaf.definition.mesh.vertex_count());
+        if vertices > 16384 {
+            return Err(invalid("Solid operand exceeds 16384 vertices"));
+        }
+        for (_, face) in leaf.definition.mesh.faces() {
+            let corners = face
+                .loops()
+                .try_fold(0usize, |count, outline| count.checked_add(outline.len()))
+                .ok_or_else(|| invalid("Solid face exceeds its complexity limit"))?;
+            let count = corners.saturating_add(face.holes.len().saturating_mul(2)).saturating_sub(2);
+            triangles = triangles.saturating_add(count);
+            if triangles > MAX_OPERAND_TRIANGLES {
+                return Err(invalid("Solid operand exceeds 4096 triangles"));
+            }
+        }
     }
+    Ok(leaves)
+}
+fn operand(doc: &Document, leaves: &[Leaf<'_>], shift: DVec3, budget: &mut usize) -> Result<Operand, CommandError> {
     let mut polygons = Vec::new();
     let mut styles = Vec::new();
-    for leaf in &leaves {
+    for leaf in leaves {
         if leaf.definition.mesh.faces().any(|(_, f)| f.hidden) {
             return Err(invalid("Unhide all operand faces before a solid operation"));
         }
@@ -320,14 +320,24 @@ pub(crate) fn run(
     if left == right {
         return Err(invalid("Choose two different solid instances"));
     }
-    let first = doc.def(owner).and_then(|d| d.instances.get(&left)).ok_or_else(|| invalid("Missing first solid"))?;
-    let bounds = doc.definition_bounds(Some(first.definition)).ok_or_else(|| invalid("Empty first solid"))?;
-    let shift = first.transform.transform_point3((bounds.0 + bounds.1) * 0.5);
+    // Validate the hierarchy and geometry budgets before traversing any bounds.
+    let left_leaves = prepare_operand(doc, owner, left).map_err(|e| invalid(format!("Operand A: {e}")))?;
+    let right_leaves = prepare_operand(doc, owner, right).map_err(|e| invalid(format!("Operand B: {e}")))?;
+    let (lo, hi) = left_leaves
+        .iter()
+        .flat_map(|leaf| {
+            leaf.definition.mesh.vertices().map(|(id, _)| leaf.transform.transform_point3(leaf.definition.mesh.pos(id)))
+        })
+        .fold((DVec3::splat(f64::INFINITY), DVec3::splat(f64::NEG_INFINITY)), |(lo, hi), p| (lo.min(p), hi.max(p)));
+    let shift = lo * 0.5 + hi * 0.5;
+    if !shift.is_finite() {
+        return Err(invalid("Invalid solid bounds"));
+    }
     let mut csg_budget = 8_000_000usize;
     let (a, mut styles) =
-        operand(doc, owner, left, shift, &mut csg_budget).map_err(|e| invalid(format!("Operand A: {e}")))?;
+        operand(doc, &left_leaves, shift, &mut csg_budget).map_err(|e| invalid(format!("Operand A: {e}")))?;
     let (b, other_styles) =
-        operand(doc, owner, right, shift, &mut csg_budget).map_err(|e| invalid(format!("Operand B: {e}")))?;
+        operand(doc, &right_leaves, shift, &mut csg_budget).map_err(|e| invalid(format!("Operand B: {e}")))?;
     styles.extend(other_styles);
     let tasks = match operation {
         BooleanOp::Split => vec![
@@ -426,6 +436,66 @@ mod tests {
         *editor = Editor::with_document(doc);
         id
     }
+    #[test]
+    fn cyclic_operand_is_rejected_before_bounds_without_mutation() {
+        let mut editor = Editor::new();
+        let left = cube(&mut editor, DVec3::ZERO, DVec3::ONE);
+        let right = cube(&mut editor, DVec3::ONE, DVec3::ONE);
+        let mut doc = editor.doc().clone();
+        let instance = doc.root.instances[&left].clone();
+        doc.definitions.get_mut(&instance.definition).unwrap().instances.insert(left, instance);
+        let before = doc.clone();
+        let error = run(&mut doc, None, left, right, BooleanOp::Union, false).unwrap_err();
+        assert!(error.to_string().contains("cyclic"), "{error}");
+        assert_eq!(doc, before);
+    }
+
+    #[test]
+    fn expanding_shared_hierarchy_is_rejected_before_bounds_without_mutation() {
+        let mut editor = Editor::new();
+        let left = cube(&mut editor, DVec3::ZERO, DVec3::ONE);
+        let right = cube(&mut editor, DVec3::ONE, DVec3::ONE);
+        let mut doc = editor.doc().clone();
+        let mut instance = doc.root.instances[&left].clone();
+        // Only 25 definitions, but over 16 million expanded leaf occurrences.
+        for _ in 0..24 {
+            let definition = DefinitionId(doc.reserve_id());
+            let a = InstanceId(doc.reserve_id());
+            let b = InstanceId(doc.reserve_id());
+            doc.definitions.insert(
+                definition,
+                Definition { instances: [(a, instance.clone()), (b, instance.clone())].into(), ..Default::default() },
+            );
+            instance.definition = definition;
+        }
+        doc.root.instances.insert(left, instance);
+        let before = doc.clone();
+        let error = run(&mut doc, None, left, right, BooleanOp::Union, false).unwrap_err();
+        assert!(error.to_string().contains("4096 occurrences"), "{error}");
+        assert_eq!(doc, before);
+    }
+
+    #[test]
+    fn repeated_geometry_budget_is_checked_before_boolean_work() {
+        let mut editor = Editor::new();
+        let left = cube(&mut editor, DVec3::ZERO, DVec3::ONE);
+        let right = cube(&mut editor, DVec3::ONE, DVec3::ONE);
+        let mut doc = editor.doc().clone();
+        let mut instance = doc.root.instances[&left].clone();
+        let mut parent = Definition::default();
+        for _ in 0..512 {
+            parent.instances.insert(InstanceId(doc.reserve_id()), instance.clone());
+        }
+        let definition = DefinitionId(doc.reserve_id());
+        doc.definitions.insert(definition, parent);
+        instance.definition = definition;
+        doc.root.instances.insert(left, instance);
+        let before = doc.clone();
+        let error = run(&mut doc, None, left, right, BooleanOp::Union, false).unwrap_err();
+        assert!(error.to_string().contains("4096 triangles"), "{error}");
+        assert_eq!(doc, before);
+    }
+
     fn volume(e: &Editor, id: InstanceId) -> f64 {
         let instance = &e.active().instances[&id];
         crate::solid_validation::validate(&e.doc().definitions[&instance.definition].mesh, false).unwrap()

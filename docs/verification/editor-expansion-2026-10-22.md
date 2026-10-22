@@ -62,3 +62,19 @@ A fresh browser access attempt against the local server was also blocked by the
 unavailable admin policy check. The temporary tab and server were closed. Static
 validation does not exercise editor startup or WebGL. Nothing has been published
 externally.
+
+## Solid hierarchy preflight follow-up
+
+Solid Tools now validates both operand hierarchies and geometry budgets before
+computing their bounds. Bounds use only the validated leaf vertices; they no
+longer expand the definition hierarchy separately. Triangle and vertex counting
+stops at the first exceeded limit and uses checked or saturating arithmetic.
+
+Three regression tests reject cyclic definitions, a compact shared hierarchy
+with over 16 million expanded leaves, and repeated geometry above the triangle
+budget. Each verifies that rejection leaves the document unchanged.
+
+Validation: all 284 model library tests pass. Strict native workspace all-target
+Clippy and strict web-release WASM Clippy pass without warnings. Formatting and
+diff whitespace checks pass. The release ZIP described above predates this
+follow-up and does not contain this fix.
