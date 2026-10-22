@@ -76,7 +76,7 @@ pub(crate) fn mapped_entity(
                 let (a, b) = target.edge_points(edge);
                 let delta = b - a;
                 let parameter = (point - a).dot(delta) / delta.length_squared();
-                (parameter >= 0.0 && parameter <= 1.0 && point.distance(a + delta * parameter) < EPS)
+                ((0.0..=1.0).contains(&parameter) && point.distance(a + delta * parameter) < EPS)
                     .then_some(PointEntity::Edge { edge, parameter })
             })
         }
@@ -963,17 +963,17 @@ impl Dimension {
         }
     }
 
-    pub(crate) fn reparented(
-        &self,
-        doc: &Document,
-        owner: Option<DefinitionId>,
-        parent: Option<DefinitionId>,
-        instance: InstanceId,
-        source: &rysmo_mesh::Mesh,
-        target: &rysmo_mesh::Mesh,
-        transform: DMat4,
-        children: &[InstanceId],
-    ) -> Self {
+    pub(crate) fn reparented(&self, reparenting: crate::annotation_reparent::AnnotationReparent<'_>) -> Self {
+        let crate::annotation_reparent::AnnotationReparent {
+            doc,
+            owner,
+            parent,
+            instance,
+            source,
+            target,
+            transform,
+            children,
+        } = reparenting;
         let mut result = self.clone();
         let path = |path: &mut Vec<InstanceId>| {
             for index in 0..path.len() {
@@ -1048,8 +1048,7 @@ impl Dimension {
 
     /// Maps placement and fallback values. Linked geometry retains its references.
     pub fn mapped(mut self, transform: DMat4) -> Self {
-        let normal = |normal: DVec3| transform.inverse().transpose().transform_vector3(normal).normalize();
-        self.normal = normal(self.normal);
+        self.normal = transform.inverse().transpose().transform_vector3(self.normal).normalize();
         self.offset = transform.transform_vector3(self.offset);
         match &mut self.measure {
             DimensionMeasure::Linear { from, to, axis } => {
@@ -1260,6 +1259,28 @@ impl Dimension {
         };
         let automatic = format!("{prefix}{length}");
         if self.text.is_empty() { automatic } else { self.text.replace("<>", &automatic) }
+    }
+}
+
+impl Document {
+    pub(crate) fn refresh_dimensions(&mut self) {
+        let owners: Vec<_> = std::iter::once(None).chain(self.definitions.keys().copied().map(Some)).collect();
+        let document = &*self;
+        let updates: Vec<_> = owners
+            .into_iter()
+            .flat_map(|owner| {
+                document
+                    .def(owner)
+                    .unwrap()
+                    .dimensions
+                    .iter()
+                    .map(move |(id, dimension)| (owner, *id, dimension.refreshed(document, owner)))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        for (owner, id, dimension) in updates {
+            self.def_mut(owner).unwrap().dimensions.insert(id, dimension);
+        }
     }
 }
 
@@ -1786,27 +1807,5 @@ mod tests {
         assert!(!layout.box_hit(&view, lo, hi, false, text));
         assert!(layout.box_hit(&view, rysmo_math::DVec2::ZERO, view.size, false, text));
         assert!(!layout.box_hit(&view, rysmo_math::DVec2::ZERO, view.size, false, None));
-    }
-}
-
-impl Document {
-    pub(crate) fn refresh_dimensions(&mut self) {
-        let owners: Vec<_> = std::iter::once(None).chain(self.definitions.keys().copied().map(Some)).collect();
-        let document = &*self;
-        let updates: Vec<_> = owners
-            .into_iter()
-            .flat_map(|owner| {
-                document
-                    .def(owner)
-                    .unwrap()
-                    .dimensions
-                    .iter()
-                    .map(move |(id, dimension)| (owner, *id, dimension.refreshed(document, owner)))
-                    .collect::<Vec<_>>()
-            })
-            .collect();
-        for (owner, id, dimension) in updates {
-            self.def_mut(owner).unwrap().dimensions.insert(id, dimension);
-        }
     }
 }

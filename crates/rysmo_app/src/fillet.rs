@@ -102,6 +102,14 @@ pub fn draw(painter: &egui::Painter, app: &App3d) {
     }
 }
 
+#[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
+pub fn preview(app: &mut App3d) {
+    begin(app);
+    if let Some(draft) = app.fillet.as_mut() {
+        draft.radius = "500mm".into();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -179,13 +187,5 @@ mod tests {
         begin(&mut app);
         assert!(app.fillet.is_none());
         assert!(crate::actions::available(&app).contains(&(crate::actions::Action::Fillet, false)));
-    }
-}
-
-#[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
-pub fn preview(app: &mut App3d) {
-    begin(app);
-    if let Some(draft) = app.fillet.as_mut() {
-        draft.radius = "500mm".into();
     }
 }

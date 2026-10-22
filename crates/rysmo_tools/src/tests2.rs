@@ -1058,8 +1058,7 @@ fn display_precision_and_imperial_input_do_not_round_a_drawn_line() {
 #[test]
 fn length_snapping_never_overrides_exact_input_or_endpoint_inference() {
     let mut r = Rig::new(ToolKind::Line);
-    let mut settings = rysmo_model::MeasurementSettings::default();
-    settings.length_snap = Some(0.5);
+    let settings = rysmo_model::MeasurementSettings { length_snap: Some(0.5), ..Default::default() };
     r.editor.apply(Command::SetMeasurementSettings { settings }).unwrap();
     r.click(v(0.5, 0.5, 0.));
     r.hover(v(1.72, 0.5, 0.));
@@ -1082,9 +1081,8 @@ fn angle_settings_apply_to_rotate_preview_but_exact_angles_bypass_snapping() {
     let mut r = Rig::new(ToolKind::Rotate);
     square(&mut r, 1.);
     let face = r.editor.mesh().faces().next().unwrap().0;
-    let mut settings = rysmo_model::MeasurementSettings::default();
-    settings.angle_snap = Some(20.);
-    settings.angle_precision = 3;
+    let mut settings =
+        rysmo_model::MeasurementSettings { angle_snap: Some(20.), angle_precision: 3, ..Default::default() };
     r.editor.apply(Command::SetMeasurementSettings { settings }).unwrap();
     r.editor.set_selection([Element::Face(face)]);
     r.click(DVec3::ZERO);

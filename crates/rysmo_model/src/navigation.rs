@@ -57,7 +57,7 @@ fn swept_box_triangle(centre: DVec3, half: DVec3, movement: DVec3, triangle: [DV
         }
     }
     // Permit departure from an initial overlap, such as a camera placed on a face.
-    (enter >= -1e-8 && enter <= 1.0 && leave > 1e-8).then_some(enter.max(0.0))
+    ((-1e-8..=1.0).contains(&enter) && leave > 1e-8).then_some(enter.max(0.0))
 }
 
 impl Document {
@@ -151,21 +151,22 @@ impl Document {
             }
             if !vertical && height > 0.0 {
                 let feet = camera.eye() - DVec3::Z * height;
-                if let Some(hit) = self.ray_surface(Ray::new(feet + DVec3::Z * 0.35, -DVec3::Z)) {
-                    if hit.normal.z.abs() > 0.5 && hit.distance <= 0.7 {
-                        let elevation = hit.point.z - feet.z;
-                        // Following ground must not lift the body into a ceiling.
-                        let body_height = height.abs().max(0.3);
-                        let half = DVec3::new(0.18, 0.18, (body_height + 0.03) * 0.5);
-                        let centre = camera.eye() + DVec3::Z * (0.165 - body_height * 0.5);
-                        let clear = triangles.iter().all(|triangle| {
-                            swept_box_triangle(centre, half, DVec3::Z * elevation, *triangle)
-                                .is_none_or(|fraction| fraction >= 1.0)
-                        });
-                        if clear {
-                            camera.target.z += elevation;
-                            camera.eye_base_z = hit.point.z;
-                        }
+                if let Some(hit) = self.ray_surface(Ray::new(feet + DVec3::Z * 0.35, -DVec3::Z))
+                    && hit.normal.z.abs() > 0.5
+                    && hit.distance <= 0.7
+                {
+                    let elevation = hit.point.z - feet.z;
+                    // Following ground must not lift the body into a ceiling.
+                    let body_height = height.abs().max(0.3);
+                    let half = DVec3::new(0.18, 0.18, (body_height + 0.03) * 0.5);
+                    let centre = camera.eye() + DVec3::Z * (0.165 - body_height * 0.5);
+                    let clear = triangles.iter().all(|triangle| {
+                        swept_box_triangle(centre, half, DVec3::Z * elevation, *triangle)
+                            .is_none_or(|fraction| fraction >= 1.0)
+                    });
+                    if clear {
+                        camera.target.z += elevation;
+                        camera.eye_base_z = hit.point.z;
                     }
                 }
             }

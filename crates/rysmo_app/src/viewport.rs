@@ -161,14 +161,13 @@ fn sync_camera(
             let rendered = crate::render_view::target_size(size, app.editor.doc().style.render_scale);
             if images.get(&target_image.image).is_some_and(|i| {
                 i.texture_descriptor.size.width != rendered.x || i.texture_descriptor.size.height != rendered.y
-            }) {
-                if let Some(mut image) = images.get_mut(&target_image.image) {
-                    image.resize(bevy::render::render_resource::Extent3d {
-                        width: rendered.x,
-                        height: rendered.y,
-                        depth_or_array_layers: 1,
-                    });
-                }
+            }) && let Some(mut image) = images.get_mut(&target_image.image)
+            {
+                image.resize(bevy::render::render_resource::Extent3d {
+                    width: rendered.x,
+                    height: rendered.y,
+                    depth_or_array_layers: 1,
+                });
             }
             *render_target = target_image.image.clone().into();
             camera.viewport =
@@ -177,14 +176,9 @@ fn sync_camera(
             if images
                 .get(&target_image.image)
                 .is_some_and(|i| i.texture_descriptor.size.width != 1 || i.texture_descriptor.size.height != 1)
+                && let Some(mut image) = images.get_mut(&target_image.image)
             {
-                if let Some(mut image) = images.get_mut(&target_image.image) {
-                    image.resize(bevy::render::render_resource::Extent3d {
-                        width: 1,
-                        height: 1,
-                        depth_or_array_layers: 1,
-                    });
-                }
+                image.resize(bevy::render::render_resource::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 });
             }
             *render_target = bevy::camera::RenderTarget::default();
             camera.viewport =
@@ -330,12 +324,11 @@ fn draw_gizmos(
                             }
                         }
                         crossings.dedup_by(|a, b| a.distance(*b) < 1e-9);
-                        if crossings.len() == 2 {
-                            if let Some([a, b]) =
+                        if crossings.len() == 2
+                            && let Some([a, b]) =
                                 rysmo_model::sections::clip_segment([crossings[0], crossings[1]], &cuts)
-                            {
-                                section_lines.line(to_bevy(a), to_bevy(b), color3(doc.style.section_color));
-                            }
+                        {
+                            section_lines.line(to_bevy(a), to_bevy(b), color3(doc.style.section_color));
                         }
                     }
                 }
@@ -381,10 +374,10 @@ fn draw_gizmos(
                 }
                 Guide::Point { p, origin, .. } => {
                     let c = t.transform_point3(*p);
-                    if let Some(origin) = origin {
-                        if let Some((a, b)) = clip_in_front(t.transform_point3(*origin), c, eye, forward) {
-                            guides.line(to_bevy(a), to_bevy(b), color);
-                        }
+                    if let Some(origin) = origin
+                        && let Some((a, b)) = clip_in_front(t.transform_point3(*origin), c, eye, forward)
+                    {
+                        guides.line(to_bevy(a), to_bevy(b), color);
                     }
                     let s = app.camera.distance * 0.01;
                     for d in [DVec3::X, DVec3::Y, DVec3::Z] {

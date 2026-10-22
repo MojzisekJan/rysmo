@@ -282,8 +282,8 @@ mod tests {
     #[test]
     fn clipping_preserves_attribute_weights_and_handles_multiple_cuts() {
         let plane = SectionPlane { name: String::new(), origin: DVec3::ZERO, normal: DVec3::X };
-        assert!(clip_segment([DVec3::X, DVec3::X * 2.], &[plane.clone()]).is_none());
-        assert_eq!(clip_segment([-DVec3::X, DVec3::X], &[plane.clone()]), Some([-DVec3::X, DVec3::ZERO]));
+        assert!(clip_segment([DVec3::X, DVec3::X * 2.], std::slice::from_ref(&plane)).is_none());
+        assert_eq!(clip_segment([-DVec3::X, DVec3::X], std::slice::from_ref(&plane)), Some([-DVec3::X, DVec3::ZERO]));
         let tri = [-DVec3::X, DVec3::X, DVec3::Y];
         let result = clip_triangle(tri, &[plane]);
         assert!(result.len() >= 3);

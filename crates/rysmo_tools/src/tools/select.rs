@@ -282,16 +282,6 @@ fn segment_hits_rect(a: DVec2, b: DVec2, lo: DVec2, hi: DVec2) -> bool {
     true
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn crossing_rectangle_includes_collinear_boundary_contact() {
-        assert!(segment_hits_rect(DVec2::new(-1., 0.), DVec2::new(2., 0.), DVec2::ZERO, DVec2::ONE));
-        assert!(!segment_hits_rect(DVec2::new(-1., -0.1), DVec2::new(2., -0.1), DVec2::ZERO, DVec2::ONE));
-    }
-}
-
 /// Soft edges join visible facets into one selectable surface.
 fn soft_surface(mesh: &Mesh, start: rysmo_mesh::FaceId) -> Vec<rysmo_mesh::FaceId> {
     let mut result = BTreeSet::from([start]);
@@ -309,4 +299,14 @@ fn soft_surface(mesh: &Mesh, start: rysmo_mesh::FaceId) -> Vec<rysmo_mesh::FaceI
         }
     }
     result.into_iter().collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn crossing_rectangle_includes_collinear_boundary_contact() {
+        assert!(segment_hits_rect(DVec2::new(-1., 0.), DVec2::new(2., 0.), DVec2::ZERO, DVec2::ONE));
+        assert!(!segment_hits_rect(DVec2::new(-1., -0.1), DVec2::new(2., -0.1), DVec2::ZERO, DVec2::ONE));
+    }
 }

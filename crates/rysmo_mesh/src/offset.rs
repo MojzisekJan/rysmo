@@ -29,14 +29,14 @@ pub fn offset_polyline(points: &[DVec3], normal: DVec3, distance: f64, closed: b
     }
     let left = |d: DVec2| DVec2::new(-d.y, d.x);
     let mut out = Vec::with_capacity(n);
-    for i in 0..n {
+    for (i, &point) in pts.iter().enumerate() {
         let prev = if closed { Some((i + seg_count - 1) % seg_count) } else { i.checked_sub(1) };
         let next = if closed || i < seg_count { Some(i % seg_count) } else { None };
         let q = match (prev, next) {
             (Some(a), Some(b)) => {
                 let (da, db) = (dirs[a], dirs[b]);
-                let pa = pts[i] + left(da) * distance;
-                let pb = pts[i] + left(db) * distance;
+                let pa = point + left(da) * distance;
+                let pb = point + left(db) * distance;
                 let cross = da.perp_dot(db);
                 if cross.abs() < 1e-9 {
                     pb
@@ -46,8 +46,8 @@ pub fn offset_polyline(points: &[DVec3], normal: DVec3, distance: f64, closed: b
                     pa + da * t
                 }
             }
-            (None, Some(b)) => pts[i] + left(dirs[b]) * distance,
-            (Some(a), None) => pts[i] + left(dirs[a]) * distance,
+            (None, Some(b)) => point + left(dirs[b]) * distance,
+            (Some(a), None) => point + left(dirs[a]) * distance,
             (None, None) => return None,
         };
         out.push(q);

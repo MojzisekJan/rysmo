@@ -236,12 +236,12 @@ pub fn pointer(app: &mut App3d, at: DVec2, event: rysmo_tools::Pointer) {
     let view = app.local_view();
     if draft.pick_face {
         draft.candidate = face_frame(app, at, draft.centre);
-        if matches!(event, Pointer::Down { .. }) {
-            if let Some(frame) = draft.candidate {
-                draft.set_custom(frame);
-                let normal = frame.normal(2);
-                draft.drag = drag_parameter(&view, at, frame.origin, normal).map(|p| (p, 0.));
-            }
+        if matches!(event, Pointer::Down { .. })
+            && let Some(frame) = draft.candidate
+        {
+            draft.set_custom(frame);
+            let normal = frame.normal(2);
+            draft.drag = drag_parameter(&view, at, frame.origin, normal).map(|p| (p, 0.));
         }
     } else {
         let frame = draft.plane(app);

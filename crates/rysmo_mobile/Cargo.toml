@@ -19,5 +19,8 @@ unsafe_code = "deny"
 # the platform entry-point symbol. Keep the same Clippy guardrails explicitly.
 [lints.clippy]
 dbg_macro = "deny"
+clone_on_copy = "deny"
+result_unit_err = "deny"
+type_complexity = "deny"
 todo = "warn"
 unimplemented = "warn"

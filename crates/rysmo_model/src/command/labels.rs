@@ -1,0 +1,98 @@
+//! Human-readable command labels used by Undo.
+
+use super::types::Command;
+
+impl Command {
+    /// A short action name for the undo menu.
+    pub fn label(&self) -> &'static str {
+        match self {
+            Command::SolidBoolean { operation, .. } => operation.name(),
+            Command::ApplyTextDefaults { .. } => "Text Settings",
+            Command::ApplyTextAppearance { .. } => "Text Appearance",
+            Command::Smoove { .. } => "Smoove",
+            Command::DrapeEdges { .. } | Command::DrapeSources { .. } | Command::DrapeOnFace { .. } => "Drape",
+            Command::StampTerrainOutline { .. }
+            | Command::StampTerrainRings { .. }
+            | Command::StampTerrainInstance { .. }
+            | Command::StampOnFace { .. } => "Stamp",
+            Command::AddTerrainDetail { .. } => "Add Detail",
+            Command::FlipTerrainEdge { .. } => "Flip Edge",
+            Command::TerrainFromContours { .. } => "From Contours",
+            Command::CreateTerrainGrid { .. } => "From Scratch",
+            Command::CreateText3d { .. } => "3D Text",
+            Command::AddText { .. } => "Text",
+            Command::SetText { .. } => "Edit Text",
+            Command::EraseTexts { .. } => "Erase Text",
+            Command::AddDimension { .. } => "Dimension",
+            Command::SetDimension { .. } => "Edit Dimension",
+            Command::ApplyDimensionDefaults { .. } => "Update Dimensions",
+            Command::EraseDimensions { .. } => "Erase Dimensions",
+            Command::DrawLines { .. } => "Line",
+            Command::DrawRectangle { .. } => "Rectangle",
+            Command::DrawCircle { .. } => "Circle",
+            Command::DrawPolygon { .. } => "Polygon",
+            Command::DrawFreehand { .. } => "Freehand",
+            Command::SetCurveRadius { .. } => "Curve Radius",
+            Command::SetCurveSegments { .. } => "Curve Segments",
+            Command::DrawArc { .. } => "Arc",
+            Command::FilletEdges { .. } => "Fillet",
+            Command::DrawThreePointArc { .. } => "Three Point Arc",
+            Command::DrawCentreArc { pie: true, .. } => "Pie",
+            Command::DrawCentreArc { .. } => "Center Arc",
+            Command::PushPull { .. } => "Push/Pull",
+            Command::Move { .. } | Command::MoveWithText { .. } => "Move",
+            Command::Paste { .. } => "Paste",
+            Command::Copy { .. } | Command::CopyWithText { .. } => "Copy",
+            Command::Rotate { .. } => "Rotate",
+            Command::Scale { .. } | Command::ScaleInAxes { .. } => "Scale",
+            Command::SetAxes { .. } => "Drawing Axes",
+            Command::ResizeContext { .. } => "Resize Model",
+            Command::OffsetFace { .. } | Command::OffsetEdges { .. } => "Offset",
+            Command::FollowMe { .. } => "Follow Me",
+            Command::Erase { .. } => "Erase",
+            Command::ReverseFaces { .. } => "Reverse Faces",
+            Command::SetEdges { .. } => "Edge Style",
+            Command::SoftenEdges { .. } => "Soften Edges",
+            Command::MakeGroup { .. } => "Make Group",
+            Command::MakeComponent { .. } => "Make Component",
+            Command::Explode { .. } => "Explode",
+            Command::MakeUnique { .. } => "Make Unique",
+            Command::SetGeometryHidden { .. } => "Geometry visibility",
+            Command::SetInstancesHidden { .. } => "Instance visibility",
+            Command::SetComponentProperties { .. } => "Component properties",
+            Command::DeleteDefinition { .. } => "Delete component",
+            Command::RenameInstance { .. } => "Rename",
+            Command::PlaceInstance { .. } | Command::PlaceGluedInstance { .. } => "Place Component",
+            Command::UnglueInstances { .. } => "Unglue",
+            Command::AddGuideLine { .. } | Command::AddGuidePoint { .. } | Command::AddGuideSegment { .. } => "Guide",
+            Command::DeleteGuides => "Delete Guides",
+            Command::AddMaterial { .. } | Command::AddTexturedMaterial { .. } => "New Material",
+            Command::AddImage { .. } => "Add Image",
+            Command::SetMaterialTexture { .. } => "Texture",
+            Command::SetMaterialGlow { .. } => "Glow",
+            Command::SetTexturePlacement { .. } => "Position Texture",
+            Command::CreateSectionSlice { .. }
+            | Command::AddSection { .. }
+            | Command::SetSection { .. }
+            | Command::ActivateSection { .. } => "Section",
+            Command::IntersectFaces { .. } => "Intersect Faces",
+            Command::AddScene { .. } => "Add scene",
+            Command::SetScene { .. } => "Edit scene",
+            Command::RestoreScene { .. } => "Restore scene",
+            Command::ReorderScene { .. } => "Reorder scene",
+            Command::SetStyle { .. } => "Style",
+            Command::SetMaterial { .. } => "Edit Material",
+            Command::Paint { .. }
+            | Command::PaintInstances { .. }
+            | Command::PaintElements { .. }
+            | Command::PaintPositionedElements { .. }
+            | Command::PaintWrappedElements { .. } => "Paint",
+            Command::AddTag { .. } => "Add Tag",
+            Command::SetTag { .. } => "Tag",
+            Command::DeleteTag { .. } => "Delete Tag",
+            Command::AssignTag { .. } => "Change Tag",
+            Command::SetMeasurementSettings { .. } => "Measurement settings",
+            Command::SetUnits { .. } | Command::SetLengthPrecision { .. } => "Units",
+        }
+    }
+}

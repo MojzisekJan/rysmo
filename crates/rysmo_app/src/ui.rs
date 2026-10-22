@@ -592,7 +592,7 @@ pub fn measurement_label(app: &App3d) -> (String, String) {
         "Offset"
     } else if let Some(d) = &app.smoove {
         d.measurement().0
-    } else if app.terrain_last.as_ref().is_some_and(|d| d.valid(&app)) {
+    } else if app.terrain_last.as_ref().is_some_and(|d| d.valid(app)) {
         "Length, Width"
     } else if let Some(draft) = &app.terrain {
         draft.measurement().0
@@ -613,7 +613,7 @@ pub fn measurement_label(app: &App3d) -> (String, String) {
         app.editor.doc().format_length(d.value(app.editor.active().axes.z()))
     } else if let Some(d) = &app.smoove {
         app.editor.doc().format_length(d.measurement().1)
-    } else if let Some(last) = app.terrain_last.as_ref().filter(|d| d.valid(&app)) {
+    } else if let Some(last) = app.terrain_last.as_ref().filter(|d| d.valid(app)) {
         let (length, width) = last.dimensions();
         format!("{},{}", app.editor.doc().format_length(length), app.editor.doc().format_length(width))
     } else if let Some(draft) = &app.terrain {
@@ -770,10 +770,10 @@ pub fn menus(ui: &mut egui::Ui, app: &mut App3d) {
         if menu::toggle(ui, g::RULER, "Guides", &mut style.show_guides).changed() {
             let _ = app.editor.apply(Command::SetStyle { style });
         }
-        if menu::toggle(ui, g::CUBE_TRANSPARENT, "Hidden Geometry", &mut style.show_hidden_geometry).changed() {
-            if let Err(error) = app.editor.apply(Command::SetStyle { style }) {
-                app.message = Some(error.to_string());
-            }
+        if menu::toggle(ui, g::CUBE_TRANSPARENT, "Hidden Geometry", &mut style.show_hidden_geometry).changed()
+            && let Err(error) = app.editor.apply(Command::SetStyle { style })
+        {
+            app.message = Some(error.to_string());
         }
         ui.separator();
         if menu::button(ui, g::ARROWS_OUT_CARDINAL, "Reset drawing axes", "").clicked() {

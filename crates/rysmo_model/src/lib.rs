@@ -8,6 +8,7 @@
 
 #![forbid(unsafe_code)]
 
+mod annotation_reparent;
 pub mod arcs;
 pub mod clipboard;
 pub mod command;

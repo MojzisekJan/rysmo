@@ -31,6 +31,9 @@ unsafe_code = "forbid"
 
 [workspace.lints.clippy]
 dbg_macro = "deny"
+clone_on_copy = "deny"
+result_unit_err = "deny"
+type_complexity = "deny"
 todo = "warn"
 unimplemented = "warn"
 

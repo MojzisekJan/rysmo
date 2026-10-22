@@ -428,8 +428,7 @@ fn overlapping_edge_pick_prefers_front_depth_in_either_source_order() {
     let mut line = Mesh::new();
     line.add_lines(&[(DVec3::X * -2., DVec3::X * 2.)], None).unwrap();
     let empty = Mesh::new();
-    let mut camera = OrbitCamera::default();
-    camera.parallel = true;
+    let mut camera = OrbitCamera { parallel: true, ..Default::default() };
     camera.set_standard_view(rysmo_math::StandardView::Top);
     let view = camera.view(DVec2::new(800., 600.));
     let front = rysmo_mesh::InstanceId(202);

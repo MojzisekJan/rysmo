@@ -5,7 +5,7 @@ use rysmo_model::{Command, Document, Editor, Element, InstanceId};
 pub enum Stage {
     Source,
     Terrain,
-    Elevation { target: Element, height: f64, preview: Document },
+    Elevation { target: Element, height: f64, preview: Box<Document> },
 }
 pub struct Draft {
     pub sources: Vec<Element>,
@@ -82,7 +82,7 @@ impl Draft {
             return Err("Choose a terrain face or instance.".into());
         }
         let preview = self.preview(editor, target, height, self.offset)?;
-        self.stage = Stage::Elevation { target, height, preview };
+        self.stage = Stage::Elevation { target, height, preview: Box::new(preview) };
         Ok(())
     }
     pub fn set_offset(&mut self, editor: &Editor, offset: f64) -> Result<(), String> {
@@ -99,7 +99,7 @@ impl Draft {
         };
         if let Stage::Elevation { target, height, .. } = self.stage {
             let preview = self.preview(editor, target, height, offset)?;
-            self.stage = Stage::Elevation { target, height, preview };
+            self.stage = Stage::Elevation { target, height, preview: Box::new(preview) };
         }
         self.offset = offset;
         self.transitions = transitions;
@@ -160,7 +160,7 @@ mod tests {
         assert_eq!(editor.revision(), revision);
         let Stage::Elevation { preview, height, .. } = &draft.stage else { panic!() };
         assert_eq!(*height, 2.);
-        let expected = preview.clone();
+        let expected = preview.as_ref().clone();
         let outlines_before = draft.transitions.clone();
         assert!(draft.set_offset(&editor, -1.).is_err());
         assert_eq!(draft.transitions, outlines_before);
@@ -296,7 +296,7 @@ pub fn value(app: &mut crate::state::App3d, text: &str) -> Result<(), String> {
         };
         let (target, height, offset) = (target, *height, *offset);
         app.editor.amend_last(command.clone()).map_err(|e| e.to_string())?;
-        draft.stage = Stage::Elevation { target, height, preview: app.editor.doc().clone() };
+        draft.stage = Stage::Elevation { target, height, preview: Box::new(app.editor.doc().clone()) };
         draft.offset = offset;
         if let Some(transitions) = transitions {
             draft.transitions = transitions;
@@ -420,7 +420,7 @@ mod interaction_tests {
         value(&mut app, "0.5mo").unwrap();
         assert_eq!(app.editor.doc(), &before);
         let Stage::Elevation { preview, .. } = &app.stamp.as_ref().unwrap().stage else { panic!() };
-        let expected = preview.clone();
+        let expected = preview.as_ref().clone();
         pointer(&mut app, at, rysmo_tools::Pointer::Down { clicks: 1 });
         assert_eq!(app.editor.doc(), &expected);
         value(&mut app, "2.5m").unwrap();

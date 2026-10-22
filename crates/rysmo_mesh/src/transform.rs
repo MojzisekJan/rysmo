@@ -9,22 +9,45 @@ use crate::ids::{EdgeId, Element, FaceId, MaterialId, VertexId};
 use crate::mesh::{Face, Mesh, MeshError};
 use crate::region::canonical;
 
+/// Display attributes preserved when an edge is copied into another mesh.
+#[derive(Clone, Debug)]
+struct EdgeAppearance {
+    soft: bool,
+    smooth: bool,
+    hidden: bool,
+    material: Option<MaterialId>,
+}
+
+#[derive(Clone, Debug)]
+struct TemplateLine {
+    start: DVec3,
+    end: DVec3,
+    appearance: EdgeAppearance,
+}
+
+#[derive(Clone, Debug)]
+struct TemplateCurve {
+    curve: crate::Curve,
+    segments: Vec<(DVec3, DVec3)>,
+}
+
+#[derive(Clone, Debug)]
+struct TemplateFace {
+    outer: Vec<DVec3>,
+    holes: Vec<Vec<DVec3>>,
+    normal: DVec3,
+    material: Option<MaterialId>,
+    back_material: Option<MaterialId>,
+    uv: Option<crate::TexturePlacement>,
+    hidden: bool,
+}
+
 /// Geometry lifted out of a mesh so it can be stamped somewhere else, transformed.
 #[derive(Clone, Debug, Default)]
 pub struct Template {
-    /// Edge end points, display flags and material.
-    lines: Vec<(DVec3, DVec3, (bool, bool, bool, Option<MaterialId>))>,
-    /// Face outlines, normals, front and back materials.
-    curves: Vec<(crate::Curve, Vec<(DVec3, DVec3)>)>,
-    faces: Vec<(
-        Vec<DVec3>,
-        Vec<Vec<DVec3>>,
-        DVec3,
-        Option<MaterialId>,
-        Option<MaterialId>,
-        Option<crate::TexturePlacement>,
-        bool,
-    )>,
+    lines: Vec<TemplateLine>,
+    curves: Vec<TemplateCurve>,
+    faces: Vec<TemplateFace>,
 }
 
 impl Template {
@@ -41,15 +64,15 @@ impl Template {
                     edges.extend(mesh.face_edges(*id));
                     let f = &mesh.faces[id];
                     let n = mesh.face_normal(*id).unwrap_or(DVec3::Z);
-                    t.faces.push((
-                        mesh.loop_points(&f.outer),
-                        f.holes.iter().map(|h| mesh.loop_points(h)).collect(),
-                        n,
-                        f.material,
-                        f.back_material,
-                        f.uv,
-                        f.hidden,
-                    ));
+                    t.faces.push(TemplateFace {
+                        outer: mesh.loop_points(&f.outer),
+                        holes: f.holes.iter().map(|h| mesh.loop_points(h)).collect(),
+                        normal: n,
+                        material: f.material,
+                        back_material: f.back_material,
+                        uv: f.uv,
+                        hidden: f.hidden,
+                    });
                 }
                 _ => {}
             }
@@ -62,11 +85,21 @@ impl Template {
             if members.len() != all.len() {
                 curve.kind = crate::CurveKind::Polyline;
             }
-            t.curves.push((curve, members.iter().map(|e| mesh.edge_points(*e)).collect()));
+            t.curves.push(TemplateCurve { curve, segments: members.iter().map(|e| mesh.edge_points(*e)).collect() });
         }
         for e in edges {
             let (a, b) = mesh.edge_points(e);
-            t.lines.push((a, b, mesh.edges[&e].flags()));
+            let edge = &mesh.edges[&e];
+            t.lines.push(TemplateLine {
+                start: a,
+                end: b,
+                appearance: EdgeAppearance {
+                    soft: edge.soft,
+                    smooth: edge.smooth,
+                    hidden: edge.hidden,
+                    material: edge.material,
+                },
+            });
         }
         t
     }
@@ -309,31 +342,36 @@ impl Mesh {
     pub fn stamp(&mut self, t: &Template, f: impl Fn(DVec3) -> DVec3) -> Result<Vec<Element>, MeshError> {
         let mut out = Vec::new();
         let lines: Vec<(DVec3, DVec3)> =
-            t.lines.iter().map(|(a, b, _)| (f(*a), f(*b))).filter(|(a, b)| a.distance(*b) >= EPS).collect();
+            t.lines.iter().map(|line| (f(line.start), f(line.end))).filter(|(a, b)| a.distance(*b) >= EPS).collect();
         if lines.is_empty() {
             return Ok(out);
         }
-        let has_holes = t.faces.iter().any(|(_, holes, _, _, _, _, _)| !holes.is_empty())
-            || self.faces.values().any(|face| !face.holes.is_empty());
+        let has_holes =
+            t.faces.iter().any(|face| !face.holes.is_empty()) || self.faces.values().any(|face| !face.holes.is_empty());
         let existing = has_holes.then(|| self.clone());
         let before: BTreeSet<_> = self.faces.keys().copied().collect();
         let edges = self.add_lines(&lines, None)?;
         out.extend(edges.into_iter().map(Element::Edge));
-        for (a, b, flags) in &t.lines {
-            if *flags == (false, false, false, None) {
+        for line in &t.lines {
+            let appearance = &line.appearance;
+            if !appearance.soft && !appearance.smooth && !appearance.hidden && appearance.material.is_none() {
                 continue;
             }
-            if let (Some(x), Some(y)) = (self.find_vertex(f(*a)), self.find_vertex(f(*b)))
+            if let (Some(x), Some(y)) = (self.find_vertex(f(line.start)), self.find_vertex(f(line.end)))
                 && let Some(e) = self.edge_between(x, y)
             {
-                self.edges.get_mut(&e).expect("found").set_flags(*flags);
+                let edge = self.edges.get_mut(&e).ok_or(MeshError::Missing(e.0))?;
+                edge.soft = appearance.soft;
+                edge.smooth = appearance.smooth;
+                edge.hidden = appearance.hidden;
+                edge.material = appearance.material;
             }
         }
-        for (curve, segments) in &t.curves {
-            let lines: Vec<_> = segments.iter().map(|(a, b)| (f(*a), f(*b))).collect();
+        for template in &t.curves {
+            let lines: Vec<_> = template.segments.iter().map(|(a, b)| (f(*a), f(*b))).collect();
             let members = self.edges_on_segments(&lines);
             if !members.is_empty() {
-                self.register_curve(&members, curve.mapped(&f))?;
+                self.register_curve(&members, template.curve.mapped(&f))?;
             }
         }
         self.prune_curves();
@@ -341,15 +379,18 @@ impl Mesh {
             let mut regions = t
                 .faces
                 .iter()
-                .filter_map(|(outer, holes, _, _, _, _, _)| {
-                    let mapped = outer.iter().map(|p| f(*p)).collect::<Vec<_>>();
+                .filter_map(|face| {
+                    let mapped = face.outer.iter().map(|p| f(*p)).collect::<Vec<_>>();
                     let plane = Plane::from_polygon(&mapped)?;
                     let (u, v) = plane.basis();
                     let project = |p: DVec3| rysmo_math::DVec2::new(p.dot(u), p.dot(v));
                     Some((
                         plane,
                         mapped.into_iter().map(project).collect::<Vec<_>>(),
-                        holes.iter().map(|h| h.iter().map(|p| project(f(*p))).collect::<Vec<_>>()).collect::<Vec<_>>(),
+                        face.holes
+                            .iter()
+                            .map(|h| h.iter().map(|p| project(f(*p))).collect::<Vec<_>>())
+                            .collect::<Vec<_>>(),
                     ))
                 })
                 .collect::<Vec<_>>();
@@ -408,8 +449,8 @@ impl Mesh {
                 self.faces.remove(&face);
             }
         }
-        for (outer, _holes, normal, mat, back, uv, hidden) in &t.faces {
-            let mapped: Vec<DVec3> = outer.iter().map(|p| f(*p)).collect();
+        for face in &t.faces {
+            let mapped: Vec<DVec3> = face.outer.iter().map(|p| f(*p)).collect();
             let ids: Option<Vec<VertexId>> = mapped.iter().map(|p| self.find_vertex(*p)).collect();
             let Some(ids) = ids else { continue };
             let want = canonical(&ids);
@@ -421,18 +462,18 @@ impl Mesh {
             let id = *id;
             // Map the normal as a direction from the outline's centre: that keeps the
             // copy facing the right side, mirror images included.
-            let c = outer.iter().copied().sum::<DVec3>() / outer.len() as f64;
-            let want_normal = Some(f(c + *normal) - f(c));
+            let c = face.outer.iter().copied().sum::<DVec3>() / face.outer.len() as f64;
+            let want_normal = Some(f(c + face.normal) - f(c));
             if let (Some(n), Some(w)) = (self.face_normal(id), want_normal)
                 && n.dot(w) < 0.0
             {
-                self.faces.get_mut(&id).expect("found").reverse();
+                self.faces.get_mut(&id).ok_or(MeshError::Missing(id.0))?.reverse();
             }
-            let g = self.faces.get_mut(&id).expect("found");
-            g.material = *mat;
-            g.back_material = *back;
-            g.hidden = *hidden;
-            g.uv = *uv;
+            let g = self.faces.get_mut(&id).ok_or(MeshError::Missing(id.0))?;
+            g.material = face.material;
+            g.back_material = face.back_material;
+            g.hidden = face.hidden;
+            g.uv = face.uv;
             out.push(Element::Face(id));
         }
         Ok(out)
@@ -515,5 +556,81 @@ impl Mesh {
         for v in self.vertices.values_mut() {
             v.pos = f(v.pos);
         }
+    }
+}
+
+#[cfg(test)]
+mod template_tests {
+    use super::*;
+    use crate::{Curve, CurveKind, TexturePlacement};
+
+    #[test]
+    fn mirrored_template_preserves_holes_materials_uv_curves_and_visibility() {
+        let mut source = Mesh::new();
+        for ring in [
+            [DVec3::ZERO, DVec3::X * 4., DVec3::new(4., 4., 0.), DVec3::Y * 4.],
+            [DVec3::new(1., 1., 0.), DVec3::new(3., 1., 0.), DVec3::new(3., 3., 0.), DVec3::new(1., 3., 0.)],
+        ] {
+            let lines: Vec<_> = ring.iter().zip(ring.iter().cycle().skip(1)).take(4).map(|(a, b)| (*a, *b)).collect();
+            source.add_lines(&lines, Some(DVec3::Z)).unwrap();
+        }
+        let inner = source.faces().find(|(id, _)| (source.face_area(*id) - 4.).abs() < EPS).unwrap().0;
+        source.erase(&[Element::Face(inner)]);
+        let face = source.faces().next().unwrap().0;
+        let placement = TexturePlacement { offset: [0.2, 0.4], scale: [2., 3.], rotation: 0.3, ..Default::default() };
+        let polygon = source.faces.get_mut(&face).unwrap();
+        polygon.material = Some(MaterialId(41));
+        polygon.back_material = Some(MaterialId(42));
+        polygon.uv = Some(placement);
+        polygon.hidden = true;
+        for edge in source.edges.values_mut() {
+            edge.soft = true;
+            edge.smooth = true;
+            edge.hidden = true;
+            edge.material = Some(MaterialId(43));
+        }
+        let polygon = source.face(face).unwrap();
+        let curve_edges = polygon
+            .outer
+            .iter()
+            .zip(polygon.outer.iter().cycle().skip(1))
+            .take(4)
+            .map(|(a, b)| source.edge_between(*a, *b).unwrap())
+            .collect::<Vec<_>>();
+        source
+            .register_curve(
+                &curve_edges,
+                Curve {
+                    kind: CurveKind::Polyline,
+                    faceted: false,
+                    centre: DVec3::ZERO,
+                    normal: DVec3::Z,
+                    start: DVec3::X,
+                    radius: 0.,
+                    segments: 4,
+                    sweep: 0.,
+                },
+            )
+            .unwrap();
+        let expected_normal = source.face_normal(face).unwrap();
+        let template = Template::whole(&source);
+        let mut target = Mesh::new();
+        target.stamp(&template, |p| DVec3::new(10. - p.x, 2. + p.y, 3. + p.z)).unwrap();
+        target.validate().unwrap();
+        assert_eq!(target.face_count(), 1);
+        let (id, polygon) = target.faces().next().unwrap();
+        assert_eq!(polygon.holes.len(), 1);
+        assert!((target.face_area(id) - 12.).abs() < EPS);
+        let normal = target.face_normal(id).unwrap();
+        assert!(normal.dot(expected_normal) > 0.99, "source {expected_normal:?}, target {normal:?}");
+        assert_eq!(polygon.material, Some(MaterialId(41)));
+        assert_eq!(polygon.back_material, Some(MaterialId(42)));
+        assert_eq!(polygon.uv, Some(placement));
+        assert!(polygon.hidden);
+        assert!(target.edges().all(|(_, e)| e.soft && e.smooth && e.hidden && e.material == Some(MaterialId(43))));
+        let (curve, value) = target.curves().next().unwrap();
+        assert_eq!(target.curves().count(), 1);
+        assert_eq!(value.kind, CurveKind::Polyline);
+        assert_eq!(target.curve_edges(curve).len(), 4);
     }
 }

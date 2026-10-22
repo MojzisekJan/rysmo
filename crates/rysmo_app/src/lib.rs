@@ -295,33 +295,34 @@ pub fn run() {
     }
 
     #[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
-    if std::env::var_os("RYSMO_SCREENSHOT").is_some() && std::env::var_os("RYSMO_COMPONENTS_PREVIEW").is_some() {
-        if let Some(definition) = app3d.editor.doc().definitions.iter().find(|(_, d)| !d.group).map(|(id, _)| *id) {
-            let instances = app3d.editor.doc().root.instances.keys().copied().collect::<Vec<_>>();
-            if let Some(id) = instances.first() {
-                app3d
-                    .editor
-                    .apply(rysmo_model::Command::MakeGroup { elements: vec![rysmo_model::Element::Instance(*id)] })
-                    .unwrap();
-            }
-            if let Some(id) = instances.last() {
-                app3d
-                    .editor
-                    .apply(rysmo_model::Command::SetInstancesHidden { instances: vec![*id], hidden: true })
-                    .unwrap();
-            }
-            app3d.show_components = true;
-            app3d.inspector_tab = 0;
-            app3d.component_selected = Some(definition);
-            app3d.component_edit = Some((
-                definition,
-                app3d.editor.doc().definitions[&definition].name.clone(),
-                app3d.editor.doc().definitions[&definition].component.clone(),
-            ));
-            component_panel::begin(&mut app3d, definition).unwrap();
-            app3d.component_place.as_mut().unwrap().origin = rysmo_math::DVec3::new(7.5, 2., 0.);
-            app3d.camera.frame(rysmo_math::DVec3::new(-0.5, -0.5, 0.), rysmo_math::DVec3::new(9., 3.5, 1.2));
+    if std::env::var_os("RYSMO_SCREENSHOT").is_some()
+        && std::env::var_os("RYSMO_COMPONENTS_PREVIEW").is_some()
+        && let Some(definition) = app3d.editor.doc().definitions.iter().find(|(_, d)| !d.group).map(|(id, _)| *id)
+    {
+        let instances = app3d.editor.doc().root.instances.keys().copied().collect::<Vec<_>>();
+        if let Some(id) = instances.first() {
+            app3d
+                .editor
+                .apply(rysmo_model::Command::MakeGroup { elements: vec![rysmo_model::Element::Instance(*id)] })
+                .unwrap();
         }
+        if let Some(id) = instances.last() {
+            app3d
+                .editor
+                .apply(rysmo_model::Command::SetInstancesHidden { instances: vec![*id], hidden: true })
+                .unwrap();
+        }
+        app3d.show_components = true;
+        app3d.inspector_tab = 0;
+        app3d.component_selected = Some(definition);
+        app3d.component_edit = Some((
+            definition,
+            app3d.editor.doc().definitions[&definition].name.clone(),
+            app3d.editor.doc().definitions[&definition].component.clone(),
+        ));
+        component_panel::begin(&mut app3d, definition).unwrap();
+        app3d.component_place.as_mut().unwrap().origin = rysmo_math::DVec3::new(7.5, 2., 0.);
+        app3d.camera.frame(rysmo_math::DVec3::new(-0.5, -0.5, 0.), rysmo_math::DVec3::new(9., 3.5, 1.2));
     }
 
     #[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
@@ -457,10 +458,10 @@ pub fn run() {
         app3d.editor.set_selection(sources);
         app3d.camera.set_standard_view(rysmo_math::StandardView::Top);
         app3d.camera.frame(DVec3::ZERO, DVec3::new(6., 6., 4.));
-        if crate::drape_tool::begin(&mut app3d).is_ok() {
-            if let Some(at) = app3d.local_view().project(DVec3::new(1., 1., 0.2)) {
-                input::tool_pointer(&mut app3d, at, rysmo_tools::Pointer::Move);
-            }
+        if crate::drape_tool::begin(&mut app3d).is_ok()
+            && let Some(at) = app3d.local_view().project(DVec3::new(1., 1., 0.2))
+        {
+            input::tool_pointer(&mut app3d, at, rysmo_tools::Pointer::Move);
         }
         app3d.camera.set_standard_view(rysmo_math::StandardView::Iso);
     }

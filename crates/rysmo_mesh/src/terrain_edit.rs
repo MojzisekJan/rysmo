@@ -246,14 +246,11 @@ mod tests {
                 },
             )
             .unwrap();
-        let old_faces = mesh.faces().map(|(id, f)| (id, f.material, f.back_material, f.uv.clone())).collect::<Vec<_>>();
+        let old_faces = mesh.faces().map(|(id, f)| (id, f.material, f.back_material, f.uv)).collect::<Vec<_>>();
         let edge = mesh.flip_terrain_edge(EdgeId(7)).unwrap();
         assert!(mesh.edge(edge).unwrap().curve.is_none());
         assert_eq!(mesh.curve(curve).unwrap().segments, 1);
-        assert_eq!(
-            mesh.faces().map(|(id, f)| (id, f.material, f.back_material, f.uv.clone())).collect::<Vec<_>>(),
-            old_faces
-        );
+        assert_eq!(mesh.faces().map(|(id, f)| (id, f.material, f.back_material, f.uv)).collect::<Vec<_>>(), old_faces);
         mesh.validate().unwrap();
     }
     #[test]

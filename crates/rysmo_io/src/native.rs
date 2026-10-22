@@ -465,6 +465,7 @@ fn definition_mut(doc: &mut Document, owner: Option<DefinitionId>) -> Result<&mu
 /// Reads `.rysmo` text up to [`VERSION`]. Everything is checked; a file with broken
 /// loops, missing references or a component that contains itself is refused with a
 /// message saying what is wrong.
+#[deny(clippy::unwrap_used, clippy::expect_used)]
 pub fn load(text: &str) -> Result<Document, IoError> {
     let f: FileIn = serde_json::from_str(text)?;
     if f.format != FORMAT {
@@ -530,10 +531,10 @@ pub fn load(text: &str) -> Result<Document, IoError> {
         parts.entry(v.within).or_default().0.insert(v.id, Vertex { pos: DVec3::from_array(v.p) * scale });
     }
     for e in f.edges {
-        if let Some(material) = e.edge.material {
-            if !materials.contains_key(&material) {
-                return Err(IoError::Format(format!("edge {} uses undefined material {material}", e.id)));
-            }
+        if let Some(material) = e.edge.material
+            && !materials.contains_key(&material)
+        {
+            return Err(IoError::Format(format!("edge {} uses undefined material {material}", e.id)));
         }
         unique(e.id.0)?;
         known(e.within)?;

@@ -26,18 +26,41 @@ attribute; core crates forbid unsafe code. Public APIs shared only by the worksp
 abstractions or blanket `non_exhaustive` annotations. Shared immutable image bytes
 use `Arc` intentionally; the undo history currently uses document snapshots.
 
-Before submitting changes, run:
+Before submitting changes, install the `rustfmt` and `clippy` components and the
+`wasm32-unknown-unknown` target, then run the shared checks:
 
 ```sh
-cargo fmt --all --check
-cargo clippy --workspace --all-targets --locked
-cargo test --workspace --locked
-cargo check -p rysmo_app --target wasm32-unknown-unknown --locked
+scripts/check-rust.sh
+# With dependencies already cached:
+scripts/check-rust.sh --offline
 ```
 
-Inspect Clippy findings, including existing warnings. Warnings are not all errors
-or confirmed bugs; the current workspace does not yet pass `-D warnings`.
-`dbg!` is denied; `todo!` and `unimplemented!` produce review warnings. Preserve
+The script checks formatting, runs workspace Clippy with `-D warnings`, executes
+all eight headless library suites, and checks the browser app with `web-release`.
+Clippy also type-checks native application tests and examples. Running the full
+GPU-linked application tests or checking GUI behaviour requires a suitable host;
+these are additional checks for changes to the application.
+
+GitHub Actions runs the same script with Rust 1.98.1 on Linux, plus the JavaScript
+file/storage tests and Python web packaging/server tests. The declared minimum
+remains 1.97.1; this workflow does not claim to test that exact minimum.
+
+Keep Clippy clean instead of suppressing warnings globally. `dbg!`,
+`clone_on_copy`, `result_unit_err` and `type_complexity` are denied in workspace
+lint settings; CI also rejects other warnings, including `todo!` and
+`unimplemented!`. Native file loading and annotation command handlers additionally
+deny `unwrap`/`expect`; use fallible lookups for those input paths. Preserve
 English GUI text and the Rysmo name. Keep private credentials and generated output
 out of Git. Do not change persistence formats or file extensions without an
 explicit compatibility plan.
+
+Command data, labels, drawing helpers, transforms, groups, annotations and settings
+live in separate modules under `rysmo_model/src/command/`. Keep serialized command
+fields and public re-exports stable when moving code. Shared command finalization
+belongs in `execute.rs`; preserve its glue refresh, opening validation and cleanup
+order, along with the `Editor::apply` transaction boundary.
+
+Use named records for related fields and operation arguments when positional
+values are easy to confuse. `Template` stores named face, edge and curve records;
+annotation reparenting and attached label placement use named request contexts.
+Keep simple geometric pairs such as line endpoints as pairs.

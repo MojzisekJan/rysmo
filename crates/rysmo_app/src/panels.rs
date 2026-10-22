@@ -10,15 +10,31 @@ use crate::state::App3d;
 /// Cache topology and triangulation while the Properties panel is idle.
 #[derive(Default)]
 pub(crate) struct VolumeCache {
-    entry: Option<((u64, u64, Vec<InstanceId>, InstanceId), Result<f64, &'static str>)>,
+    entry: Option<VolumeCacheEntry>,
+}
+#[derive(PartialEq, Eq)]
+struct VolumeCacheKey {
+    generation: u64,
+    revision: u64,
+    context: Vec<InstanceId>,
+    instance: InstanceId,
+}
+struct VolumeCacheEntry {
+    key: VolumeCacheKey,
+    value: Result<f64, &'static str>,
 }
 impl VolumeCache {
     fn get(&mut self, editor: &rysmo_model::Editor, generation: u64, id: InstanceId) -> Result<f64, &'static str> {
-        let key = (generation, editor.revision(), editor.context().to_vec(), id);
-        if let Some((cached, value)) = &self.entry {
-            if *cached == key {
-                return *value;
-            }
+        let key = VolumeCacheKey {
+            generation,
+            revision: editor.revision(),
+            context: editor.context().to_vec(),
+            instance: id,
+        };
+        if let Some(cached) = &self.entry
+            && cached.key == key
+        {
+            return cached.value;
         }
         let value = editor
             .active()
@@ -26,7 +42,7 @@ impl VolumeCache {
             .get(&id)
             .ok_or("Missing instance")
             .and_then(|inst| editor.doc().instance_volume(inst, editor.context_transform()));
-        self.entry = Some((key, value));
+        self.entry = Some(VolumeCacheEntry { key, value });
         value
     }
 }
@@ -1066,7 +1082,7 @@ pub fn entity_info_ui(ui: &mut egui::Ui, app: &mut App3d) {
             if alignment_changed {
                 command = Some(Command::SetDimension { id: *id, dimension: dimension.clone() });
             }
-            let previous_font = dimension.font.clone();
+            let previous_font = dimension.font;
             crate::theme::field(ui, "Font size", |ui| {
                 ui.add(
                     crate::widgets::Number::new(&mut dimension.font.size).range(1.0..=512.0).speed(0.5).suffix(" px"),

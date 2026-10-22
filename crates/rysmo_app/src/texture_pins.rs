@@ -46,7 +46,9 @@ pub fn controls(ui: &mut egui::Ui, placement: &mut TexturePlacement) -> bool {
         "Drag any corner to position the texture."
     });
     let pins = placement.pins.unwrap_or(TILE);
-    let width = ui.available_width().min(340.0).max(160.0);
+    let available = ui.available_width();
+    // Keep the previous fallback for an unavailable layout measurement.
+    let width = if available.is_nan() { 340. } else { available.clamp(160., 340.) };
     let (rect, _) = ui.allocate_exact_size(egui::vec2(width, width * 0.8), egui::Sense::hover());
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 6.0, ui.visuals().extreme_bg_color);

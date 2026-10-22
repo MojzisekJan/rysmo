@@ -672,10 +672,10 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
                                     ui.heading(topic.title);
                                 });
                                 ui.weak(topic.category);
-                                if let Some(Icon::Tool(tool)) = topic.icon {
-                                    if !tool.shortcut().is_empty() {
-                                        ui.label(format!("Shortcut: {}", tool.shortcut()));
-                                    }
+                                if let Some(Icon::Tool(tool)) = topic.icon
+                                    && !tool.shortcut().is_empty()
+                                {
+                                    ui.label(format!("Shortcut: {}", tool.shortcut()));
                                 }
                                 ui.add_space(10.);
                                 for paragraph in topic.body.split('\n') {
@@ -735,7 +735,7 @@ mod tests {
             crate::theme::install(&ctx);
             let mut baseline: Vec<egui::Rect> = Vec::new();
             for pass in 0..7 {
-                let hovered = pass >= 2 && pass <= 4;
+                let hovered = (2..=4).contains(&pass);
                 let selected = pass == 3 || pass == 5;
                 let pointer = if hovered { baseline[1].center() } else { egui::pos2(790., 590.) };
                 let mut rects = Vec::new();

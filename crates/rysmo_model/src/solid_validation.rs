@@ -3,6 +3,14 @@ use rysmo_math::{DVec3, EPS, Plane, closest_on_segment, segment_intersection};
 use rysmo_mesh::{FaceId, Mesh, VertexId, triangulate_face};
 use std::collections::{BTreeMap, BTreeSet};
 
+/// An oriented use of an edge by one face of a solid.
+#[derive(Clone, Copy)]
+struct OrientedFaceEdge {
+    face: FaceId,
+    start: VertexId,
+    end: VertexId,
+}
+
 pub(super) struct Shell {
     pub faces: BTreeSet<FaceId>,
     pub volume: f64,
@@ -24,14 +32,14 @@ pub(super) fn analyse(mesh: &Mesh) -> Result<Analysis, String> {
     if mesh.face_count() == 0 {
         return Err("No closed surface".into());
     }
-    let mut edges: BTreeMap<(VertexId, VertexId), Vec<(FaceId, VertexId, VertexId)>> = BTreeMap::new();
+    let mut edges: BTreeMap<(VertexId, VertexId), Vec<OrientedFaceEdge>> = BTreeMap::new();
     let mut triangles = Vec::new();
     let mut adjacent: BTreeMap<FaceId, BTreeSet<FaceId>> = BTreeMap::new();
     let mut fans: BTreeMap<VertexId, BTreeMap<FaceId, BTreeSet<FaceId>>> = BTreeMap::new();
 
     for (id, face) in mesh.faces() {
         for (a, b) in face.loop_edges() {
-            edges.entry((a.min(b), a.max(b))).or_default().push((id, a, b));
+            edges.entry((a.min(b), a.max(b))).or_default().push(OrientedFaceEdge { face: id, start: a, end: b });
         }
         let ts = triangulate_face(mesh, id);
         if ts.is_empty() {
@@ -73,7 +81,8 @@ pub(super) fn analyse(mesh: &Mesh) -> Result<Analysis, String> {
         if steps.len() != 2 {
             return Err("Open or non-manifold surface".into());
         }
-        let [(f, a, b), (g, c, d)] = [steps[0], steps[1]];
+        let OrientedFaceEdge { face: f, start: a, end: b } = steps[0];
+        let OrientedFaceEdge { face: g, start: c, end: d } = steps[1];
         if f == g || a != d || b != c {
             return Err("Inconsistent face orientation".into());
         }

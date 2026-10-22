@@ -154,7 +154,7 @@ impl GlueMode {
             Self::Any => true,
             Self::Horizontal => d > 1. - 1e-6,
             Self::Vertical => d < 1e-6,
-            Self::Sloped => d >= 1e-6 && d <= 1. - 1e-6,
+            Self::Sloped => (1e-6..=1. - 1e-6).contains(&d),
         }
     }
 }
@@ -302,18 +302,18 @@ pub(crate) fn refresh_glue(doc: &mut Document, before: &BTreeMap<InstanceId, Glu
             let Some(host) = instance.glued_to else { continue };
             let Some(component) = doc.def(Some(instance.definition)) else { continue };
             let mut transform = instance.transform;
-            if let Some(old) = before.get(id).filter(|old| old.face == host && old.transform == transform) {
-                if let Some(plane) = definition.mesh.face_plane(host) {
-                    let face = definition.mesh.face(host).unwrap();
-                    let centre =
-                        face.outer.iter().map(|v| definition.mesh.pos(*v)).sum::<DVec3>() / face.outer.len() as f64;
-                    let rotation = rysmo_math::DQuat::from_rotation_arc(old.normal, plane.normal);
-                    if centre.distance(old.centre) > 1e-9 || plane.normal.dot(old.normal) < 1. - 1e-12 {
-                        transform = DMat4::from_translation(centre)
-                            * DMat4::from_quat(rotation)
-                            * DMat4::from_translation(-old.centre)
-                            * transform;
-                    }
+            if let Some(old) = before.get(id).filter(|old| old.face == host && old.transform == transform)
+                && let Some(plane) = definition.mesh.face_plane(host)
+            {
+                let face = definition.mesh.face(host).unwrap();
+                let centre =
+                    face.outer.iter().map(|v| definition.mesh.pos(*v)).sum::<DVec3>() / face.outer.len() as f64;
+                let rotation = rysmo_math::DQuat::from_rotation_arc(old.normal, plane.normal);
+                if centre.distance(old.centre) > 1e-9 || plane.normal.dot(old.normal) < 1. - 1e-12 {
+                    transform = DMat4::from_translation(centre)
+                        * DMat4::from_quat(rotation)
+                        * DMat4::from_translation(-old.centre)
+                        * transform;
                 }
             }
             let origin = transform.transform_point3(component.component.insertion_axes.origin);
@@ -387,9 +387,7 @@ mod opening_tests {
         e.apply(Command::Erase { elements: vec![Element::Face(face)] }).unwrap();
         e.exit();
         e.apply(Command::Erase { elements: vec![Element::Instance(original)] }).unwrap();
-        let mut settings = ComponentSettings::default();
-        settings.glue = GlueMode::Any;
-        settings.cut_opening = true;
+        let settings = ComponentSettings { glue: GlueMode::Any, cut_opening: true, ..Default::default() };
         e.apply(Command::SetComponentProperties { definition, name: "Window".into(), settings }).unwrap();
         let made = e
             .apply(Command::DrawRectangle {

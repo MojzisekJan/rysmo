@@ -328,7 +328,7 @@ impl Mesh {
                 return false;
             }
             let t = (p - a).dot(d) / d.length_squared();
-            t >= -EPS && t <= 1.0 + EPS && p.distance(a + d * t) < EPS * 2.0
+            (-EPS..=1.0 + EPS).contains(&t) && p.distance(a + d * t) < EPS * 2.0
         };
         self.edges
             .keys()

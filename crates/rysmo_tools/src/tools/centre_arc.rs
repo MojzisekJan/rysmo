@@ -18,11 +18,11 @@ impl ToolBox {
         stale
     }
     pub(super) fn centre_click(&mut self, editor: &mut Editor, ctx: &Ctx, inf: Inference) {
-        if let State::CentreSweep { centre, .. } = self.state {
-            if inf.point.distance(centre) <= EPS {
-                self.message = Some("Select an angle point away from the centre.".into());
-                return;
-            }
+        if let State::CentreSweep { centre, .. } = self.state
+            && inf.point.distance(centre) <= EPS
+        {
+            self.message = Some("Select an angle point away from the centre.".into());
+            return;
         }
         if matches!(self.state, State::CentreSweep { .. }) {
             self.centre_move(editor, ctx);

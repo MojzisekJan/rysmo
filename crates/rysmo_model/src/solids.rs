@@ -171,6 +171,12 @@ fn assemble(polygons: Vec<Polygon>, shift: DVec3, styles: &[(DVec3, DVec3, Edge)
     let vertices =
         positions.iter().enumerate().map(|(i, p)| (VertexId(i as u64 + 1), Vertex { pos: *p + shift })).collect();
     let mut next = positions.len() as u64 + 1;
+    // Edges and faces share the same identifier sequence.
+    let mut reserve_id = || {
+        let id = next;
+        next += 1;
+        id
+    };
     let mut edges = BTreeMap::new();
     let mut edge_keys = BTreeMap::new();
     let mut faces = BTreeMap::new();
@@ -183,14 +189,12 @@ fn assemble(polygons: Vec<Polygon>, shift: DVec3, styles: &[(DVec3, DVec3, Edge)
             let b = face.outer[(i + 1) % face.outer.len()];
             let key = (a.min(b), a.max(b));
             edge_keys.entry(key).or_insert_with(|| {
-                let id = EdgeId(next);
-                next += 1;
+                let id = EdgeId(reserve_id());
                 edges.insert(id, Edge::new(a, b));
                 id
             });
         }
-        faces.insert(FaceId(next), face);
-        next += 1;
+        faces.insert(FaceId(reserve_id()), face);
     }
     let mut mesh = Mesh::from_parts(vertices, edges, faces).map_err(CommandError::from)?;
     // Hide triangulation/split seams on one plane without changing material regions.

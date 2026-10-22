@@ -42,16 +42,8 @@ impl TextDefaults {
         })
     }
     /// Starts an attached draft at a screen label position in the current occurrence.
-    pub fn attached(
-        &self,
-        content: String,
-        anchor: TextAnchor,
-        position: DVec2,
-        doc: &Document,
-        owner: Option<DefinitionId>,
-        transform: DMat4,
-        view: &View,
-    ) -> Option<Text> {
+    pub fn attached(&self, content: String, request: AttachmentRequest<'_>) -> Option<Text> {
+        let AttachmentRequest { anchor, position, doc, owner, transform, view } = request;
         if !self.validate()
             || !anchor.validate()
             || !position.is_finite()
@@ -78,6 +70,16 @@ impl TextDefaults {
             if matches!(text.placement, TextPlacement::Screen { .. }) { self.screen_font } else { self.leader_font };
         text.endpoint = self.endpoint;
     }
+}
+
+/// Placement and document context for a new attached text label.
+pub struct AttachmentRequest<'a> {
+    pub anchor: TextAnchor,
+    pub position: DVec2,
+    pub doc: &'a Document,
+    pub owner: Option<DefinitionId>,
+    pub transform: DMat4,
+    pub view: &'a View,
 }
 
 pub type TextFont = DimensionFont;
@@ -748,17 +750,17 @@ impl Text {
     }
 
     /// Keeps annotations outside a new group linked to geometry moved into it.
-    pub(crate) fn reparented(
-        &self,
-        doc: &Document,
-        owner: Option<DefinitionId>,
-        parent: Option<DefinitionId>,
-        instance: InstanceId,
-        source: &rysmo_mesh::Mesh,
-        target: &rysmo_mesh::Mesh,
-        transform: DMat4,
-        children: &[InstanceId],
-    ) -> Self {
+    pub(crate) fn reparented(&self, reparenting: crate::annotation_reparent::AnnotationReparent<'_>) -> Self {
+        let crate::annotation_reparent::AnnotationReparent {
+            doc,
+            owner,
+            parent,
+            instance,
+            source,
+            target,
+            transform,
+            children,
+        } = reparenting;
         let mut result = self.clone();
         let TextPlacement::Attached { anchor, .. } = &mut result.placement else { return result };
         let Some(reference) = &mut anchor.reference else { return result };
@@ -1451,12 +1453,14 @@ mod tests {
             let text = defaults
                 .attached(
                     "Note".into(),
-                    TextAnchor { point: DVec3::ZERO, reference: None },
-                    position,
-                    &doc,
-                    None,
-                    transform,
-                    &view,
+                    AttachmentRequest {
+                        anchor: TextAnchor { point: DVec3::ZERO, reference: None },
+                        position,
+                        doc: &doc,
+                        owner: None,
+                        transform,
+                        view: &view,
+                    },
                 )
                 .unwrap();
             assert_eq!(text.font.size, 20.);

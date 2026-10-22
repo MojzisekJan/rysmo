@@ -99,14 +99,14 @@ mod tests {
             .unwrap();
         let out = export(editor.doc());
         let lines: Vec<_> = out.lines().collect();
-        let pairs: Vec<_> = lines.chunks_exact(2).map(|p| (p[0], p[1])).collect();
+        let pairs: Vec<_> = lines.as_chunks::<2>().0.iter().map(|p| (p[0], p[1])).collect();
         assert!(pairs.windows(2).any(|p| p == [("9", "$INSUNITS"), ("70", "6")]));
         assert_eq!(pairs.iter().filter(|p| **p == ("0", "3DFACE")).count(), 2);
         assert!(!pairs.contains(&("0", "LINE")));
         let faces = out.split("0\r\n3DFACE\r\n").skip(1);
         for face in faces {
             let values: Vec<_> = face.lines().collect();
-            let pairs: Vec<_> = values.chunks_exact(2).map(|p| (p[0], p[1])).collect();
+            let pairs: Vec<_> = values.as_chunks::<2>().0.iter().map(|p| (p[0], p[1])).collect();
             let flags: u8 = pairs.iter().find(|p| p.0 == "70").unwrap().1.parse().unwrap();
             assert_eq!(flags.count_ones(), 2);
             assert!(pairs.contains(&("30", "7")));

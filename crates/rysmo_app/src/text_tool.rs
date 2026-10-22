@@ -115,18 +115,19 @@ pub fn pointer(app: &mut App3d, at: DVec2, event: Pointer) {
             if (!matches!(event, Pointer::Up)
                 || draft.press.is_some_and(|start| start.distance(at) > 6. * app.pick_scale()))
                 && let TextPlacement::Attached { anchor, .. } = &draft.text.placement
-            {
-                if let Some(text) = draft.defaults.attached(
+                && let Some(text) = draft.defaults.attached(
                     draft.text.content.clone(),
-                    anchor.clone(),
-                    at,
-                    app.editor.doc(),
-                    app.editor.active_definition(),
-                    app.editor.context_transform(),
-                    &app.view(),
-                ) {
-                    draft.text = text;
-                }
+                    rysmo_model::text::AttachmentRequest {
+                        anchor: anchor.clone(),
+                        position: at,
+                        doc: app.editor.doc(),
+                        owner: app.editor.active_definition(),
+                        transform: app.editor.context_transform(),
+                        view: &app.view(),
+                    },
+                )
+            {
+                draft.text = text;
             }
             if matches!(event, Pointer::Down { .. })
                 || matches!(event, Pointer::Up)
@@ -175,23 +176,23 @@ pub fn pointer(app: &mut App3d, at: DVec2, event: Pointer) {
         })
         .min_by(|a, b| a.0.total_cmp(&b.0));
     let mut direct = false;
-    if let Some((_, occurrence, face, world)) = face {
-        if anchor.is_none() || clicks >= 2 {
-            anchor = TextAnchor::on_face(
-                doc,
-                app.editor.active_definition(),
-                occurrence.path[app.editor.context().len()..].to_vec(),
-                face,
-                app.editor.context_transform().inverse().transform_point3(world),
-            );
-            let mesh = doc.effective_mesh(occurrence.definition);
-            let normal = mesh.face_plane(face).unwrap().normal;
-            let area = mesh.face_area(face)
-                * occurrence.transform.determinant().abs()
-                * occurrence.transform.inverse().transpose().transform_vector3(normal).length();
-            content = doc.format_area(area);
-            direct = clicks >= 2;
-        }
+    if let Some((_, occurrence, face, world)) = face
+        && (anchor.is_none() || clicks >= 2)
+    {
+        anchor = TextAnchor::on_face(
+            doc,
+            app.editor.active_definition(),
+            occurrence.path[app.editor.context().len()..].to_vec(),
+            face,
+            app.editor.context_transform().inverse().transform_point3(world),
+        );
+        let mesh = doc.effective_mesh(occurrence.definition);
+        let normal = mesh.face_plane(face).unwrap().normal;
+        let area = mesh.face_area(face)
+            * occurrence.transform.determinant().abs()
+            * occurrence.transform.inverse().transpose().transform_vector3(normal).length();
+        content = doc.format_area(area);
+        direct = clicks >= 2;
     }
     let text = if let Some(anchor) = anchor {
         if !direct {
@@ -213,12 +214,14 @@ pub fn pointer(app: &mut App3d, at: DVec2, event: Pointer) {
         } else {
             defaults.attached(
                 content,
-                anchor,
-                at + DVec2::new(80., -40.),
-                doc,
-                app.editor.active_definition(),
-                app.editor.context_transform(),
-                &view,
+                rysmo_model::text::AttachmentRequest {
+                    anchor,
+                    position: at + DVec2::new(80., -40.),
+                    doc,
+                    owner: app.editor.active_definition(),
+                    transform: app.editor.context_transform(),
+                    view: &view,
+                },
             )
         }
     } else {

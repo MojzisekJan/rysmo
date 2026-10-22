@@ -21,8 +21,8 @@ impl Placement {
             && app.editor.doc().definitions.contains_key(&self.definition)
     }
     fn transform(&self, app: &App3d) -> DMat4 {
-        if let Some(face) = self.host {
-            if let Ok(matrix) = rysmo_model::components::glued_transform(
+        if let Some(face) = self.host
+            && let Ok(matrix) = rysmo_model::components::glued_transform(
                 app.editor.doc(),
                 app.editor.active_definition(),
                 self.definition,
@@ -30,9 +30,9 @@ impl Placement {
                 self.origin,
                 self.rotation,
                 self.scale,
-            ) {
-                return matrix;
-            }
+            )
+        {
+            return matrix;
         }
         DMat4::from_translation(self.origin)
             * DMat4::from_rotation_z(self.rotation.to_radians())
@@ -378,11 +378,10 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
                         app.component_selected = Some(*id);
                         app.component_edit = Some((*id, d.name.clone(), d.component.clone()));
                     }
-                    if ui.button("Place").clicked() {
-                        if let Err(error) = begin(app, *id) {
+                    if ui.button("Place").clicked()
+                        && let Err(error) = begin(app, *id) {
                             app.message = Some(error);
                         }
-                    }
                 });
             }
             if definitions.is_empty() {

@@ -110,7 +110,7 @@ fn format_fractional(metres: f64, units: Units, precision: u8) -> String {
     let mut whole = ticks / denominator;
     let mut numerator = ticks % denominator;
     let mut divisor = denominator;
-    while numerator != 0 && numerator % 2 == 0 && divisor > 1 {
+    while numerator != 0 && numerator.is_multiple_of(2) && divisor > 1 {
         numerator /= 2;
         divisor /= 2;
     }
@@ -329,8 +329,8 @@ impl MeasurementSettings {
             && self.volume_units.is_none_or(|units| !units.is_fractional())
             && self.area_precision <= 6
             && self.area_units.is_none_or(|units| !units.is_fractional())
-            && self.length_snap.is_none_or(|s| s.is_finite() && s >= 1e-9 && s <= 1e12)
-            && self.angle_snap.is_none_or(|s| s.is_finite() && s >= 0.1 && s <= 180.)
+            && self.length_snap.is_none_or(|s| s.is_finite() && (1e-9..=1e12).contains(&s))
+            && self.angle_snap.is_none_or(|s| s.is_finite() && (0.1..=180.).contains(&s))
     }
     pub fn snap_length(self, length: f64) -> f64 {
         self.length_snap.map_or(length, |s| (length / s).round() * s)
@@ -351,11 +351,13 @@ mod measurement_settings_tests {
     #[test]
     fn settings_validate_preserve_exact_lengths_and_undo() {
         let mut e = Editor::new();
-        let mut settings = MeasurementSettings::default();
-        settings.length_snap = Some(0.25);
-        settings.angle_snap = Some(30.);
-        settings.angle_precision = 3;
-        settings.show_unit_markers = false;
+        let settings = MeasurementSettings {
+            length_snap: Some(0.25),
+            angle_snap: Some(30.),
+            angle_precision: 3,
+            show_unit_markers: false,
+            ..Default::default()
+        };
         e.apply(Command::SetMeasurementSettings { settings }).unwrap();
         assert_eq!(e.doc().format_length(1.), "1000");
         assert_eq!(settings.snap_length(-0.61), -0.5);

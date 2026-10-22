@@ -1013,12 +1013,12 @@ impl ToolBox {
         if self.three_stale(editor) || self.centre_stale(editor) || self.rotated_stale(editor) {
             return;
         }
-        if let State::Following { revision, context, .. } = &self.state {
-            if *revision != editor.revision() || context != editor.context() {
-                self.reset();
-                self.message = Some("The model changed; start a new Follow Me operation.".into());
-                return;
-            }
+        if let State::Following { revision, context, .. } = &self.state
+            && (*revision != editor.revision() || context != editor.context())
+        {
+            self.reset();
+            self.message = Some("The model changed; start a new Follow Me operation.".into());
+            return;
         }
         self.current_view = Some(*ctx.view);
         self.tape_measure_only = ctx.modifiers.ctrl;
@@ -1378,10 +1378,10 @@ impl ToolBox {
         if let Some(lock) = self.three_lock() {
             return Some(lock);
         }
-        if self.active == ToolKind::RotatedRectangle {
-            if let Some(lock) = self.rotated_lock() {
-                return Some(lock);
-            }
+        if self.active == ToolKind::RotatedRectangle
+            && let Some(lock) = self.rotated_lock()
+        {
+            return Some(lock);
         }
         if let Some(dimension) = &self.dimension_draft {
             return Some(Lock::Plane(Plane::new(dimension.normal, dimension::origin(dimension))));
@@ -1391,10 +1391,10 @@ impl ToolBox {
                 Some(Lock::Line { dir, .. }) => Some(dir),
                 _ => self.axis_lock.map(|axis| self.axes.dir(axis)),
             };
-            if let Some(direction) = direction {
-                if let Some(dir) = (direction - plane.normal * direction.dot(plane.normal)).try_normalize() {
-                    return Some(Lock::Line { origin: *start, dir, axis: None });
-                }
+            if let Some(direction) = direction
+                && let Some(dir) = (direction - plane.normal * direction.dot(plane.normal)).try_normalize()
+            {
+                return Some(Lock::Line { origin: *start, dir, axis: None });
             }
             return Some(Lock::Plane(plane));
         }
@@ -1485,36 +1485,32 @@ impl ToolBox {
         }
         if !self.busy()
             && let Some(rysmo_infer::Pick::Element(Element::Section(id))) = self.override_pick
+            && let Some(plane) = editor.active().sections.planes.get(&id)
         {
-            if let Some(plane) = editor.active().sections.planes.get(&id) {
-                let ray = ctx.view.ray(ctx.cursor);
-                let point =
-                    rysmo_model::sections::glyph(plane, editor.doc().definition_bounds(editor.active_definition()))
-                        .into_iter()
-                        .filter_map(|[a, b]| {
-                            let (sa, sb) = ctx.view.project_segment(a, b)?;
-                            let distance = rysmo_math::distance_point_segment_2d(ctx.cursor, sa, sb);
-                            let t = rysmo_math::closest_line_ray(a, b - a, &ray)
-                                .map(|(t, _)| t.clamp(0., 1.))
-                                .unwrap_or(0.);
-                            Some((distance, a + (b - a) * t))
-                        })
-                        .min_by(|a, b| a.0.total_cmp(&b.0))
-                        .map(|(_, p)| p)
-                        .unwrap_or(plane.origin);
-                self.inference = Some(Inference {
-                    point,
-                    kind: Kind::Free,
-                    edge: None,
-                    curve: None,
-                    face: None,
-                    plane: Some(Plane::new(plane.normal, plane.origin)),
-                    guide: None,
-                    instance: None,
-                    construction: None,
-                });
-                return;
-            }
+            let ray = ctx.view.ray(ctx.cursor);
+            let point = rysmo_model::sections::glyph(plane, editor.doc().definition_bounds(editor.active_definition()))
+                .into_iter()
+                .filter_map(|[a, b]| {
+                    let (sa, sb) = ctx.view.project_segment(a, b)?;
+                    let distance = rysmo_math::distance_point_segment_2d(ctx.cursor, sa, sb);
+                    let t = rysmo_math::closest_line_ray(a, b - a, &ray).map(|(t, _)| t.clamp(0., 1.)).unwrap_or(0.);
+                    Some((distance, a + (b - a) * t))
+                })
+                .min_by(|a, b| a.0.total_cmp(&b.0))
+                .map(|(_, p)| p)
+                .unwrap_or(plane.origin);
+            self.inference = Some(Inference {
+                point,
+                kind: Kind::Free,
+                edge: None,
+                curve: None,
+                face: None,
+                plane: Some(Plane::new(plane.normal, plane.origin)),
+                guide: None,
+                instance: None,
+                construction: None,
+            });
+            return;
         }
         if matches!(
             self.state,
@@ -2019,17 +2015,14 @@ pub(crate) fn element_lines(editor: &Editor, elements: &[Element]) -> Vec<(DVec3
             }
             Element::Face(id) if mesh.face(*id).is_some() => edges.extend(mesh.face_edges(*id)),
             Element::Section(id) => {
-                if editor.doc().style.section_planes {
-                    if let Some(plane) = editor.active().sections.planes.get(id) {
-                        out.extend(
-                            rysmo_model::sections::glyph(
-                                plane,
-                                editor.doc().definition_bounds(editor.active_definition()),
-                            )
+                if editor.doc().style.section_planes
+                    && let Some(plane) = editor.active().sections.planes.get(id)
+                {
+                    out.extend(
+                        rysmo_model::sections::glyph(plane, editor.doc().definition_bounds(editor.active_definition()))
                             .into_iter()
                             .map(|[a, b]| (a, b)),
-                        );
-                    }
+                    );
                 }
             }
             Element::Instance(i) => {

@@ -210,12 +210,12 @@ fn glazing(
     e: &mut Editor,
     a: DVec2,
     b: DVec2,
-    z0: f64,
-    z1: f64,
+    height: std::ops::RangeInclusive<f64>,
     panes: usize,
     glass: MaterialId,
     p: &Paints,
 ) -> Result<()> {
+    let (z0, z1) = (*height.start(), *height.end());
     let along = (b - a).normalize();
     let across = DVec2::new(-along.y, along.x) * 0.05;
     let at = |s: f64, z: f64, side: f64| (a + along * s + across * side).extend(z);
@@ -321,8 +321,7 @@ fn wall(
             e,
             middle + along * from,
             middle + along * (from + width),
-            z0 + sill,
-            z0 + sill + height,
+            (z0 + sill)..=(z0 + sill + height),
             panes,
             p.clear,
             p,
@@ -553,8 +552,8 @@ fn main() -> Result<()> {
     let wing = cuboid(&mut e, DVec3::new(-14., -4., floor), DVec3::new(-8.5, -3.7, ceiling), p.render)?;
     window(&mut e, wing, -DVec3::Y, 1.2, 3., 0.9, 1.5, 3, &p)?;
     cuboid(&mut e, DVec3::new(-8.8, -3.7, floor), DVec3::new(-8.5, 5.7, ceiling), p.render)?;
-    glazing(&mut e, DVec2::new(-8.5, -3.85), DVec2::new(3.85, -3.85), floor, ceiling, 6, p.clear, &p)?;
-    glazing(&mut e, DVec2::new(3.85, -3.85), DVec2::new(3.85, 1.8), floor, ceiling, 3, p.clear, &p)?;
+    glazing(&mut e, DVec2::new(-8.5, -3.85), DVec2::new(3.85, -3.85), floor..=ceiling, 6, p.clear, &p)?;
+    glazing(&mut e, DVec2::new(3.85, -3.85), DVec2::new(3.85, 1.8), floor..=ceiling, 3, p.clear, &p)?;
     raised(&mut e, floor, |e| {
         // Living room.
         cuboid(e, DVec3::new(-7.6, -2.6, 0.), DVec3::new(-3.4, 1.2, 0.02), p.rug)?;

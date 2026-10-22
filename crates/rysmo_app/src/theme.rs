@@ -161,10 +161,11 @@ impl<'a> Window<'a> {
         let mac = mac
             || (std::env::var_os("RYSMO_MAC_CHROME_PREVIEW").is_some()
                 && std::env::var_os("RYSMO_SCREENSHOT").is_some());
-        if mac && self.has_close {
-            if let Some(window) = &result {
-                paint_mac_close(ctx, &window.response);
-            }
+        if mac
+            && self.has_close
+            && let Some(window) = &result
+        {
+            paint_mac_close(ctx, &window.response);
         }
         result
     }

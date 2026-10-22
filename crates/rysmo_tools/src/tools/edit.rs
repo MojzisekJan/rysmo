@@ -19,6 +19,16 @@ const ANGLE_SNAP_DEG: f64 = 2.5;
 /// Protractor radius in pixels.
 const PROTRACTOR_PX: f64 = 45.0;
 
+struct ScaleCompletion {
+    elements: Vec<Element>,
+    origin: DVec3,
+    grip: Grip,
+    factors: DVec3,
+    basis: DMat4,
+    extent: DVec3,
+    uniform: bool,
+}
+
 pub(crate) fn format_factors(f: DVec3, g: Grip) -> String {
     let axes: Vec<f64> = (0..3).filter(|i| g.0[*i] != 0).map(|i| f[i]).collect();
     let all_same = axes.windows(2).all(|w| (w[0] - w[1]).abs() < 1e-9);
@@ -415,7 +425,10 @@ impl ToolBox {
                 };
             }
             State::Scaling { elements, grip, fixed, factors, basis, extent, uniform, .. } => {
-                self.finish_scale(editor, elements, fixed, grip, factors, basis, extent, uniform);
+                self.finish_scale(
+                    editor,
+                    ScaleCompletion { elements, origin: fixed, grip, factors, basis, extent, uniform },
+                );
             }
             _ => {}
         }
@@ -458,17 +471,8 @@ impl ToolBox {
         Command::ScaleInAxes { elements, origin, factors, x: basis.x_axis.truncate(), y: basis.y_axis.truncate() }
     }
 
-    fn finish_scale(
-        &mut self,
-        editor: &mut Editor,
-        elements: Vec<Element>,
-        origin: DVec3,
-        grip: Grip,
-        factors: DVec3,
-        basis: DMat4,
-        extent: DVec3,
-        uniform: bool,
-    ) {
+    fn finish_scale(&mut self, editor: &mut Editor, completion: ScaleCompletion) {
+        let ScaleCompletion { elements, origin, grip, factors, basis, extent, uniform } = completion;
         if self.run(editor, Self::scale_command(elements.clone(), origin, factors, basis)).is_some() {
             self.last =
                 Last::Scale { elements, origin, grip, factors, basis, extent, revision: editor.revision(), uniform };
@@ -528,7 +532,7 @@ impl ToolBox {
             self.last =
                 Last::Scale { elements, origin, grip, factors: f, basis, extent, revision: editor.revision(), uniform };
         } else {
-            self.finish_scale(editor, elements, origin, grip, f, basis, extent, uniform);
+            self.finish_scale(editor, ScaleCompletion { elements, origin, grip, factors: f, basis, extent, uniform });
         }
         self.update_status();
         Ok(())

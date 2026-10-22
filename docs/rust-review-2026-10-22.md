@@ -114,3 +114,63 @@ The `Document::resolve` error type changes from `()` to `ContextError`. External
 Rust callers matching `Err(())` must handle the named error; successful values and
 method paths are unchanged. Workspace callers are checked by Clippy and the tests.
 Other large modules and the remaining warnings are still follow-up work.
+
+
+## Follow-up: named records, command modules and automated checks
+
+`Template` now stores named edge appearance, line, curve and face records instead
+of nested tuples. Its public methods and stored geometry behaviour are retained.
+A new regression test mirrors a face with a hole and checks front/back materials,
+UV placement, curve membership and edge/face visibility. Lookups while stamping
+return `MeshError` rather than panicking on a missing edge or face.
+
+`command.rs` is now a facade over modules for command data, labels, drawing,
+transforms, groups, annotations, settings and execution. Shared glue capture,
+refresh, opening validation and definition cleanup remain in the dispatch path.
+Composite commands retain their existing early returns. `Editor::apply` still
+owns the document snapshot and rollback boundary. A source comparison against the
+previous commit confirms the entire `Command` enum and its serde attributes are
+identical after ignoring whitespace. Existing public command paths are re-exported.
+
+Annotation command handlers now return errors for missing contexts and records,
+and reject `unwrap`/`expect` through local lint rules. Native loading has the same
+local rule. Other geometry invariants and developer-only preview paths still use
+assertions or checked `expect`; this pass does not claim to eliminate every panic.
+
+Solid validation and the volume cache use named records. Related parameters for
+annotation reparenting, text attachment and scale completion have named request
+structures. `TextDefaults::attached` now accepts content plus a public
+`text::AttachmentRequest` instead of seven positional arguments; all workspace
+callers were migrated. This is a Rust API change, with no document format change.
+The Stamp state boxes its preview document to avoid inflating the whole enum;
+preview cloning still copies the document as before.
+
+Clippy fixes include conditional let chains, interval checks, copies of `Copy`
+values and placing implementations before test modules. The texture pin width
+keeps its previous NaN fallback. Boolean assembly retains the shared identifier
+sequence for edges and faces. No blanket warning suppression was added.
+
+`scripts/check-rust.sh` is the shared local/CI entry point. It checks formatting,
+strict workspace Clippy, eight headless library suites and browser compilation.
+The new Linux workflow pins actions to commits, uses read-only repository token
+permissions, installs the native dependencies and runs the web helper tests too.
+The hosted workflow needs its first GitHub run after publication.
+
+
+Verification on Rust 1.98.1:
+
+- The shared script passed end to end with `--offline --locked` Cargo operations.
+- Workspace Clippy for all native targets passed with `-D warnings`: **zero
+  warnings**, down from 66 at the start of this pass and 71 in the first review.
+- All eight headless library suites passed: **611 tests**, no failures. This
+  includes the new mirrored Template test and existing Undo, annotation, grouping,
+  solid, cancellation and stale-preview coverage.
+- Browser compilation passed with `wasm32-unknown-unknown` and `web-release`.
+- All 10 JavaScript tests and four Python packaging/server tests passed. The local
+  server test needs permission to bind a loopback port in a sandboxed environment.
+- Formatting, diff checks and workflow YAML validation passed. Action references
+  were checked against the official repository tags and are pinned to full hashes.
+
+The full GPU-linked app tests and a GUI session were not executed. The GitHub
+workflow was prepared and checked locally, but has not run on a hosted runner.
+No browser release package was linked, rebuilt or published by this pass.

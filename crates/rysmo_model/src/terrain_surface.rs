@@ -616,11 +616,11 @@ mod tests {
             DVec2::new(2., 8.),
         ];
         for offset in [1., 1.5] {
-            let transitions = TerrainSurface::transition_rings(&[outline.clone()], offset).unwrap();
+            let transitions = TerrainSurface::transition_rings(std::slice::from_ref(&outline), offset).unwrap();
             assert_eq!(transitions.len(), 1);
             assert!((rysmo_math::polygon_area_2d(&transitions[0]).abs() - (6. + 2. * offset).powi(2)).abs() < 1e-8);
             let mesh = crate::terrain::grid(10., 10., 1.).unwrap();
-            TerrainSurface::stamp_rings(&mesh, &[outline.clone()], offset, 2., mesh.next_id())
+            TerrainSurface::stamp_rings(&mesh, std::slice::from_ref(&outline), offset, 2., mesh.next_id())
                 .unwrap()
                 .validate()
                 .unwrap();
