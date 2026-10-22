@@ -55,7 +55,7 @@ pub fn lines(
     elements: &[Element],
     with_model: bool,
 ) -> Result<Vec<(DVec3, DVec3)>, String> {
-    doc.resolve(context).map_err(|_| "Invalid intersection context.")?;
+    doc.resolve(context).map_err(|error| format!("Invalid intersection context: {error}"))?;
     let inverse = doc.path_transform(context).inverse();
     let mut faces = Vec::new();
     for occurrence in doc.occurrences(context) {

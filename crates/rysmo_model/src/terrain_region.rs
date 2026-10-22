@@ -49,7 +49,7 @@ pub fn replace(source: &Mesh, region: &Mesh, replacement: &Mesh) -> Result<Mesh,
     let mut vertices = source.vertices().map(|(id, value)| (id, value.clone())).collect::<BTreeMap<_, _>>();
     let mut edges = source.edges().map(|(id, value)| (id, value.clone())).collect::<BTreeMap<_, _>>();
     let mut faces = source.faces().map(|(id, value)| (id, value.clone())).collect::<BTreeMap<_, _>>();
-    let mut curves = source.curves().map(|(id, value)| (id, value.clone())).collect::<BTreeMap<_, _>>();
+    let mut curves = source.curves().map(|(id, value)| (id, *value)).collect::<BTreeMap<_, _>>();
     for (id, _) in region.faces() {
         faces.remove(&id);
     }
@@ -76,7 +76,7 @@ pub fn replace(source: &Mesh, region: &Mesh, replacement: &Mesh) -> Result<Mesh,
     edges.extend(replacement.edges().map(|(id, value)| (id, value.clone())));
     faces.extend(replacement.faces().map(|(id, value)| (id, value.clone())));
     curves.retain(|id, _| edges.values().any(|edge| edge.curve == Some(*id)));
-    curves.extend(replacement.curves().map(|(id, value)| (id, value.clone())));
+    curves.extend(replacement.curves().map(|(id, value)| (id, *value)));
     Mesh::from_parts_with_curves(vertices, edges, faces, curves).map_err(|e| e.to_string())
 }
 
@@ -91,7 +91,7 @@ pub fn with_curves(source: &Mesh, region: Mesh) -> Result<Mesh, String> {
             for edge in members {
                 edges.get_mut(&edge).unwrap().curve = Some(id);
             }
-            curves.insert(id, curve.clone());
+            curves.insert(id, *curve);
         } else if members.iter().any(|edge| edges.contains_key(edge)) {
             return Err("A terrain curve crosses into other geometry. Group the terrain first.".into());
         }

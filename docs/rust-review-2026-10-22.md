@@ -38,9 +38,8 @@ others belong to developer verification tools or tests. Do not replace all of th
 with silent fallbacks. Use pattern matching or return an error where absence is
 recoverable, and contextual `expect` for actual internal invariants.
 
-`Document::resolve` currently returns `Result<_, ()>`, which discards why context
-resolution failed. A focused follow-up should introduce a named error with the
-missing instance/definition context and update the callers and invalid-path tests.
+The first pass identified `Document::resolve` returning `Result<_, ()>` and losing
+context about failures. This is addressed in the follow-up below.
 
 The model uses full document snapshots for Undo. That copy has a purpose; changing
 it requires measurements and transaction tests. Shared image bytes intentionally
@@ -74,3 +73,44 @@ The adopted rules and verification commands are in
 
 No native GUI session, Windows resource build or mobile runtime was exercised in
 this pass. The pre-existing web release package has not been rebuilt or published.
+
+## Follow-up: context errors and module responsibilities
+
+`Document::resolve` now returns a named `ContextError` with the failing instance,
+path index and owning/referenced definition. It checks the target definition at
+*every* step, including the final one. Previously a dangling final reference could
+incorrectly return success. Intersection errors preserve those details for the
+caller. Tests cover root/nested resolution, missing instances, dangling definitions
+and the transactional behaviour of a rejected intersection command.
+
+The `Editor` implementation moved from `lib.rs` into `editor.rs`, keeping
+`rysmo_model::Editor` and `UNDO_LIMIT` available under their original public paths.
+The root module now declares modules and re-exports APIs. Tests explicitly import
+the matrix type they use rather than inheriting a private root-module import.
+This is a structural change; Undo snapshots and document serialization are retained.
+
+Terrain edge flipping now uses a named `FlipPlan` with two face IDs and two triangle
+arrays. The type records the validated lengths, replacing a long tuple of vectors.
+Recoverable failed lookups return `MeshError` before the candidate mesh is committed.
+Existing tests cover convexity rejection, attributes, curve membership and atomic
+failure. Three unnecessary `clone()` calls on copyable curve values were removed.
+
+Native input insertion now resolves owners through a fallible helper instead of
+checked `unwrap()`/`expect` calls for instances, guides, text, dimensions and sections.
+A regression test checks all five record collections against missing owner IDs.
+The native file layout and version are unchanged.
+
+Follow-up verification passed on Rust 1.98.1:
+
+- All eight headless library suites: **610 passed**, no failures, including six new
+  tests for context errors, rejected command state and native input owners.
+- Workspace Clippy, including all native targets: no compiler errors, **66 distinct
+  warnings**, down from 71. Three `clone_on_copy`, one `result_unit_err` and one
+  `type_complexity` finding were removed; no new warning category/count was added.
+- Browser compilation with the `web-release` profile passed.
+- Formatting and diff checks passed. No browser release was rebuilt or published.
+
+The `Document::resolve` error type changes from `()` to `ContextError`. External
+Rust callers matching `Err(())` must handle the named error; successful values and
+method paths are unchanged. Workspace callers are checked by Clippy and the tests.
+Other large modules and the remaining warnings are still follow-up work.

@@ -452,7 +452,17 @@ pub fn save(doc: &Document) -> String {
     out
 }
 
-/// Reads `.rysmo` text (versions 1 through 14). Everything is checked; a file with broken
+/// Resolve an input record's owner without relying on an earlier validation pass.
+fn definition_mut(doc: &mut Document, owner: Option<DefinitionId>) -> Result<&mut Definition, IoError> {
+    doc.def_mut(owner).ok_or_else(|| {
+        IoError::Format(match owner {
+            Some(id) => format!("definition {id} is not defined"),
+            None => "the model definition is missing".into(),
+        })
+    })
+}
+
+/// Reads `.rysmo` text up to [`VERSION`]. Everything is checked; a file with broken
 /// loops, missing references or a component that contains itself is refused with a
 /// message saying what is wrong.
 pub fn load(text: &str) -> Result<Document, IoError> {
@@ -624,7 +634,7 @@ pub fn load(text: &str) -> Result<Document, IoError> {
         if !section.plane.valid() {
             return Err(IoError::Format("invalid scaled section plane".into()));
         }
-        let sections = &mut doc.def_mut(section.within).unwrap().sections;
+        let sections = &mut definition_mut(&mut doc, section.within)?.sections;
         if section.active && sections.active.is_some() {
             return Err(IoError::Format("multiple active section planes in one context".into()));
         }
@@ -661,7 +671,7 @@ pub fn load(text: &str) -> Result<Document, IoError> {
             material: i.material,
             hidden: i.hidden,
         };
-        doc.def_mut(i.within).expect("checked").instances.insert(i.id, inst);
+        definition_mut(&mut doc, i.within)?.instances.insert(i.id, inst);
     }
     for g in f.guides {
         unique(g.id.0)?;
@@ -677,7 +687,7 @@ pub fn load(text: &str) -> Result<Document, IoError> {
                 Guide::Point { p: p * scale, origin: origin.map(|p| p * scale), hidden }
             }
         };
-        doc.def_mut(g.within).expect("checked").guides.insert(g.id, guide);
+        definition_mut(&mut doc, g.within)?.guides.insert(g.id, guide);
     }
     for entry in f.texts {
         unique(entry.id.0)?;
@@ -686,7 +696,7 @@ pub fn load(text: &str) -> Result<Document, IoError> {
         if !text.validate() {
             return Err(IoError::Format(format!("text {} has invalid placement or font", entry.id)));
         }
-        doc.def_mut(entry.within).unwrap().texts.insert(entry.id, text);
+        definition_mut(&mut doc, entry.within)?.texts.insert(entry.id, text);
     }
     for entry in f.dimensions {
         unique(entry.id.0)?;
@@ -696,7 +706,7 @@ pub fn load(text: &str) -> Result<Document, IoError> {
             return Err(IoError::Format(format!("dimension {} has invalid geometry", entry.id)));
         }
         // Missing geometry is a supported non-associated dimension, with retained values.
-        doc.def_mut(entry.within).expect("checked").dimensions.insert(entry.id, dimension);
+        definition_mut(&mut doc, entry.within)?.dimensions.insert(entry.id, dimension);
     }
     for id in doc.definitions.keys() {
         let d = &doc.definitions[id];
@@ -836,6 +846,57 @@ mod tests {
         let mut doc = e.doc().clone();
         doc.camera = Some(OrbitCamera::default());
         doc
+    }
+
+    #[test]
+    fn all_input_record_owners_are_checked_before_insertion() {
+        use rysmo_model::sections::SectionPlane;
+        use rysmo_model::text::{Text, TextPlacement};
+        let mut doc = load(include_str!("../../../testdata/dimensions-preview.rysmo")).unwrap();
+        let definition = DefinitionId(doc.reserve_id());
+        doc.definitions.insert(definition, Definition::default());
+        let instance = InstanceId(doc.reserve_id());
+        doc.root.instances.insert(
+            instance,
+            Instance {
+                definition,
+                transform: DMat4::IDENTITY,
+                name: "Test".into(),
+                tag: None,
+                material: None,
+                hidden: false,
+                glued_to: None,
+            },
+        );
+        let guide = GuideId(doc.reserve_id());
+        doc.root.guides.insert(guide, Guide::Point { p: DVec3::ZERO, origin: None, hidden: false });
+        let text = rysmo_mesh::TextId(doc.reserve_id());
+        doc.root.texts.insert(
+            text,
+            Text {
+                content: "Note".into(),
+                placement: TextPlacement::Screen { position: rysmo_math::DVec2::splat(0.5) },
+                font: Default::default(),
+                endpoint: Default::default(),
+            },
+        );
+        let section = doc.reserve_id();
+        doc.root
+            .sections
+            .planes
+            .insert(section, SectionPlane { name: "Section".into(), origin: DVec3::ZERO, normal: DVec3::Z });
+        let saved = save(&doc);
+        assert!(load(&saved).is_ok(), "The starting fixture must be a valid native document");
+        let original: serde_json::Value = serde_json::from_str(&saved).unwrap();
+        for collection in ["instances", "guides", "texts", "dimensions", "section_planes"] {
+            let mut invalid = original.clone();
+            assert!(!invalid[collection].as_array().unwrap().is_empty(), "Missing {collection} fixture");
+            invalid[collection][0]["in"] = serde_json::json!(u64::MAX);
+            match load(&invalid.to_string()) {
+                Err(IoError::Format(message)) => assert!(message.contains("is not defined"), "{collection}: {message}"),
+                other => panic!("{collection} must report the invalid owner, got {other:?}"),
+            }
+        }
     }
 
     #[test]

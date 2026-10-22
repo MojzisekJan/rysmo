@@ -1,6 +1,13 @@
 //! Local topology edits for triangulated terrain.
 use crate::{CurveKind, Edge, EdgeId, FaceId, Mesh, MeshError, VertexId};
 use rysmo_math::{DVec3, EPS, closest_on_segment};
+/// A validated replacement for the diagonal shared by exactly two triangles.
+struct FlipPlan {
+    edge: Edge,
+    faces: [FaceId; 2],
+    triangles: [[VertexId; 3]; 2],
+}
+
 impl Mesh {
     /// Inserts a point into a terrain triangle or shared edge, then moves it.
     pub fn add_terrain_detail(
@@ -97,20 +104,20 @@ impl Mesh {
 
     /// Replaces the diagonal shared by two triangles. Face attributes/IDs survive;
     /// the diagonal receives a new ID. Invalid/non-convex configurations are atomic.
-    fn terrain_flip_plan(&self, edge: EdgeId) -> Result<(Edge, Vec<FaceId>, Vec<VertexId>, Vec<VertexId>), MeshError> {
+    fn terrain_flip_plan(&self, edge: EdgeId) -> Result<FlipPlan, MeshError> {
         let original = self.edge(edge).cloned().ok_or(MeshError::Missing(edge.0))?;
-        let faces = self.faces_of_edge(edge);
-        if faces.len() != 2 {
-            return Err(MeshError::Invalid("Flip Edge requires two adjacent triangles".into()));
-        }
-        let first = self.face(faces[0]).unwrap();
-        let second = self.face(faces[1]).unwrap();
+        let faces: [FaceId; 2] = self
+            .faces_of_edge(edge)
+            .try_into()
+            .map_err(|_| MeshError::Invalid("Flip Edge requires two adjacent triangles".into()))?;
+        let first = self.face(faces[0]).ok_or(MeshError::Missing(faces[0].0))?;
+        let second = self.face(faces[1]).ok_or(MeshError::Missing(faces[1].0))?;
         if [first, second].iter().any(|f| f.outer.len() != 3 || !f.holes.is_empty()) {
             return Err(MeshError::Invalid("Flip Edge requires triangle faces".into()));
         }
         let index = (0..3)
             .find(|i| original.v.contains(&first.outer[*i]) && original.v.contains(&first.outer[(*i + 1) % 3]))
-            .unwrap();
+            .ok_or_else(|| MeshError::Invalid("shared edge is missing from the triangle outline".into()))?;
         let a = first.outer[index];
         let b = first.outer[(index + 1) % 3];
         let c = first.outer[(index + 2) % 3];
@@ -124,8 +131,8 @@ impl Mesh {
         }
         let normal = (self.face_normal(faces[0]).unwrap_or_default() + self.face_normal(faces[1]).unwrap_or_default())
             .normalize_or_zero();
-        let triangle1 = vec![c, d, b];
-        let triangle2 = vec![d, c, a];
+        let triangle1 = [c, d, b];
+        let triangle2 = [d, c, a];
         for triangle in [&triangle1, &triangle2] {
             let cross =
                 (self.pos(triangle[1]) - self.pos(triangle[0])).cross(self.pos(triangle[2]) - self.pos(triangle[0]));
@@ -133,20 +140,22 @@ impl Mesh {
                 return Err(MeshError::Invalid("terrain quadrilateral is not convex".into()));
             }
         }
-        Ok((original, faces, triangle1, triangle2))
+        Ok(FlipPlan { edge: original, faces, triangles: [triangle1, triangle2] })
     }
+    #[must_use]
     pub fn can_flip_terrain_edge(&self, edge: EdgeId) -> bool {
         self.terrain_flip_plan(edge).is_ok()
     }
     pub fn flip_terrain_edge(&mut self, edge: EdgeId) -> Result<EdgeId, MeshError> {
-        let (original, faces, triangle1, triangle2) = self.terrain_flip_plan(edge)?;
-        let (c, d) = (triangle1[0], triangle1[1]);
+        let FlipPlan { edge: original, faces, triangles } = self.terrain_flip_plan(edge)?;
+        let [c, d, _] = triangles[0];
         let mut candidate = self.clone();
         candidate.remove_edge_raw(edge);
         let new_edge = candidate.raw_edge(c, d);
-        candidate.edges.get_mut(&new_edge).unwrap().set_flags(original.flags());
-        candidate.faces.get_mut(&faces[0]).unwrap().outer = triangle1;
-        candidate.faces.get_mut(&faces[1]).unwrap().outer = triangle2;
+        candidate.edges.get_mut(&new_edge).ok_or(MeshError::Missing(new_edge.0))?.set_flags(original.flags());
+        for (face, triangle) in faces.into_iter().zip(triangles) {
+            candidate.faces.get_mut(&face).ok_or(MeshError::Missing(face.0))?.outer = triangle.to_vec();
+        }
         if let Some(curve) = original.curve {
             let count = candidate.curve_edges(curve).len();
             if let Some(descriptor) = candidate.curves.get_mut(&curve) {

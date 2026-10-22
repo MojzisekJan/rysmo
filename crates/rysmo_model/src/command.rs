@@ -2323,7 +2323,9 @@ impl Command {
                 sections.active = id;
             }
             Command::IntersectFaces { elements, with_model, context } => {
-                if doc.resolve(&context).map_err(|_| CommandError::Invalid("invalid intersection context".into()))?
+                if doc
+                    .resolve(&context)
+                    .map_err(|error| CommandError::Invalid(format!("invalid intersection context: {error}")))?
                     != def
                 {
                     return invalid("intersection context does not match the editor");

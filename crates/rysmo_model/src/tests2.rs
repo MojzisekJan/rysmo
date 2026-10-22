@@ -3,7 +3,7 @@
 
 use std::collections::BTreeSet;
 
-use rysmo_math::DVec3;
+use rysmo_math::{DMat4, DVec3};
 
 use crate::*;
 

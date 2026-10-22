@@ -285,17 +285,6 @@ impl Document {
         Some(r)
     }
 
-    /// The definition a context path ends in: `None` for the model itself. `Err` if the
-    /// path does not lead anywhere.
-    pub fn resolve(&self, path: &[InstanceId]) -> Result<Option<DefinitionId>, ()> {
-        let mut def: Option<DefinitionId> = None;
-        for i in path {
-            let inst = self.def(def).ok_or(())?.instances.get(i).ok_or(())?;
-            def = Some(inst.definition);
-        }
-        Ok(def)
-    }
-
     /// Definition coordinates of the end of `path` to world coordinates.
     pub fn path_transform(&self, path: &[InstanceId]) -> DMat4 {
         let mut def: Option<DefinitionId> = None;
