@@ -25,6 +25,42 @@ pub struct Material {
     /// Light the faces give off, in cd/m²; 0 for none.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub glow: f32,
+    #[serde(default)]
+    pub pbr: Pbr,
+}
+
+/// Surface response in lit rendering. Normal maps use the face's texture coordinates.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Pbr {
+    pub roughness: f32,
+    pub metallic: f32,
+    pub normal_map: Option<rysmo_mesh::ImageId>,
+    pub normal_scale: f32,
+    pub normal_flip_y: bool,
+    pub tint_texture: bool,
+}
+impl Default for Pbr {
+    fn default() -> Self {
+        Self {
+            roughness: 0.85,
+            metallic: 0.,
+            normal_map: None,
+            normal_scale: 1.,
+            normal_flip_y: false,
+            tint_texture: false,
+        }
+    }
+}
+impl Pbr {
+    pub fn valid(&self) -> bool {
+        self.roughness.is_finite()
+            && (0.0..=1.0).contains(&self.roughness)
+            && self.metallic.is_finite()
+            && (0.0..=1.0).contains(&self.metallic)
+            && self.normal_scale.is_finite()
+            && (0.0..=8.0).contains(&self.normal_scale)
+    }
 }
 
 fn is_zero(v: &f32) -> bool {
@@ -99,6 +135,8 @@ pub struct Definition {
     pub axes: rysmo_math::DrawingAxes,
     pub sections: crate::sections::Sections,
     pub component: crate::components::ComponentSettings,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parametric: Option<crate::parametric::Spec>,
 }
 
 /// Everything that is saved in a file.
@@ -118,6 +156,8 @@ pub struct Document {
     pub measurement: crate::MeasurementSettings,
     /// The camera at the time of saving, so a file opens where it was left.
     pub camera: Option<OrbitCamera>,
+    #[serde(default)]
+    pub photo_match: Option<crate::photo::Setup>,
     pub scenes: Vec<crate::scenes::Scene>,
     /// The next free id; every element kind in every mesh draws from it.
     pub(crate) next_id: u64,
@@ -136,6 +176,7 @@ impl Default for Document {
             length_precision: None,
             measurement: Default::default(),
             camera: None,
+            photo_match: None,
             scenes: Vec::new(),
             next_id: 1,
         }

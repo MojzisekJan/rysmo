@@ -8,7 +8,7 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct Contents {
     pub snapshot: Arc<Clipboard>,
-    generation: u64,
+    generation: Option<u64>,
 }
 pub struct Placement {
     contents: Contents,
@@ -35,7 +35,8 @@ pub fn copy(app: &mut App3d, cut: bool) {
                 app.message = Some(error.to_string());
                 return;
             }
-            app.object_clipboard = Some(Contents { snapshot: Arc::new(snapshot), generation: app.document_generation });
+            app.object_clipboard =
+                Some(Contents { snapshot: Arc::new(snapshot), generation: Some(app.document_generation) });
             app.paste_place = None;
             app.message = Some(if cut { "Cut objects." } else { "Copied objects." }.into());
         }
@@ -57,7 +58,9 @@ pub fn paste(app: &mut App3d, in_place: bool) {
 }
 pub fn duplicate(app: &mut App3d) {
     match Clipboard::capture(&app.editor, app.editor.selected()) {
-        Ok(snapshot) => begin(app, Contents { snapshot: Arc::new(snapshot), generation: app.document_generation }),
+        Ok(snapshot) => {
+            begin(app, Contents { snapshot: Arc::new(snapshot), generation: Some(app.document_generation) })
+        }
         Err(error) => app.message = Some(error.to_string()),
     }
 }
@@ -75,7 +78,7 @@ fn commit(app: &mut App3d, contents: Contents, transform: DMat4) {
     match app.editor.apply(Command::Paste {
         clipboard: Box::new((*contents.snapshot).clone()),
         transform,
-        reuse_definitions: contents.generation == app.document_generation,
+        reuse_definitions: contents.generation == Some(app.document_generation),
     }) {
         Ok(out) => {
             app.editor.set_selection(out.created);
@@ -129,7 +132,8 @@ pub fn draw(painter: &egui::Painter, app: &App3d) {
         }
         for instance in def.instances.values() {
             let source = contents.snapshot.document.definitions.get(&instance.definition);
-            let definition = if contents.generation == app.document_generation && source.is_some_and(|d| !d.group) {
+            let definition = if contents.generation == Some(app.document_generation) && source.is_some_and(|d| !d.group)
+            {
                 app.editor.doc().definitions.get(&instance.definition).or(source)
             } else {
                 source
@@ -158,6 +162,70 @@ pub fn screenshot_preview(app: &mut App3d) {
         preview.origin = DVec3::new(0., -3., 0.);
     }
     app.camera.frame(DVec3::new(-0.5, -3.5, 0.), DVec3::new(8.5, 2.5, 1.2));
+}
+
+/// Place external geometry without replacing the user's object clipboard.
+pub fn place_external(
+    app: &mut App3d,
+    mut document: rysmo_model::Document,
+    name: String,
+    preserve_origin: bool,
+) -> Result<(), String> {
+    if let Some(photo) = document.photo_match.take()
+        && !document
+            .materials
+            .values()
+            .any(|m| m.texture.is_some_and(|t| t.image == photo.image) || m.pbr.normal_map == Some(photo.image))
+    {
+        document.images.remove(&photo.image);
+    }
+    document.camera = None;
+    document.scenes.clear();
+    let bounds = document.definition_bounds(None).ok_or("Imported component has no geometry.")?;
+    if document.root.mesh.vertex_count() == 0
+        && document.root.instances.len() == 1
+        && document.root.guides.is_empty()
+        && document.root.dimensions.is_empty()
+        && document.root.texts.is_empty()
+        && document.root.sections.planes.is_empty()
+    {
+        let instance = document.root.instances.values_mut().next().unwrap();
+        instance.name = name;
+        if !preserve_origin {
+            instance.transform = DMat4::from_translation(-bounds.0) * instance.transform;
+        }
+        begin(
+            app,
+            Contents {
+                snapshot: Arc::new(Clipboard { document, source_transform: DMat4::IDENTITY }),
+                generation: None,
+            },
+        );
+        return Ok(());
+    }
+    let definition = rysmo_model::DefinitionId(document.reserve_id());
+    let instance = InstanceId(document.reserve_id());
+    let mut root = std::mem::take(&mut document.root);
+    root.name = name.clone();
+    root.group = false;
+    document.definitions.insert(definition, root);
+    document.root.instances.insert(
+        instance,
+        rysmo_model::Instance {
+            definition,
+            transform: DMat4::from_translation(if preserve_origin { DVec3::ZERO } else { -bounds.0 }),
+            name,
+            material: None,
+            tag: None,
+            hidden: false,
+            glued_to: None,
+        },
+    );
+    begin(
+        app,
+        Contents { snapshot: Arc::new(Clipboard { document, source_transform: DMat4::IDENTITY }), generation: None },
+    );
+    Ok(())
 }
 
 #[cfg(test)]

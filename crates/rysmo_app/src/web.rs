@@ -32,6 +32,7 @@ extern "C" {
     fn reject_open_file(token: f64);
     async fn pick_open() -> JsValue;
     async fn pick_texture_image() -> JsValue;
+    async fn pick_data_file(accept: &str, max_bytes: u32) -> JsValue;
     async fn open_recent(name: &str) -> JsValue;
     async fn save(name: &str, text: &str, save_as: bool) -> JsValue;
     /// Hands the browser a file to keep in its downloads.
@@ -46,6 +47,8 @@ enum Arrived {
     Autosaved { version: DocumentVersion, camera: rysmo_math::OrbitCamera, dirty: bool, success: bool },
     Recent(Vec<String>),
     Texture { name: String, bytes: Vec<u8> },
+    Data { purpose: crate::features::data_files::Purpose, name: String, bytes: Vec<u8>, version: DocumentVersion },
+    DataError(String),
 }
 
 thread_local! {
@@ -267,6 +270,15 @@ fn take_arrived(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>, time: Res<Ti
                 }
             }
             Arrived::Recent(list) => app.recent = list,
+            Arrived::Data { purpose, name, bytes, version } => {
+                let current = DocumentVersion { generation: app.document_generation, revision: app.editor.revision() };
+                if purpose != crate::features::data_files::Purpose::Collection && current != version {
+                    app.message = Some("The model changed while choosing an import. Choose the file again.".into());
+                } else {
+                    crate::features::data_files::receive(&mut app, purpose, name, bytes);
+                }
+            }
+            Arrived::DataError(error) => app.message = Some(error),
             Arrived::Texture { name, bytes } => {
                 app.message = Some(match files::import_texture_bytes(&mut app, &name, bytes) {
                     Ok(()) => format!("Loaded texture {name}."),
@@ -373,4 +385,22 @@ fn render_diagnostics(
     ));
     sample.1 = now;
     sample.2 = sample.0;
+}
+
+pub fn pick_data(purpose: crate::features::data_files::Purpose, version: DocumentVersion) {
+    wasm_bindgen_futures::spawn_local(async move {
+        let accept = purpose.extensions().iter().map(|s| format!(".{s}")).collect::<Vec<_>>().join(",");
+        let result = pick_data_file(&accept, 64 * 1024 * 1024).await;
+        if let Some(error) = field(&result, "error").as_string() {
+            arrive(Arrived::DataError(error));
+            return;
+        }
+        if result.is_null() || result.is_undefined() {
+            return;
+        }
+        let values = js_sys::Array::from(&result);
+        if let Some(name) = values.get(0).as_string() {
+            arrive(Arrived::Data { purpose, name, bytes: js_sys::Uint8Array::new(&values.get(1)).to_vec(), version });
+        }
+    });
 }

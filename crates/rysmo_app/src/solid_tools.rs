@@ -117,7 +117,7 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
         });
         crate::widgets::checkbox(ui, &mut draft.keep_inputs,if draft.operation==BooleanOp::Trim {"Keep A as well (B is always retained)"} else {"Keep original objects"});
         ui.label("Results are new groups. Other copies of shared components stay unchanged.");
-        ui.small("Closed shells, including cavities and separate parts, are supported. Nested objects and annotations are not supported. Complex or invalid geometry is rejected.");
+        ui.small("Closed shells and nested solid groups/components are supported. Annotations and section planes inside operands are not supported. Limit: 4096 triangles per operand; complex or invalid geometry is rejected.");
         ui.horizontal(|ui| {commit=ui.button("Apply").clicked();cancel=ui.button("Cancel").clicked();});
     });
     if commit {

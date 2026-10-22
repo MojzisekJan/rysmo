@@ -16,6 +16,9 @@ serde_json.workspace = true
 base64.workspace = true
 png.workspace = true
 thiserror.workspace = true
+earcut = "0.4.11"
+ttf-parser = "0.25.1"
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg"] }
 crc32fast = "1"
 web-time = "1"
 

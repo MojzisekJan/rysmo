@@ -826,6 +826,7 @@ fn main() -> Result<()> {
         fov_y: 0.7,
         parallel: false,
         eye_base_z: 0.,
+        roll: 0.,
     });
     std::fs::write(&path, rysmo_io::save(&doc))?;
     Ok(())

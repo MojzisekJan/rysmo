@@ -8,6 +8,11 @@ Written in Rust with Bevy and egui.
 
 **[Open the editor in your browser](https://mojzisekjan.github.io/rysmo/editor/)**
 
+Recent editor additions include OBJ/GLB/DXF import, portable component collections,
+editable windows/doors/stairs, scaled SVG/PDF drawings, photo perspective matching,
+material surface controls and nested solid operations. See
+[editor workflows and limits](docs/editor-expansion.md).
+
 Requires Rust 1.97.1 or newer.
 
 ```sh

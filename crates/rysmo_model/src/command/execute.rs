@@ -54,6 +54,38 @@ impl Command {
             DMat4::IDENTITY
         };
         match self {
+            Command::SetParametric { definition, spec } => {
+                let previous = doc
+                    .definitions
+                    .get(&definition)
+                    .ok_or_else(|| CommandError::Invalid("Missing parametric component".into()))?;
+                if previous.parametric.is_none()
+                    || !previous.instances.is_empty()
+                    || !previous.dimensions.is_empty()
+                    || !previous.texts.is_empty()
+                    || !previous.guides.is_empty()
+                    || !previous.sections.planes.is_empty()
+                {
+                    return invalid("Component contains manual additions; make a separate copy before regeneration");
+                }
+                if !previous
+                    .parametric
+                    .as_ref()
+                    .unwrap()
+                    .matches_geometry(&previous.mesh)
+                    .map_err(CommandError::Invalid)?
+                {
+                    return invalid("Component geometry was edited manually; regeneration would replace those edits");
+                }
+                if previous.parametric.as_ref() == Some(&spec) {
+                    out.changed = false;
+                } else {
+                    let mesh = spec.mesh().map_err(CommandError::Invalid)?.with_fresh_ids(|| doc.reserve_id())?;
+                    let target = doc.definitions.get_mut(&definition).unwrap();
+                    target.mesh = mesh;
+                    target.parametric = Some(spec);
+                }
+            }
             Command::SolidBoolean { left, right, operation, keep_inputs } => {
                 out.created = crate::solids::run(doc, def, left, right, operation, keep_inputs)?;
                 out.changed = !keep_inputs || !out.created.is_empty();
@@ -1282,7 +1314,7 @@ impl Command {
             Command::AddMaterial { name, color, texture } => {
                 check_texture(doc, texture.as_ref())?;
                 let id = MaterialId(doc.reserve_id());
-                doc.materials.insert(id, Material { name, color, texture, glow: 0.0 });
+                doc.materials.insert(id, Material { name, color, texture, glow: 0.0, pbr: Default::default() });
                 out.material = Some(id);
             }
             Command::AddTexturedMaterial { name, color, image_name, mime, data, size } => {
@@ -1301,8 +1333,16 @@ impl Command {
                     id
                 };
                 let material = MaterialId(doc.reserve_id());
-                doc.materials
-                    .insert(material, Material { name, color, texture: Some(Texture { image, size }), glow: 0.0 });
+                doc.materials.insert(
+                    material,
+                    Material {
+                        name,
+                        color,
+                        texture: Some(Texture { image, size }),
+                        glow: 0.0,
+                        pbr: Default::default(),
+                    },
+                );
                 out.image = Some(image);
                 out.material = Some(material);
             }
@@ -1321,6 +1361,50 @@ impl Command {
                     .get_mut(&material)
                     .ok_or_else(|| CommandError::Invalid(format!("no material {material}")))?;
                 m.texture = texture;
+            }
+            Command::AddNormalMap { material, name, mime, data } => {
+                if !doc.materials.contains_key(&material)
+                    || !["image/png", "image/jpeg"].contains(&mime.as_str())
+                    || data.is_empty()
+                    || data.len() > 32 * 1024 * 1024
+                {
+                    return invalid("Missing material or invalid normal map image");
+                }
+                let image = ImageId(doc.reserve_id());
+                doc.images.insert(image, Image { name, mime, bytes: Arc::new(data) });
+                doc.materials.get_mut(&material).unwrap().pbr.normal_map = Some(image);
+            }
+            Command::ImportPhoto { name, mime, data, size } => {
+                let image = ImageId(doc.reserve_id());
+                let setup = crate::photo::Setup::new(image, size);
+                if !setup.valid()
+                    || !["image/png", "image/jpeg"].contains(&mime.as_str())
+                    || data.is_empty()
+                    || data.len() > 32 * 1024 * 1024
+                {
+                    return invalid("Invalid photograph or image dimensions");
+                }
+                doc.images.insert(image, Image { name, mime, bytes: Arc::new(data) });
+                let previous = doc.photo_match.replace(setup).map(|p| p.image);
+                drop_unused_photo(doc, previous);
+            }
+            Command::SetPhotoMatch { setup } => {
+                if setup.as_ref().is_some_and(|setup| !setup.valid() || !doc.images.contains_key(&setup.image)) {
+                    return invalid("Invalid photo matching settings or missing image");
+                }
+                out.changed = doc.photo_match != setup;
+                let previous = doc.photo_match.as_ref().map(|p| p.image);
+                doc.photo_match = setup;
+                drop_unused_photo(doc, previous);
+            }
+            Command::SetMaterialPbr { material, pbr } => {
+                if !pbr.valid() || pbr.normal_map.is_some_and(|id| !doc.images.contains_key(&id)) {
+                    return invalid("Invalid surface values or missing normal map image");
+                }
+                let m =
+                    doc.materials.get_mut(&material).ok_or_else(|| CommandError::Invalid("Missing material".into()))?;
+                out.changed = m.pbr != pbr;
+                m.pbr = pbr;
             }
             Command::SetMaterialGlow { material, glow } => {
                 if !glow.is_finite() || !(0.0..=MAX_GLOW).contains(&glow) {
@@ -1610,5 +1694,17 @@ fn check_material(doc: &Document, material: Option<MaterialId>) -> Result<(), Co
     match material {
         Some(m) if !doc.materials.contains_key(&m) => invalid(format!("no material {m}")),
         _ => Ok(()),
+    }
+}
+
+fn drop_unused_photo(doc: &mut Document, previous: Option<ImageId>) {
+    if let Some(image) = previous
+        && doc.photo_match.as_ref().is_none_or(|p| p.image != image)
+        && !doc
+            .materials
+            .values()
+            .any(|m| m.texture.is_some_and(|t| t.image == image) || m.pbr.normal_map == Some(image))
+    {
+        doc.images.remove(&image);
     }
 }

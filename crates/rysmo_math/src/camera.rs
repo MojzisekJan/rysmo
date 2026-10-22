@@ -23,6 +23,8 @@ pub struct OrbitCamera {
     /// World elevation used as the reference for eye height.
     #[serde(default)]
     pub eye_base_z: f64,
+    #[serde(default)]
+    pub roll: f64,
 }
 
 impl Default for OrbitCamera {
@@ -35,11 +37,24 @@ impl Default for OrbitCamera {
             fov_y: 35f64.to_radians(),
             parallel: false,
             eye_base_z: 0.0,
+            roll: 0.0,
         }
     }
 }
 
 impl OrbitCamera {
+    pub fn valid(&self) -> bool {
+        self.target.is_finite()
+            && self.distance.is_finite()
+            && self.distance > 0.
+            && self.yaw.is_finite()
+            && self.pitch.is_finite()
+            && self.roll.is_finite()
+            && self.eye_base_z.is_finite()
+            && self.fov_y.is_finite()
+            && self.fov_y > 0.
+            && self.fov_y < std::f64::consts::PI
+    }
     pub fn eye(&self) -> DVec3 {
         let (sy, cy) = self.yaw.sin_cos();
         let (sp, cp) = self.pitch.sin_cos();
@@ -50,10 +65,13 @@ impl OrbitCamera {
     pub fn up(&self) -> DVec3 {
         let (sy, cy) = self.yaw.sin_cos();
         let (sp, cp) = self.pitch.sin_cos();
-        DVec3::new(-sp * cy, -sp * sy, cp)
+        let up = DVec3::new(-sp * cy, -sp * sy, cp);
+        let forward = -DVec3::new(cp * cy, cp * sy, sp);
+        up * self.roll.cos() + forward.cross(up) * self.roll.sin()
     }
 
     pub fn set_standard_view(&mut self, view: StandardView) {
+        self.roll = 0.;
         let quarter = std::f64::consts::FRAC_PI_2;
         (self.yaw, self.pitch) = match view {
             StandardView::Top => (-quarter, quarter),

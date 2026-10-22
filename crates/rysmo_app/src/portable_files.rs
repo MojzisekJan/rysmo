@@ -15,6 +15,8 @@ pub enum Operation {
     Stl,
     ThreeMf,
     Texture,
+    DataImport(crate::features::data_files::Purpose),
+    DataExport(&'static str),
 }
 pub struct Dialog {
     operation: Operation,
@@ -22,6 +24,7 @@ pub struct Dialog {
     name: String,
     overwrite: bool,
     error: Option<String>,
+    payload: Option<Vec<u8>>,
 }
 
 fn file_path(root: &Path, name: &str, extension: &str) -> Result<PathBuf, String> {
@@ -60,12 +63,13 @@ pub fn begin(app: &mut App3d, operation: Operation) {
         return;
     }
     let name = app.path.as_ref().and_then(|p| p.file_stem()).and_then(|p| p.to_str()).unwrap_or("Untitled").to_owned();
-    app.portable_files = Some(Dialog { operation, root, name, overwrite: false, error: None });
+    app.portable_files = Some(Dialog { operation, root, name, overwrite: false, error: None, payload: None });
 }
 
 impl Dialog {
     fn extension(&self) -> &'static str {
         match self.operation {
+            Operation::DataExport(extension) => extension,
             Operation::Obj => "obj",
             Operation::Glb => "glb",
             Operation::Dae => "dae",
@@ -76,6 +80,22 @@ impl Dialog {
         }
     }
     fn execute(&self, app: &mut App3d) -> Result<(), String> {
+        if let Operation::DataImport(purpose) = self.operation {
+            let extension = Path::new(&self.name)
+                .extension()
+                .and_then(|s| s.to_str())
+                .ok_or("Choose a file with a supported extension.")?;
+            if !purpose.extensions().contains(&extension.to_ascii_lowercase().as_str()) {
+                return Err("Unsupported import extension.".into());
+            }
+            let path = file_path(&self.root, &self.name, extension)?;
+            if std::fs::metadata(&path).map_err(|e| e.to_string())?.len() > 64 * 1024 * 1024 {
+                return Err("Import exceeds 64 MiB.".into());
+            }
+            let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+            crate::features::data_files::receive(app, purpose, self.name.clone(), bytes);
+            return Ok(());
+        }
         if self.operation == Operation::Texture {
             let bytes = std::fs::read(self.root.join(&self.name)).map_err(|e| e.to_string())?;
             return crate::files::import_texture_bytes(app, &self.name, bytes);
@@ -88,6 +108,13 @@ impl Dialog {
             return Err("This file exists. Confirm Replace existing file first.".into());
         }
         match self.operation {
+            Operation::DataExport(extension) => {
+                std::fs::write(&path, self.payload.as_ref().ok_or("Export payload is missing.")?)
+                    .map_err(|e| e.to_string())?;
+                if extension == "ryslib" {
+                    app.features.library.modified = false;
+                }
+            }
             Operation::Save => {
                 std::fs::write(&path, crate::files::document_text(app)).map_err(|e| e.to_string())?;
                 app.path = Some(path.clone());
@@ -144,6 +171,8 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
             "Export model"
         }
         Operation::Texture => "Import texture",
+        Operation::DataImport(_) => "Import file",
+        Operation::DataExport(_) => "Export file",
     };
     let window = crate::theme::window(title)
         .id(egui::Id::new("device-files"))
@@ -162,7 +191,12 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
                     .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
                     .map(|e| e.file_name().to_string_lossy().into_owned())
                     .filter(|name| {
-                        if dialog.operation == Operation::Texture {
+                        if let Operation::DataImport(purpose) = dialog.operation {
+                            purpose
+                                .extensions()
+                                .iter()
+                                .any(|ext| name.to_ascii_lowercase().ends_with(&format!(".{ext}")))
+                        } else if dialog.operation == Operation::Texture {
                             ["png", "jpg", "jpeg"].iter().any(|ext| name.to_lowercase().ends_with(&format!(".{ext}")))
                         } else {
                             name.ends_with(&format!(".{}", dialog.extension()))
@@ -183,7 +217,7 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
                     }
                 }
             });
-            let editing = !matches!(dialog.operation, Operation::Open | Operation::Texture);
+            let editing = !matches!(dialog.operation, Operation::Open | Operation::Texture | Operation::DataImport(_));
             if editing {
                 if ui.add(crate::theme::singleline(&mut dialog.name).hint_text("File name")).changed() {
                     dialog.overwrite = false;
@@ -215,6 +249,15 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
     }
 }
 
+#[cfg(any(target_os = "android", target_os = "ios"))]
+pub fn save_data(app: &mut App3d, name: String, extension: &'static str, bytes: Vec<u8>) {
+    begin(app, Operation::DataExport(extension));
+    if let Some(dialog) = app.portable_files.as_mut() {
+        dialog.name = name;
+        dialog.payload = Some(bytes);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -239,6 +282,7 @@ mod tests {
             name: "Test".into(),
             overwrite: false,
             error: None,
+            payload: None,
         };
         dialog.execute(&mut app).unwrap();
         let saved = app.editor.doc().clone();

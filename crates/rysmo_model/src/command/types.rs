@@ -12,6 +12,31 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum Command {
+    ImportPhoto {
+        name: String,
+        mime: String,
+        #[serde(with = "b64")]
+        data: Vec<u8>,
+        size: [u32; 2],
+    },
+    SetPhotoMatch {
+        setup: Option<crate::photo::Setup>,
+    },
+    AddNormalMap {
+        material: MaterialId,
+        name: String,
+        mime: String,
+        #[serde(with = "b64")]
+        data: Vec<u8>,
+    },
+    SetMaterialPbr {
+        material: MaterialId,
+        pbr: crate::Pbr,
+    },
+    SetParametric {
+        definition: DefinitionId,
+        spec: crate::parametric::Spec,
+    },
     SolidBoolean {
         left: InstanceId,
         right: InstanceId,

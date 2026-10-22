@@ -125,6 +125,7 @@ impl Scene {
             && c.target.is_finite()
             && c.distance.is_finite()
             && c.distance > 0.
+            && c.roll.is_finite()
             && c.yaw.is_finite()
             && c.pitch.is_finite()
             && c.eye_base_z.is_finite()

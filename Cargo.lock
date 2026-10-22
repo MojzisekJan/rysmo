@@ -4996,6 +4996,8 @@ version = "0.1.0"
 dependencies = [
  "base64",
  "crc32fast",
+ "earcut",
+ "image",
  "png",
  "rysmo_math",
  "rysmo_mesh",
@@ -5003,6 +5005,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+ "ttf-parser",
  "web-time",
 ]
 

@@ -10,7 +10,7 @@ async function fixture({ embedded=false, pickerError=null, readError=false, canc
   window.top=embedded?{}:window;
   if (storage) window.localStorage = storage;
   const document={getElementById:()=>diagnosticsPanel,body:{appendChild(node){node.attached=true;calls.attached++;}},createElement(type){
-    if(type==="input")return {files:[{name:"fixture.rysmo",text:async()=>{if(readError)throw Error("read failed");return "fixture model";}}],remove(){calls.removed++;},click(){assert.equal(this.attached,true);calls.inputs++;queueMicrotask(()=>cancelInput?this.oncancel():this.onchange());}};
+    if(type==="input")return {style:{},files:[{name:"fixture.rysmo",size:4,arrayBuffer:async()=>{if(readError)throw Error("read failed");return Uint8Array.from([0,1,254,255]).buffer;},text:async()=>{if(readError)throw Error("read failed");return "fixture model";}}],remove(){calls.removed++;},click(){assert.equal(this.attached,true);calls.inputs++;queueMicrotask(()=>cancelInput?this.oncancel():this.onchange());}};
     if(type==="a")return {click(){calls.downloads.push(this.download);},remove(){}};
     throw Error(`Unexpected element ${type}`);
   }};
@@ -270,4 +270,13 @@ test("overlapping Open results keep separate handles until accepted or rejected"
   api.reject_open_file(second[2]);
   assert.equal((await api.save(first[0], "updated", false))[0], "file-1.rysmo");
   assert.deepEqual(writes, [["file-1.rysmo", "updated"]]);
+});
+
+test("binary import preserves bytes, handles cancellation and read failure, and respects size bounds",async()=>{
+  const good=await fixture();const imported=await good.api.pick_data_file(".glb",64);
+  assert.equal(imported[0],"fixture.rysmo");assert.deepEqual(Array.from(imported[1]),[0,1,254,255]);
+  assert.equal(good.calls.removed,1);assert.equal(good.calls.open,0);
+  const small=await fixture();assert.match((await small.api.pick_data_file(".glb",2)).error,/limit|large/i);
+  const cancelled=await fixture({cancelInput:true});assert.equal(await cancelled.api.pick_data_file(".glb",64),null);
+  const failed=await fixture({readError:true});assert.match((await failed.api.pick_data_file(".glb",64)).error,/read failed/);
 });

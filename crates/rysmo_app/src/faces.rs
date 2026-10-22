@@ -50,13 +50,16 @@ const MAX_LIGHTS: usize = 64;
 /// How many of those lights cast shadows, when shadows are on.
 const SHADOWED_LIGHTS: usize = 8;
 
+type CachedImage = (Arc<Vec<u8>>, Handle<Image>);
+
 #[derive(Resource, Default)]
 struct FaceMeshes {
     key: Option<(u64, u64, Vec<FaceId>, Vec<InstanceId>)>,
     texture_settings: Option<(u32, u16)>,
     entities: Vec<Entity>,
     /// Decoded images, by id, with the bytes they came from.
-    images: HashMap<ImageId, (Arc<Vec<u8>>, Handle<Image>)>,
+    images: HashMap<ImageId, CachedImage>,
+    normals: HashMap<(ImageId, u32), CachedImage>,
 }
 
 /// An edge as the gizmos draw it: ends, the normals of its faces, a colour for
@@ -174,6 +177,11 @@ impl Buffers {
 }
 
 fn decode(bytes: &[u8], mime: &str, limit: u32, anisotropy: u16) -> Option<Image> {
+    let format = image::guess_format(bytes).ok()?;
+    let (w, h) = image::ImageReader::with_format(std::io::Cursor::new(bytes), format).into_dimensions().ok()?;
+    if w == 0 || h == 0 || w as u64 * h as u64 > 33_554_432 {
+        return None;
+    }
     let decoded = Image::from_buffer(
         bytes,
         ImageType::MimeType(mime),
@@ -251,21 +259,55 @@ fn rebuild_faces(
     let lit = style.lighting != Lighting::Flat;
     if state.texture_settings != Some((style.texture_limit, style.texture_anisotropy)) {
         state.images.clear();
+        state.normals.clear();
         state.texture_settings = Some((style.texture_limit, style.texture_anisotropy));
     }
     // Images: decode new ones, drop those gone.
-    state.images.retain(|id, (bytes, _)| doc.images.get(id).is_some_and(|i| Arc::ptr_eq(&i.bytes, bytes)));
+    let color_images: BTreeSet<_> = doc.materials.values().filter_map(|m| m.texture.map(|t| t.image)).collect();
+    state.images.retain(|id, (bytes, _)| {
+        color_images.contains(id) && doc.images.get(id).is_some_and(|i| Arc::ptr_eq(&i.bytes, bytes))
+    });
     for (id, img) in &doc.images {
-        if !state.images.contains_key(id)
+        if color_images.contains(id)
+            && !state.images.contains_key(id)
             && let Some(decoded) = decode(&img.bytes, &img.mime, style.texture_limit, style.texture_anisotropy)
         {
             let handle = images.add(decoded);
             state.images.insert(*id, (img.bytes.clone(), handle));
         }
     }
+    let normal_keys: std::collections::HashSet<_> =
+        doc.materials.values().filter_map(|m| m.pbr.normal_map.map(|id| (id, m.pbr.normal_scale.to_bits()))).collect();
+    state.normals.retain(|key, (bytes, _)| {
+        normal_keys.contains(key) && doc.images.get(&key.0).is_some_and(|image| Arc::ptr_eq(&image.bytes, bytes))
+    });
+    for (id, strength) in doc.materials.values().filter_map(|m| m.pbr.normal_map.map(|id| (id, m.pbr.normal_scale))) {
+        let key = (id, strength.to_bits());
+        if !state.normals.contains_key(&key)
+            && let Some(image) = doc.images.get(&id)
+            && let Some(mut decoded) = decode(&image.bytes, &image.mime, style.texture_limit, style.texture_anisotropy)
+        {
+            decoded.texture_descriptor.format = bevy::render::render_resource::TextureFormat::Rgba8Unorm;
+            if let Some(data) = decoded.data.as_mut() {
+                for pixel in data.as_chunks_mut::<4>().0 {
+                    let normal = Vec3::new(
+                        (pixel[0] as f32 / 127.5 - 1.) * strength,
+                        (pixel[1] as f32 / 127.5 - 1.) * strength,
+                        pixel[2] as f32 / 127.5 - 1.,
+                    )
+                    .normalize_or(Vec3::Z);
+                    for (value, component) in pixel[..3].iter_mut().zip(normal.to_array()) {
+                        *value = ((component + 1.) * 127.5).round() as u8;
+                    }
+                }
+            }
+            let handle = images.add(decoded);
+            state.normals.insert(key, (image.bytes.clone(), handle));
+        }
+    }
     let highlighted: BTreeSet<FaceId> = preview.faces.iter().copied().collect();
     let lit_instances: BTreeSet<InstanceId> = preview.instances.iter().copied().collect();
-    let mut groups: HashMap<Group, Buffers> = HashMap::new();
+    let mut groups: HashMap<(Group, Option<MaterialId>), Buffers> = HashMap::new();
     // Glowing area by occurrence and material: total area and area-weighted centre.
     let mut glows: HashMap<(usize, MaterialId), (f64, DVec3)> = HashMap::new();
     let glowing = |m: Option<MaterialId>| {
@@ -285,7 +327,7 @@ fn rebuild_faces(
             FaceStyle::Textured => match m.and_then(|m| doc.materials.get(&m)) {
                 Some(mat) => match mat.texture.filter(|t| state.images.contains_key(&t.image)) {
                     // The texture carries the colour; the vertex colour only shades it.
-                    Some(t) => ([1.0, 1.0, 1.0, mat.color[3]], Some(t)),
+                    Some(t) => (if mat.pbr.tint_texture { mat.color } else { [1.0, 1.0, 1.0, mat.color[3]] }, Some(t)),
                     None => (mat.color, None),
                 },
                 None => (rgba, None),
@@ -344,13 +386,26 @@ fn rebuild_faces(
                     } else {
                         Group::Plain
                     };
-                    let buf = groups.entry(group).or_default();
+                    let surface =
+                        material.filter(|id| doc.materials.get(id).is_some_and(|m| m.pbr != Default::default()));
+                    let buf = groups.entry((group, surface)).or_default();
                     let inverse = t.inverse();
                     let perspective = placement
                         .pins
                         .and_then(rysmo_model::pin_mapping)
                         .is_some_and(|m| m.x_axis.z.abs() + m.y_axis.z.abs() > 1e-12);
-                    let detail = if texture.is_some() && perspective { 8 } else { 1 };
+                    let normal_map =
+                        material.and_then(|id| doc.materials.get(&id)).is_some_and(|m| m.pbr.normal_map.is_some());
+                    let uv_size = texture.map(|t| t.size).or_else(|| {
+                        normal_map.then(|| {
+                            material
+                                .and_then(|id| doc.materials.get(&id))
+                                .and_then(|m| m.texture)
+                                .map(|t| t.size)
+                                .unwrap_or([1., 1.])
+                        })
+                    });
+                    let detail = if uv_size.is_some() && perspective { 8 } else { 1 };
                     let sample_weights = subdivided_weights(detail);
                     for tri in &tris {
                         let mut order = if side > 0.0 { [tri[0], tri[1], tri[2]] } else { [tri[0], tri[2], tri[1]] };
@@ -363,9 +418,7 @@ fn rebuild_faces(
                                 .normalize_or(DVec3::Z)
                         });
                         let uvs = order.map(|v| {
-                            texture
-                                .map(|tx| rysmo_model::uv_at(mesh.pos(v), n, tx.size, &placement))
-                                .unwrap_or([0., 0.])
+                            uv_size.map(|size| rysmo_model::uv_at(mesh.pos(v), n, size, &placement)).unwrap_or([0., 0.])
                         });
                         let polygon = rysmo_model::sections::clip_triangle(points, &section_planes);
                         for i in 1..polygon.len().saturating_sub(1) {
@@ -397,8 +450,8 @@ fn rebuild_faces(
                                     let uv = std::array::from_fn(|j| {
                                         uvs[0][j] * weights[0] + uvs[1][j] * weights[1] + uvs[2][j] * weights[2]
                                     });
-                                    let uv = if let Some(tx) = texture.filter(|_| placement.pins.is_some()) {
-                                        rysmo_model::uv_at(inverse.transform_point3(point), n, tx.size, &placement)
+                                    let uv = if let Some(size) = uv_size.filter(|_| placement.pins.is_some()) {
+                                        rysmo_model::uv_at(inverse.transform_point3(point), n, size, &placement)
                                     } else {
                                         uv
                                     };
@@ -414,7 +467,8 @@ fn rebuild_faces(
     // The model is Z up; Bevy is Y up. One rotation on each mesh maps one to the other.
     let to_y_up = Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2));
     let unlit = !lit || style.faces == FaceStyle::HiddenLine;
-    for (group, buf) in groups {
+    for ((group, material_id), buf) in groups {
+        let pbr = material_id.and_then(|id| doc.materials.get(&id)).map(|m| m.pbr).unwrap_or_default();
         if buf.idx.is_empty() {
             continue;
         }
@@ -438,13 +492,22 @@ fn rebuild_faces(
             emissive,
             emissive_texture: texture.filter(|_| emissive != LinearRgba::BLACK),
             unlit,
-            perceptual_roughness: 0.85,
+            perceptual_roughness: pbr.roughness,
+            metallic: pbr.metallic,
+            normal_map_texture: pbr
+                .normal_map
+                .and_then(|id| state.normals.get(&(id, pbr.normal_scale.to_bits())).map(|(_, h)| h.clone())),
+            flip_normal_map_y: pbr.normal_flip_y,
             reflectance: 0.2,
             alpha_mode: if matches!(group, Group::SeeThrough(_)) { AlphaMode::Blend } else { AlphaMode::Opaque },
             // Each side is its own triangles, wound to face its way; culling shows one.
             ..default()
         });
-        let e = commands.spawn((Mesh3d(meshes.add(buf.into_mesh())), MeshMaterial3d(material), to_y_up)).id();
+        let mut mesh = buf.into_mesh();
+        if pbr.normal_map.is_some() {
+            let _ = mesh.generate_tangents();
+        }
+        let e = commands.spawn((Mesh3d(meshes.add(mesh)), MeshMaterial3d(material), to_y_up)).id();
         state.entities.push(e);
     }
     // A Lambertian face of luminance L and area A gives off π·L·A lumens.

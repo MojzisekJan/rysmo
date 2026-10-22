@@ -6,6 +6,11 @@ impl Command {
     /// A short action name for the undo menu.
     pub fn label(&self) -> &'static str {
         match self {
+            Command::ImportPhoto { .. } => "Import Photograph",
+            Command::SetPhotoMatch { .. } => "Photo Matching",
+            Command::AddNormalMap { .. } => "Normal Map",
+            Command::SetMaterialPbr { .. } => "Material Surface",
+            Command::SetParametric { .. } => "Edit Parametric Component",
             Command::SolidBoolean { operation, .. } => operation.name(),
             Command::ApplyTextDefaults { .. } => "Text Settings",
             Command::ApplyTextAppearance { .. } => "Text Appearance",

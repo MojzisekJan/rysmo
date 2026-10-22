@@ -22,3 +22,7 @@ The command-menu icons use [Phosphor Icons](https://phosphoricons.com/), copyrig
 [docs/licenses/phosphor-icons-MIT.txt](docs/licenses/phosphor-icons-MIT.txt).
 The font is provided by `egui-phosphor` (MIT OR Apache-2.0). The modelling toolbar
 continues to use Rysmo's own vector icons.
+
+3D text and PDF drawing output embed DejaVu fonts. Their Bitstream Vera / DejaVu
+licence is included in
+[crates/rysmo_model/fonts/LICENSE.txt](crates/rysmo_model/fonts/LICENSE.txt).

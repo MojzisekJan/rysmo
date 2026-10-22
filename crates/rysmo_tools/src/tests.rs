@@ -21,6 +21,7 @@ impl Rig {
             fov_y: 0.7,
             parallel: false,
             eye_base_z: 0.0,
+            roll: 0.,
         };
         let mut tools = ToolBox::new();
         tools.set_tool(tool);

@@ -152,7 +152,13 @@ fn apply_style(
     sky_cube: Option<Res<SkyCube>>,
     mut images: Option<ResMut<Assets<Image>>>,
 ) {
-    let style = app.editor.doc().style;
+    let mut style = app.editor.doc().style;
+    if app.features.photo.active {
+        style.sky = false;
+        style.ground = false;
+        style.atmosphere = false;
+        style.fog = false;
+    }
     let glowing = app.editor.doc().materials.values().any(|m| m.glow > 0.0);
     if last.as_ref() == Some(&(style, glowing)) {
         return;

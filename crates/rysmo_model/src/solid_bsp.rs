@@ -34,10 +34,10 @@ struct Node {
     front: Option<Box<Node>>,
     back: Option<Box<Node>>,
 }
-struct Budget(usize);
-impl Budget {
+struct Budget<'a>(&'a mut usize);
+impl Budget<'_> {
     fn spend(&mut self, n: usize) -> Result<(), String> {
-        self.0 = self.0.checked_sub(n).ok_or("Solid operation exceeds its complexity limit")?;
+        *self.0 = self.0.checked_sub(n).ok_or("Solid operation exceeds its complexity limit")?;
         Ok(())
     }
 }
@@ -47,7 +47,7 @@ fn split(
     front: &mut Vec<Polygon>,
     back: &mut Vec<Polygon>,
     coplanar: &mut Vec<Polygon>,
-    budget: &mut Budget,
+    budget: &mut Budget<'_>,
 ) -> Result<(), String> {
     budget.spend(p.points.len())?;
     let sides = p
@@ -105,7 +105,7 @@ fn split(
     Ok(())
 }
 impl Node {
-    fn build(&mut self, polygons: Vec<Polygon>, depth: usize, budget: &mut Budget) -> Result<(), String> {
+    fn build(&mut self, polygons: Vec<Polygon>, depth: usize, budget: &mut Budget<'_>) -> Result<(), String> {
         if polygons.is_empty() {
             return Ok(());
         }
@@ -149,7 +149,7 @@ impl Node {
         }
         std::mem::swap(&mut self.front, &mut self.back);
     }
-    fn clip(&self, polygons: Vec<Polygon>, budget: &mut Budget) -> Result<Vec<Polygon>, String> {
+    fn clip(&self, polygons: Vec<Polygon>, budget: &mut Budget<'_>) -> Result<Vec<Polygon>, String> {
         let Some(plane) = self.plane else { return Ok(polygons) };
         let mut front = Vec::new();
         let mut back = Vec::new();
@@ -172,7 +172,7 @@ impl Node {
         }
         Ok(front)
     }
-    fn clip_to(&mut self, other: &Node, budget: &mut Budget) -> Result<(), String> {
+    fn clip_to(&mut self, other: &Node, budget: &mut Budget<'_>) -> Result<(), String> {
         self.polygons = other.clip(std::mem::take(&mut self.polygons), budget)?;
         if let Some(n) = &mut self.front {
             n.clip_to(other, budget)?;
@@ -192,8 +192,13 @@ impl Node {
         self.polygons
     }
 }
-pub(super) fn boolean(left: Vec<Polygon>, right: Vec<Polygon>, op: BooleanOp) -> Result<Vec<Polygon>, String> {
-    let mut budget = Budget(2_000_000);
+pub(super) fn boolean_with_budget(
+    left: Vec<Polygon>,
+    right: Vec<Polygon>,
+    op: BooleanOp,
+    remaining: &mut usize,
+) -> Result<Vec<Polygon>, String> {
+    let mut budget = Budget(remaining);
     let mut a = Node::default();
     let mut b = Node::default();
     a.build(left, 0, &mut budget)?;

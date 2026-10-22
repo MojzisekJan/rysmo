@@ -325,3 +325,30 @@ export function save_preferences(text) {
   try { window.localStorage.setItem("rysmo.preferences.v1", text); return true; }
   catch { return false; }
 }
+
+// Independent data imports never replace the model's Open/Save file handle.
+export function pick_data_file(accept, maxBytes) {
+  return new Promise(resolve => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = accept;
+    let settled = false;
+    const finish = value => {
+      if (settled) return;
+      settled = true;
+      input.remove();
+      resolve(value);
+    };
+    input.onchange = async () => {
+      const file = input.files[0];
+      if (!file) return finish(null);
+      if (file.size > maxBytes) return finish({error: "Import file is too large."});
+      try { finish([file.name, new Uint8Array(await file.arrayBuffer())]); }
+      catch (error) { finish({error: `Cannot read ${file.name}: ${error.message || error}`}); }
+    };
+    input.oncancel = () => finish(null);
+    input.style.display = "none";
+    document.body.appendChild(input);
+    input.click();
+  });
+}

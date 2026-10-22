@@ -46,8 +46,13 @@ pub fn export(doc: &Document) -> Vec<u8> {
                     prim.indices.push(prim.positions.len() as u32);
                     prim.positions.push(y_up(t.transform_point3(mesh.pos(v))));
                     prim.normals.push(n);
-                    let uv = texture
-                        .map(|tex| rysmo_model::uv_at(mesh.pos(v), local_n, tex.size, &placement))
+                    let uv_size = texture.map(|t| t.size).or_else(|| {
+                        mat.and_then(|id| doc.materials.get(&id))
+                            .filter(|m| m.pbr.normal_map.is_some())
+                            .map(|_| [1., 1.])
+                    });
+                    let uv = uv_size
+                        .map(|size| rysmo_model::uv_at(mesh.pos(v), local_n, size, &placement))
                         .unwrap_or([0.0, 0.0]);
                     prim.uvs.push([uv[0] as f32, uv[1] as f32]);
                 }
@@ -65,6 +70,7 @@ pub fn export(doc: &Document) -> Vec<u8> {
     let mut images = Vec::new();
     let mut textures = Vec::new();
     let mut texture_index: BTreeMap<rysmo_mesh::ImageId, usize> = BTreeMap::new();
+    let mut normal_texture_index: BTreeMap<(rysmo_mesh::ImageId, bool), Option<usize>> = BTreeMap::new();
     for (mat, prim) in &prims {
         let texture = mat
             .and_then(|m| doc.materials.get(&m))
@@ -85,10 +91,47 @@ pub fn export(doc: &Document) -> Vec<u8> {
                 textures.len() - 1
             })
         });
+        let surface = mat.and_then(|id| doc.materials.get(&id)).map(|m| m.pbr).unwrap_or_default();
+        let normal_index = surface.normal_map.and_then(|id| {
+            let key = (id, surface.normal_flip_y);
+            if let Some(index) = normal_texture_index.get(&key) {
+                return *index;
+            }
+            let image = doc.images.get(&id)?;
+            let index = (|| {
+                let format = image::guess_format(&image.bytes).ok()?;
+                let (w, h) = image::ImageReader::with_format(std::io::Cursor::new(&*image.bytes), format)
+                    .into_dimensions()
+                    .ok()?;
+                if w as u64 * h as u64 > 16_777_216 {
+                    return None;
+                }
+                let mut rgba = image::load_from_memory(&image.bytes).ok()?.to_rgba8();
+                if surface.normal_flip_y {
+                    for pixel in rgba.pixels_mut() {
+                        pixel.0[1] = 255 - pixel.0[1];
+                    }
+                }
+                let mut out = std::io::Cursor::new(Vec::new());
+                rgba.write_to(&mut out, image::ImageFormat::Png).ok()?;
+                let bytes = out.into_inner();
+                while !bin.len().is_multiple_of(4) {
+                    bin.push(0);
+                }
+                let offset = bin.len();
+                bin.extend_from_slice(&bytes);
+                views.push(json!({"buffer":0,"byteOffset":offset,"byteLength":bytes.len()}));
+                images.push(json!({"name":image.name,"bufferView":views.len()-1,"mimeType":"image/png"}));
+                textures.push(json!({"source":images.len()-1,"sampler":0}));
+                Some(textures.len() - 1)
+            })();
+            normal_texture_index.insert(key, index);
+            index
+        });
         let mi = *material_index.entry(*mat).or_insert_with(|| {
             let (name, color) = match mat.and_then(|m| doc.materials.get(&m)) {
                 // A textured material's colour is the texture's own; the image carries it.
-                Some(m) if m.texture.is_some() => (m.name.clone(), [1.0, 1.0, 1.0, m.color[3]]),
+                Some(m) if m.texture.is_some() && !m.pbr.tint_texture => (m.name.clone(), [1.0, 1.0, 1.0, m.color[3]]),
                 Some(m) => (m.name.clone(), m.color),
                 None => ("Default".to_string(), [1.0, 1.0, 1.0, 1.0]),
             };
@@ -96,13 +139,16 @@ pub fn export(doc: &Document) -> Vec<u8> {
             let lin = |c: f32| if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) };
             let mut pbr = json!({
                 "baseColorFactor": [lin(color[0]), lin(color[1]), lin(color[2]), color[3]],
-                "metallicFactor": 0.0,
-                "roughnessFactor": 0.9
+                "metallicFactor": surface.metallic,
+                "roughnessFactor": surface.roughness
             });
             if let Some(ti) = tex_index {
                 pbr["baseColorTexture"] = json!({"index": ti});
             }
             let mut m = json!({"name": name, "doubleSided": true, "pbrMetallicRoughness": pbr});
+            if let Some(index) = normal_index {
+                m["normalTexture"] = json!({"index":index,"scale":surface.normal_scale});
+            }
             if color[3] < 1.0 {
                 m["alphaMode"] = json!("BLEND");
             }
@@ -142,7 +188,7 @@ pub fn export(doc: &Document) -> Vec<u8> {
         accessors.push(json!({"bufferView": iv, "componentType": 5125, "count": prim.indices.len(), "type": "SCALAR"}));
         let ia = accessors.len() - 1;
         let mut attributes = json!({"POSITION": pa, "NORMAL": na});
-        if tex_index.is_some() {
+        if tex_index.is_some() || normal_index.is_some() {
             let uv_bytes: Vec<u8> = prim.uvs.iter().flatten().flat_map(|f| f.to_le_bytes()).collect();
             let uvv = push_view(&uv_bytes, 34962);
             accessors.push(json!({"bufferView": uvv, "componentType": 5126, "count": count, "type": "VEC2"}));

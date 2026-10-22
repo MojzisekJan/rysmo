@@ -46,10 +46,9 @@ impl Clipboard {
             .mesh
             .faces()
             .filter_map(|(id, f)| {
-                let textured = [f.material, f.back_material]
-                    .into_iter()
-                    .flatten()
-                    .any(|m| document.materials.get(&m).is_some_and(|m| m.texture.is_some()));
+                let textured = [f.material, f.back_material].into_iter().flatten().any(|m| {
+                    document.materials.get(&m).is_some_and(|m| m.texture.is_some() || m.pbr.normal_map.is_some())
+                });
                 (textured || f.uv.is_some())
                     .then(|| (id, f.uv.unwrap_or_default(), document.root.mesh.face_normal(id).unwrap()))
             })
@@ -83,10 +82,15 @@ impl Clipboard {
         }
         document.materials.retain(|id, _| materials.contains(id));
         document.tags.retain(|id, _| tags.contains(id));
-        let images = document.materials.values().filter_map(|m| m.texture.map(|t| t.image)).collect::<BTreeSet<_>>();
+        let images = document
+            .materials
+            .values()
+            .flat_map(|m| m.texture.map(|t| t.image).into_iter().chain(m.pbr.normal_map))
+            .collect::<BTreeSet<_>>();
         document.images.retain(|id, _| images.contains(id));
         document.scenes.clear();
         document.camera = None;
+        document.photo_match = None;
         let source_transform = editor.context_transform() * instance.transform;
         Ok(Self { document, source_transform })
     }
@@ -123,6 +127,13 @@ pub(crate) fn paste(
             texture.image = *images
                 .get(&texture.image)
                 .ok_or_else(|| CommandError::Invalid("Clipboard texture image is missing.".into()))?;
+        }
+        if let Some(image) = m.pbr.normal_map {
+            m.pbr.normal_map = Some(
+                *images
+                    .get(&image)
+                    .ok_or_else(|| CommandError::Invalid("Clipboard normal image is missing.".into()))?,
+            );
         }
         let existing = doc.materials.iter().find(|(_, v)| **v == m).map(|(id, _)| *id);
         let id = existing.unwrap_or_else(|| {
@@ -212,6 +223,7 @@ pub(crate) fn paste(
                 mesh,
                 axes: source.axes,
                 component: source.component.clone(),
+                parametric: source.parametric.clone(),
                 ..Default::default()
             };
             let mut instances = BTreeMap::new();
@@ -284,7 +296,11 @@ pub(crate) fn paste(
             hidden: false,
         },
     );
-    crate::command::explode(doc, owner, id)
+    let created = crate::command::explode(doc, owner, id)?;
+    // This container only stages the paste. Retaining it creates phantom instances
+    // in component counts and duplicates the hierarchy in every saved document.
+    doc.definitions.remove(&definition);
+    Ok(created)
 }
 
 #[cfg(test)]

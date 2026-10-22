@@ -188,6 +188,24 @@ pub fn materials(ctx: &egui::Context, app: &mut App3d) {
                     app.material_editing = Some(id);
                     apply(app, Command::SetMaterial { material: id, name: None, color: Some(color) });
                 }
+                let mut pbr=m.pbr;
+                if m.texture.is_some() {crate::widgets::checkbox(ui,&mut pbr.tint_texture,"Tint colour texture");}
+                ui.add(crate::widgets::Slider::new(&mut pbr.roughness,0.0..=1.0).text("Roughness"));
+                ui.add(crate::widgets::Slider::new(&mut pbr.metallic,0.0..=1.0).text("Metallic"));
+                ui.horizontal_wrapped(|ui| {
+                    if ui.button("Load normal map...").clicked() {crate::features::data_files::pick(app,crate::features::data_files::Purpose::NormalMap(id));}
+                    if pbr.normal_map.is_some() && ui.button("Remove normal map").clicked() {pbr.normal_map=None;}
+                });
+                if pbr.normal_map.is_some() {
+                    ui.add(crate::widgets::Slider::new(&mut pbr.normal_scale,0.0..=8.0).text("Normal strength"));
+                    crate::widgets::checkbox(ui,&mut pbr.normal_flip_y,"Flip normal Y (DirectX)");
+                    ui.weak("Normal maps share face UVs. Without a colour texture, one UV unit equals one metre. Use sun or studio lighting to see surface shading.");
+                }
+                if pbr!=m.pbr {
+                    if app.editor.undo_label()==Some("Material Surface") && app.material_editing==Some(id) {app.editor.undo();}
+                    app.material_editing=Some(id);
+                    apply(app,Command::SetMaterialPbr{material:id,pbr});
+                }
                 let mut glow = m.glow;
                 ui.horizontal(|ui| {
                     ui.label("Glow");

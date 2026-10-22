@@ -20,6 +20,8 @@ mod document;
 mod editor;
 mod intersect;
 mod navigation;
+pub mod parametric;
+pub mod photo;
 pub mod scenes;
 pub mod sections;
 mod solid_bsp;
@@ -43,7 +45,7 @@ pub use rysmo_mesh::{
 
 pub use command::{Command, CommandError, MAX_GLOW, Outcome};
 pub use context::ContextError;
-pub use document::{Definition, Document, Guide, Instance, Material, Occurrence, Tag, corners};
+pub use document::{Definition, Document, Guide, Instance, Material, Occurrence, Pbr, Tag, corners};
 pub use editor::{Editor, UNDO_LIMIT};
 pub use navigation::SurfaceHit;
 pub use rysmo_mesh::{ImageId, TexturePlacement};

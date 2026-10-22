@@ -15,9 +15,12 @@
 
 pub mod archive;
 pub mod collada;
+pub mod collection;
+pub mod drawing;
 pub mod dxf;
 mod exchange;
 pub mod gltf;
+pub mod import;
 pub mod native;
 pub mod obj;
 pub mod print;

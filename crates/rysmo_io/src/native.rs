@@ -35,7 +35,8 @@ pub const FORMAT: &str = "rysmo";
 /// Version 15 adds measured guide origins and fractional/architectural units.
 /// Version 16 adds independent volume units and precision.
 /// Version 17 adds studio lighting, exposure, texture quality and render scaling.
-pub const VERSION: u32 = 17;
+/// Version 18 adds editable architectural component parameters.
+pub const VERSION: u32 = 18;
 
 fn is_false(b: &bool) -> bool {
     !*b
@@ -50,6 +51,8 @@ struct MaterialLine {
     texture: Option<Texture>,
     #[serde(default, skip_serializing_if = "is_zero")]
     glow: f32,
+    #[serde(default)]
+    pbr: rysmo_model::Pbr,
 }
 
 fn is_zero(v: &f32) -> bool {
@@ -87,6 +90,8 @@ struct DefinitionLine {
     axes: rysmo_math::DrawingAxes,
     #[serde(default)]
     component: rysmo_model::components::ComponentSettings,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    parametric: Option<rysmo_model::parametric::Spec>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -203,6 +208,8 @@ struct FileIn {
     #[serde(default)]
     camera: Option<OrbitCamera>,
     #[serde(default)]
+    photo_match: Option<rysmo_model::photo::Setup>,
+    #[serde(default)]
     axes: Option<rysmo_math::DrawingAxes>,
     #[serde(default)]
     section_planes: Vec<SectionLine>,
@@ -306,8 +313,12 @@ pub fn save(doc: &Document) -> String {
             fov_y: tidy(c.fov_y),
             parallel: c.parallel,
             eye_base_z: tidy(c.eye_base_z),
+            roll: tidy(c.roll),
         };
         out.push_str(&format!("\"camera\": {},\n", serde_json::to_string(&c).expect("camera serialises")));
+    }
+    if let Some(photo) = &doc.photo_match {
+        out.push_str(&format!("\"photo_match\": {},\n", serde_json::to_string(photo).expect("photo setup")));
     }
     if doc.root.axes != Default::default() {
         out.push_str(&format!("\"axes\": {},\n", serde_json::to_string(&doc.root.axes).expect("axes serialises")));
@@ -336,6 +347,7 @@ pub fn save(doc: &Document) -> String {
             color: m.color,
             texture: m.texture,
             glow: m.glow,
+            pbr: m.pbr,
         }),
         false,
     );
@@ -354,6 +366,7 @@ pub fn save(doc: &Document) -> String {
             group: d.group,
             axes: d.axes,
             component: d.component.clone(),
+            parametric: d.parametric.clone(),
         }),
         false,
     );
@@ -500,7 +513,10 @@ pub fn load(text: &str) -> Result<Document, IoError> {
         if !m.glow.is_finite() || m.glow < 0.0 {
             return Err(IoError::Format(format!("material {} has an invalid glow", m.id)));
         }
-        materials.insert(m.id, Material { name: m.name, color: m.color, texture: m.texture, glow: m.glow });
+        if !m.pbr.valid() || m.pbr.normal_map.is_some_and(|id| !images.contains_key(&id)) {
+            return Err(IoError::Format("invalid material surface or missing normal map".into()));
+        }
+        materials.insert(m.id, Material { name: m.name, color: m.color, texture: m.texture, glow: m.glow, pbr: m.pbr });
     }
     let mut tags = BTreeMap::new();
     for t in f.tags {
@@ -598,6 +614,25 @@ pub fn load(text: &str) -> Result<Document, IoError> {
         camera.eye_base_z *= scale;
         camera
     });
+    if doc.camera.is_some_and(|camera| !camera.valid()) {
+        return Err(IoError::Format("invalid camera".into()));
+    }
+    doc.photo_match = f.photo_match.map(|mut setup| {
+        setup.reference_length *= scale;
+        setup
+    });
+    if doc.photo_match.as_ref().is_some_and(|setup| !setup.valid() || !doc.images.contains_key(&setup.image)) {
+        return Err(IoError::Format("invalid photo matching settings or missing image".into()));
+    }
+    if let Some(setup) = &doc.photo_match {
+        let image = &doc.images[&setup.image];
+        if image_dimensions(&image.bytes)? != setup.size {
+            return Err(IoError::Format("photograph size differs from calibration".into()));
+        }
+    }
+    for image in doc.materials.values().filter_map(|m| m.pbr.normal_map) {
+        image_dimensions(&doc.images[&image].bytes)?;
+    }
     doc.root.mesh = meshes.remove(&None).unwrap_or_default();
     for (id, d) in def_lines.iter() {
         let mesh = meshes.remove(&Some(*id)).unwrap_or_default();
@@ -613,6 +648,15 @@ pub fn load(text: &str) -> Result<Document, IoError> {
                 group: d.group,
                 mesh,
                 axes,
+                parametric: d
+                    .parametric
+                    .as_ref()
+                    .map(|spec| {
+                        let spec = spec.scaled(scale);
+                        spec.validate().map_err(IoError::Format)?;
+                        Ok::<_, IoError>(spec)
+                    })
+                    .transpose()?,
                 component: {
                     let mut component = d.component.clone();
                     component.insertion_axes.origin *= scale;
@@ -2300,4 +2344,83 @@ mod renderer_settings_tests {
         assert_eq!(loaded.style.exposure, 0.);
         assert_eq!(loaded.style.texture_anisotropy, 4);
     }
+}
+
+#[cfg(test)]
+mod expansion_tests {
+    use super::*;
+    use rysmo_math::DMat4;
+    use rysmo_model::{Command, Editor, clipboard::Clipboard, parametric::Spec};
+    #[test]
+    fn editable_parameters_surface_normal_images_and_photo_guides_roundtrip_and_validate() {
+        let mut editor = Editor::new();
+        editor
+            .apply(Command::Paste {
+                clipboard: Box::new(Clipboard {
+                    document: Spec::default().document().unwrap(),
+                    source_transform: DMat4::IDENTITY,
+                }),
+                transform: DMat4::IDENTITY,
+                reuse_definitions: false,
+            })
+            .unwrap();
+        let material = editor
+            .apply(Command::AddMaterial { name: "Metal".into(), color: [0.7, 0.5, 0.2, 1.], texture: None })
+            .unwrap()
+            .material
+            .unwrap();
+        let png = include_bytes!("../../rysmo_app/brand/icon-192.png").to_vec();
+        editor
+            .apply(Command::AddNormalMap {
+                material,
+                name: "Normal".into(),
+                mime: "image/png".into(),
+                data: png.clone(),
+            })
+            .unwrap();
+        let mut pbr = editor.doc().materials[&material].pbr;
+        pbr.roughness = 0.22;
+        pbr.metallic = 0.8;
+        pbr.normal_scale = 0.5;
+        pbr.normal_flip_y = true;
+        editor.apply(Command::SetMaterialPbr { material, pbr }).unwrap();
+        editor
+            .apply(Command::ImportPhoto { name: "Photo".into(), mime: "image/png".into(), data: png, size: [192, 192] })
+            .unwrap();
+        let mut document = editor.doc().clone();
+        document.camera = Some(OrbitCamera { roll: 0.2, ..Default::default() });
+        let loaded = load(&save(&document)).unwrap();
+        assert_eq!(loaded.materials, document.materials);
+        assert_eq!(loaded.images, document.images);
+        assert_eq!(loaded.photo_match, document.photo_match);
+        for (id, definition) in &document.definitions {
+            let saved = &loaded.definitions[id];
+            assert_eq!(saved.parametric, definition.parametric);
+            if let Some(spec) = &saved.parametric {
+                assert!(spec.matches_geometry(&saved.mesh).unwrap());
+            }
+        }
+        assert!(loaded.definitions.values().any(|d| d.parametric.is_some()));
+        assert!((loaded.camera.unwrap().roll - 0.2).abs() < 1e-8);
+        let mut value: serde_json::Value = serde_json::from_str(&save(&document)).unwrap();
+        value["materials"][0]["pbr"]["roughness"] = serde_json::json!(-0.1);
+        assert!(load(&value.to_string()).is_err());
+        value["materials"][0]["pbr"]["roughness"] = serde_json::json!(0.2);
+        value["photo_match"]["image"] = serde_json::json!(999999);
+        assert!(load(&value.to_string()).is_err());
+    }
+}
+
+fn image_dimensions(bytes: &[u8]) -> Result<[u32; 2], IoError> {
+    let format = image::guess_format(bytes).map_err(|e| IoError::Format(e.to_string()))?;
+    if !matches!(format, image::ImageFormat::Png | image::ImageFormat::Jpeg) {
+        return Err(IoError::Format("normal maps and photographs must be PNG or JPEG".into()));
+    }
+    let (w, h) = image::ImageReader::with_format(std::io::Cursor::new(bytes), format)
+        .into_dimensions()
+        .map_err(|e| IoError::Format(e.to_string()))?;
+    if w == 0 || h == 0 || w as u64 * h as u64 > 16_777_216 {
+        return Err(IoError::Format("normal maps and photographs are limited to 16 million pixels".into()));
+    }
+    Ok([w, h])
 }

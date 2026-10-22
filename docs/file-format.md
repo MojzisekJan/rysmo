@@ -4,7 +4,7 @@ A `.rysmo` file is UTF-8 JSON laid out with one element per line. People, script
 AI agents can read and change it with ordinary text tools, and a diff of two versions
 shows exactly which elements changed.
 
-The writer uses version 17. The reader also accepts versions 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 and 16; the example
+The writer uses version 18. The reader also accepts versions 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 and 17; the example
 below remains a valid version 2 file.
 
 ## Example
@@ -500,3 +500,29 @@ Style defaults for omitted fields:
 Original image bytes stay unchanged. Scene style snapshots carry and validate the
 same settings. Lighting-only scene restoration includes studio settings/exposure,
 while texture and render resolution remain governed by full style restoration.
+
+## Version 18 compatibility
+
+Definitions can store a `parametric` descriptor for windows, doors or stairs. Its
+dimensional values use the file length unit; opening angles use degrees and counts
+are integers. Loaders validate and convert the descriptor to metres alongside the
+mesh. The mesh remains the visible geometry, so saving does not regenerate shapes.
+Files without descriptors remain ordinary editable geometry. Older applications
+reject version 18 rather than silently discarding editable component parameters.
+Collections and clipboard use the same native codec and retain the descriptor.
+
+Version 18 also stores each material's `pbr` surface response: `roughness` and
+`metallic` in 0–1, optional `normal_map` image id, `normal_scale` in 0–8, and
+`normal_flip_y`. The optional `tint_texture` flag multiplies colour textures by
+the material colour; it defaults to false for existing materials and is enabled
+for imported GLB colour factors. Missing surface values default to roughness 0.85, metallic 0,
+normal strength 1 and no normal map. Normal maps share face UVs and the colour
+texture's physical size; without a colour texture, UV units are metres. Images
+remain embedded and are remapped together with materials during clipboard import.
+
+The optional top-level `photo_match` stores its embedded image id, pixel `size`,
+two pairs of perspective `guides` in image fractions, `origin`, `reference`, a
+metric `reference_length` and direction flips. The origin and reference endpoint
+lie on the model's XY ground plane. A source length unit also scales the reference
+length. Camera `roll` is in radians and defaults to zero for older files. Invalid
+camera values, image references and photo parameters are rejected on loading.

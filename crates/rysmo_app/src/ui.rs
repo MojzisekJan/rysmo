@@ -333,7 +333,8 @@ fn panels(
         rects.push(palette.response.rect);
     }
     let canvas = root.available_rect_before_wrap();
-    if (app.editor.doc().style.render_scale - 1.).abs() > 0.001 {
+    crate::features::photo::canvas(ctx, &mut root, canvas, &mut app);
+    if (app.editor.doc().style.render_scale - 1.).abs() > 0.001 || app.features.photo.active {
         let texture = contexts.add_image(bevy_egui::EguiTextureHandle::Strong(render_view.image.clone()));
         root.painter().image(
             texture,
@@ -495,6 +496,7 @@ fn panels(
     }
     crate::mirror::panel(ctx, &mut app);
     crate::solid_tools::panel(ctx, &mut app);
+    crate::features::panels(ctx, &mut app);
     crate::print_check::panel(ctx, &mut app);
     crate::fillet::panel(ctx, &mut app);
     panels::materials(ctx, &mut app);
@@ -659,6 +661,20 @@ pub fn menus(ui: &mut egui::Ui, app: &mut App3d) {
             files::save(app, true);
         }
         ui.separator();
+        menu::submenu(ui, g::FOLDER_OPEN, "Import", |ui| {
+            if menu::button(ui, g::FOLDER_OPEN, "Model or DXF underlay...", "").clicked() {
+                crate::features::data_files::pick(app, crate::features::data_files::Purpose::Model);
+            }
+            if menu::button(ui, g::FOLDER_OPEN, "Component collection...", "").clicked() {
+                crate::features::data_files::pick(app, crate::features::data_files::Purpose::Collection);
+            }
+        });
+        if menu::button(ui, g::FLOPPY_DISK, "Export drawing (SVG / PDF)...", "").clicked() {
+            app.features.drawing.open = true;
+        }
+        if menu::button(ui, g::FOLDER_OPEN, "Component library...", "").clicked() {
+            app.features.library.open = true;
+        }
         menu::submenu(ui, g::EXPORT, "Export", |ui| {
             for (label, action) in [
                 ("Wavefront OBJ...", files::export_obj as fn(&mut App3d)),
@@ -669,6 +685,9 @@ pub fn menus(ui: &mut egui::Ui, app: &mut App3d) {
                 if menu::button(ui, g::EXPORT, label, "").clicked() {
                     action(app);
                 }
+            }
+            if menu::button(ui, g::EXPORT, "Selection as component...", "").clicked() {
+                crate::features::library::export_selection(app);
             }
             ui.separator();
             for (label, format) in [
@@ -703,9 +722,15 @@ pub fn menus(ui: &mut egui::Ui, app: &mut App3d) {
         actions::edit_menu(ui, app);
     });
     menu::top(ui, "Model", |ui| {
+        if menu::button(ui, g::CUBE, "Parametric components...", "").clicked() {
+            app.features.parametric.open = true;
+        }
         actions::model_menu(ui, app);
     });
     menu::top(ui, "Camera", |ui| {
+        if menu::button(ui, g::CAMERA, "Photo matching...", "").clicked() {
+            app.features.photo.open = true;
+        }
         if menu::button(ui, g::CORNERS_OUT, "Zoom Extents", "").clicked() {
             actions::run(app, Action::ZoomExtents);
         }

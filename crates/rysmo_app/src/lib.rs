@@ -21,6 +21,7 @@ mod component_panel;
 mod detail_tool;
 mod drape_tool;
 mod faces;
+mod features;
 mod files;
 mod fillet;
 mod flip_tool;

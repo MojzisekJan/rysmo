@@ -10,6 +10,7 @@ use rysmo_tools::{Ctx, Modifiers, ToolBox, ToolKind};
 
 #[derive(Resource)]
 pub struct App3d {
+    pub features: crate::features::State,
     pub preferences: crate::preferences::Preferences,
     pub preference_store: crate::preferences::Store,
     pub welcome: bool,
@@ -146,6 +147,7 @@ impl App3d {
         let camera = editor.doc().camera.unwrap_or_default();
         let touch_forced = std::env::var_os("RYSMO_TOUCH").is_some_and(|v| !v.is_empty() && v != "0");
         App3d {
+            features: Default::default(),
             editor,
             tools: ToolBox::new(),
             camera,

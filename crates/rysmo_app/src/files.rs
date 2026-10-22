@@ -21,6 +21,9 @@ fn report(app: &mut App3d, result: Result<String, String>) {
 
 fn reset_interaction(app: &mut App3d) {
     app.welcome = false;
+    app.features.import = None;
+    app.features.parametric = Default::default();
+    app.features.photo = Default::default();
     app.portable_files = None;
     app.paste_place = None;
     app.document_generation = app.document_generation.wrapping_add(1);

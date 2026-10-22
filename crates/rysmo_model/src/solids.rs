@@ -1,4 +1,4 @@
-//! Transactional Boolean operations on two closed, leaf instances.
+//! Transactional Boolean operations on closed instances, including nested components.
 use crate::solid_bsp::{self, Polygon};
 use crate::{CommandError, Definition, DefinitionId, Document, Element, Instance, InstanceId};
 use rysmo_math::{DMat4, DVec3, EPS, closest_on_segment};
@@ -31,41 +31,121 @@ impl BooleanOp {
 fn invalid(message: impl Into<String>) -> CommandError {
     CommandError::Invalid(message.into())
 }
+const MAX_OPERAND_TRIANGLES: usize = 4096;
+type EdgeStyle = (DVec3, DVec3, Edge);
+type Operand = (Vec<Polygon>, Vec<EdgeStyle>);
+struct Leaf<'a> {
+    definition: &'a Definition,
+    transform: DMat4,
+    material: Option<crate::MaterialId>,
+}
+fn collect<'a>(
+    doc: &'a Document,
+    instance: &Instance,
+    parent: DMat4,
+    material: Option<crate::MaterialId>,
+    path: &mut std::collections::BTreeSet<DefinitionId>,
+    leaves: &mut Vec<Leaf<'a>>,
+    remaining: &mut usize,
+) -> Result<(), CommandError> {
+    *remaining = remaining.checked_sub(1).ok_or_else(|| invalid("Solid hierarchy exceeds 4096 occurrences"))?;
+    if path.len() >= 32 || !path.insert(instance.definition) {
+        return Err(invalid("Solid hierarchy is cyclic or exceeds 32 levels"));
+    }
+    if instance.hidden || !doc.tag_visible(instance.tag) || instance.glued_to.is_some() {
+        return Err(invalid("Unhide and unglue every solid occurrence first"));
+    }
+    let definition = doc.definitions.get(&instance.definition).ok_or_else(|| invalid("Missing solid definition"))?;
+    if !definition.guides.is_empty()
+        || !definition.texts.is_empty()
+        || !definition.dimensions.is_empty()
+        || !definition.sections.planes.is_empty()
+    {
+        return Err(invalid(format!("Component '{}' contains guides, text, dimensions or sections", definition.name)));
+    }
+    let transform = parent * instance.transform;
+    if !transform.is_finite() || !transform.inverse().is_finite() || transform.determinant().abs() < 1e-12 {
+        return Err(invalid("Invalid nested solid transform"));
+    }
+    let material = instance.material.or(material);
+    if definition.mesh.vertex_count() > 0 {
+        leaves.push(Leaf { definition, transform, material });
+    }
+    for child in definition.instances.values() {
+        collect(doc, child, transform, material, path, leaves, remaining)?;
+    }
+    path.remove(&instance.definition);
+    Ok(())
+}
 fn operand(
     doc: &Document,
     owner: Option<DefinitionId>,
     id: InstanceId,
     shift: DVec3,
-) -> Result<Vec<Polygon>, CommandError> {
-    let instance = doc
-        .def(owner)
-        .and_then(|d| d.instances.get(&id))
-        .ok_or_else(|| invalid("Solid operand not found in the editing context"))?;
-    let def = doc.definitions.get(&instance.definition).ok_or_else(|| invalid("Missing solid definition"))?;
-    if instance.hidden || !doc.tag_visible(instance.tag) || instance.glued_to.is_some() {
-        return Err(invalid("Solid operand is hidden or glued to a face"));
+    budget: &mut usize,
+) -> Result<Operand, CommandError> {
+    let instance = doc.def(owner).and_then(|d| d.instances.get(&id)).ok_or_else(|| invalid("Missing solid operand"))?;
+    let mut leaves = Vec::new();
+    collect(doc, instance, DMat4::IDENTITY, None, &mut Default::default(), &mut leaves, &mut 4096)?;
+    if leaves.is_empty() {
+        return Err(invalid("Solid operand contains no geometry"));
     }
-    if !def.instances.is_empty()
-        || !def.guides.is_empty()
-        || !def.texts.is_empty()
-        || !def.dimensions.is_empty()
-        || !def.sections.planes.is_empty()
-    {
-        return Err(invalid("Solid operands must be leaf groups/components containing only geometry"));
+    let triangles: usize = leaves
+        .iter()
+        .map(|leaf| {
+            leaf.definition
+                .mesh
+                .faces()
+                .map(|(_, f)| (f.loops().map(|l| l.len()).sum::<usize>() + 2 * f.holes.len()).saturating_sub(2))
+                .sum::<usize>()
+        })
+        .sum();
+    let vertices: usize = leaves.iter().map(|leaf| leaf.definition.mesh.vertex_count()).sum();
+    if triangles > MAX_OPERAND_TRIANGLES || vertices > 16384 {
+        return Err(invalid(format!(
+            "Operand has {triangles} triangles / {vertices} vertices; limits are 4096 / 16384"
+        )));
     }
-    if def.mesh.faces().any(|(_, f)| f.hidden) {
-        return Err(invalid("Unhide all operand faces before a solid operation"));
+    let mut polygons = Vec::new();
+    let mut styles = Vec::new();
+    for leaf in &leaves {
+        if leaf.definition.mesh.faces().any(|(_, f)| f.hidden) {
+            return Err(invalid("Unhide all operand faces before a solid operation"));
+        }
+        let added = leaf_polygons(doc, leaf, shift)
+            .map_err(|e| invalid(format!("Component '{}': {e}", leaf.definition.name)))?;
+        for (id, edge) in leaf.definition.mesh.edges() {
+            let (a, b) = leaf.definition.mesh.edge_points(id);
+            styles.push((leaf.transform.transform_point3(a), leaf.transform.transform_point3(b), edge.clone()));
+        }
+        // Union overlaps inside a hierarchy before combining it with the other operand.
+        if polygons.is_empty() {
+            polygons = added;
+        } else if disjoint(&polygons, &added) {
+            polygons.extend(added);
+        } else {
+            polygons = solid_bsp::boolean_with_budget(polygons, added, BooleanOp::Union, budget).map_err(invalid)?;
+        }
     }
-    let estimated_triangles = def
-        .mesh
-        .faces()
-        .map(|(_, f)| (f.loops().map(|l| l.len()).sum::<usize>() + 2 * f.holes.len()).saturating_sub(2))
-        .sum::<usize>();
-    if def.mesh.vertex_count() > 4096 || estimated_triangles > 1024 {
-        return Err(invalid("Solid operands are limited to 4096 vertices and 1024 triangles each"));
-    }
+    Ok((polygons, styles))
+}
+fn disjoint(a: &[Polygon], b: &[Polygon]) -> bool {
+    let bounds = |polygons: &[Polygon]| {
+        polygons
+            .iter()
+            .flat_map(|p| p.points.iter())
+            .fold((DVec3::splat(f64::INFINITY), DVec3::splat(f64::NEG_INFINITY)), |(lo, hi), p| {
+                (lo.min(*p), hi.max(*p))
+            })
+    };
+    let (alo, ahi) = bounds(a);
+    let (blo, bhi) = bounds(b);
+    (ahi + DVec3::splat(EPS)).cmplt(blo).any() || (bhi + DVec3::splat(EPS)).cmplt(alo).any()
+}
+fn leaf_polygons(doc: &Document, leaf: &Leaf<'_>, shift: DVec3) -> Result<Vec<Polygon>, CommandError> {
+    let def = leaf.definition;
     let signed = crate::solid_validation::validate(&def.mesh, false).map_err(invalid)?;
-    let t = instance.transform;
+    let t = leaf.transform;
     if !t.is_finite() || !t.inverse().is_finite() || t.determinant().abs() < 1e-12 {
         return Err(invalid("Invalid solid transform"));
     }
@@ -74,8 +154,8 @@ fn operand(
     for (id, face) in def.mesh.faces() {
         let plane = def.mesh.face_plane(id).unwrap();
         let mut appearance = face.clone();
-        appearance.material = appearance.material.or(instance.material);
-        appearance.back_material = appearance.back_material.or(instance.material);
+        appearance.material = appearance.material.or(leaf.material);
+        appearance.back_material = appearance.back_material.or(leaf.material);
         if signed < 0. {
             std::mem::swap(&mut appearance.material, &mut appearance.back_material);
         }
@@ -83,7 +163,13 @@ fn operand(
             .into_iter()
             .flatten()
             .find_map(|m| doc.materials.get(&m).and_then(|m| m.texture.map(|t| t.size)))
-            .or(face.uv.map(|_| [1., 1.]));
+            .or(face.uv.map(|_| [1., 1.]))
+            .or_else(|| {
+                [appearance.material, appearance.back_material]
+                    .into_iter()
+                    .flatten()
+                    .find_map(|id| doc.materials.get(&id).filter(|m| m.pbr.normal_map.is_some()).map(|_| [1., 1.]))
+            });
         if let Some(size) = size {
             appearance.uv = Some(
                 crate::texture::transformed(plane, size, face.uv.unwrap_or_default(), t)
@@ -102,16 +188,13 @@ fn operand(
             out.push(Polygon::new(p, appearance.clone()).ok_or_else(|| invalid("Degenerate transformed solid face"))?);
         }
     }
-    if out.len() > 1024 {
-        return Err(invalid("Solid operands are limited to 1024 triangles each"));
-    }
     Ok(out)
 }
 fn assemble(polygons: Vec<Polygon>, shift: DVec3, styles: &[(DVec3, DVec3, Edge)]) -> Result<Mesh, CommandError> {
     let mut positions = Vec::<DVec3>::new();
     let mut loops = Vec::new();
     let mut appearances = Vec::new();
-    let mut weld_budget = 4_000_000usize;
+    let mut weld_budget = 16_000_000usize;
     for p in polygons {
         let mut outline = Vec::new();
         for point in p.points {
@@ -143,7 +226,7 @@ fn assemble(polygons: Vec<Polygon>, shift: DVec3, styles: &[(DVec3, DVec3, Edge)
     if positions.len() > 8192 {
         return Err(invalid("Solid result exceeds its vertex limit"));
     }
-    let mut budget = 4_000_000usize;
+    let mut budget = 16_000_000usize;
     // Thread all existing vertices into every edge. BSP splits can otherwise leave
     // T junctions between a clipped polygon and an unsplit neighbouring polygon.
     for outline in &mut loops {
@@ -206,7 +289,7 @@ fn assemble(polygons: Vec<Polygon>, shift: DVec3, styles: &[(DVec3, DVec3, Edge)
         })
         .collect::<Vec<_>>();
     mesh.set_edge_flags(&soft, Some(true), Some(false), None);
-    let mut style_budget = 4_000_000usize;
+    let mut style_budget = 16_000_000usize;
     let mut matched = Vec::new();
     for (id, _) in mesh.edges() {
         let (p, q) = mesh.edge_points(id);
@@ -240,21 +323,12 @@ pub(crate) fn run(
     let first = doc.def(owner).and_then(|d| d.instances.get(&left)).ok_or_else(|| invalid("Missing first solid"))?;
     let bounds = doc.definition_bounds(Some(first.definition)).ok_or_else(|| invalid("Empty first solid"))?;
     let shift = first.transform.transform_point3((bounds.0 + bounds.1) * 0.5);
-    let a = operand(doc, owner, left, shift).map_err(|e| invalid(format!("Operand A: {e}")))?;
-    let b = operand(doc, owner, right, shift).map_err(|e| invalid(format!("Operand B: {e}")))?;
-    let mut styles = Vec::new();
-    for id in [left, right] {
-        let instance = &doc.def(owner).unwrap().instances[&id];
-        let source = &doc.definitions[&instance.definition].mesh;
-        for (edge, style) in source.edges() {
-            let (p, q) = source.edge_points(edge);
-            styles.push((
-                instance.transform.transform_point3(p),
-                instance.transform.transform_point3(q),
-                style.clone(),
-            ));
-        }
-    }
+    let mut csg_budget = 8_000_000usize;
+    let (a, mut styles) =
+        operand(doc, owner, left, shift, &mut csg_budget).map_err(|e| invalid(format!("Operand A: {e}")))?;
+    let (b, other_styles) =
+        operand(doc, owner, right, shift, &mut csg_budget).map_err(|e| invalid(format!("Operand B: {e}")))?;
+    styles.extend(other_styles);
     let tasks = match operation {
         BooleanOp::Split => vec![
             (a.clone(), b.clone(), BooleanOp::Subtract, "Split A minus B"),
@@ -267,7 +341,7 @@ pub(crate) fn run(
     };
     let mut results = Vec::new();
     for (a, b, basic, name) in tasks {
-        let polygons = solid_bsp::boolean(a, b, basic).map_err(invalid)?;
+        let polygons = solid_bsp::boolean_with_budget(a, b, basic, &mut csg_budget).map_err(invalid)?;
         if polygons.is_empty() {
             continue;
         }
@@ -555,7 +629,13 @@ mod tests {
         mesh.reverse_faces(&ids);
         doc.materials.insert(
             crate::MaterialId(9999),
-            crate::Material { name: "Test".into(), color: [1., 0., 0., 1.], texture: None, glow: 0.0 },
+            crate::Material {
+                name: "Test".into(),
+                color: [1., 0., 0., 1.],
+                texture: None,
+                glow: 0.0,
+                pbr: Default::default(),
+            },
         );
         e = Editor::with_document(doc);
         let out = e
@@ -794,5 +874,136 @@ mod tests {
             assert!((sum - total).abs() < 1e-7);
             assert_eq!(e.active().instances.len(), count + 2);
         }
+    }
+    #[test]
+    fn nested_overlapping_children_union_before_subtraction_and_preserve_shared_sources() {
+        let mut editor = Editor::new();
+        let a = cube(&mut editor, DVec3::ZERO, DVec3::splat(2.));
+        let b = cube(&mut editor, DVec3::X, DVec3::splat(2.));
+        let cutting = cube(&mut editor, DVec3::new(1., 0., 0.), DVec3::new(1., 2., 2.));
+        let grouped =
+            editor.apply(Command::MakeGroup { elements: vec![Element::Instance(a), Element::Instance(b)] }).unwrap();
+        let Element::Instance(parent) = grouped.created[0] else { panic!() };
+        let mut document = editor.doc().clone();
+        let shared = InstanceId(document.reserve_id());
+        document.root.instances.insert(shared, document.root.instances[&parent].clone());
+        let definitions = document.definitions.clone();
+        editor = Editor::with_document(document);
+        let before = editor.doc().clone();
+        let result = editor
+            .apply(Command::SolidBoolean {
+                left: parent,
+                right: cutting,
+                operation: BooleanOp::Subtract,
+                keep_inputs: false,
+            })
+            .unwrap();
+        let Element::Instance(result) = result.created[0] else { panic!() };
+        assert!((volume(&editor, result) - 8.).abs() < 1e-7);
+        assert!(editor.doc().root.instances.contains_key(&shared));
+        for (id, definition) in definitions {
+            if editor.doc().definitions.contains_key(&id) {
+                assert_eq!(&editor.doc().definitions[&id], &definition);
+            }
+        }
+        editor.undo();
+        assert_eq!(editor.doc(), &before);
+    }
+    #[test]
+    fn nested_invalid_child_fails_without_history_or_document_changes() {
+        let mut editor = Editor::new();
+        let a = cube(&mut editor, DVec3::ZERO, DVec3::ONE);
+        let b = cube(&mut editor, DVec3::X * 2., DVec3::ONE);
+        let grouped = editor.apply(Command::MakeGroup { elements: vec![Element::Instance(a)] }).unwrap();
+        let Element::Instance(parent) = grouped.created[0] else { panic!() };
+        let mut doc = editor.doc().clone();
+        let source = doc.root.instances[&parent].definition;
+        let child = doc.definitions[&source].instances.values().next().unwrap().definition;
+        let face = doc.definitions[&child].mesh.faces().next().unwrap().0;
+        doc.definitions.get_mut(&child).unwrap().mesh.erase(&[Element::Face(face)]);
+        editor = Editor::with_document(doc);
+        let before = editor.doc().clone();
+        assert!(
+            editor
+                .apply(Command::SolidBoolean {
+                    left: parent,
+                    right: b,
+                    operation: BooleanOp::Union,
+                    keep_inputs: false
+                })
+                .is_err()
+        );
+        assert_eq!(editor.doc(), &before);
+        assert_eq!(editor.undo_depth(), 0);
+    }
+    #[test]
+    fn subdivided_closed_operand_above_the_previous_triangle_limit_is_accepted() {
+        let mut vertices = BTreeMap::new();
+        let mut positions = BTreeMap::new();
+        let mut edges = BTreeMap::new();
+        let mut edge_keys = BTreeMap::new();
+        let mut faces = BTreeMap::new();
+        let mut next = 0u64;
+        for (origin, u, v) in [
+            (DVec3::ZERO, DVec3::Y, DVec3::X),
+            (DVec3::Z, DVec3::X, DVec3::Y),
+            (DVec3::ZERO, DVec3::X, DVec3::Z),
+            (DVec3::Y, DVec3::Z, DVec3::X),
+            (DVec3::ZERO, DVec3::Z, DVec3::Y),
+            (DVec3::X, DVec3::Y, DVec3::Z),
+        ] {
+            for y in 0..10 {
+                for x in 0..10 {
+                    let quad = [(x, y), (x + 1, y), (x + 1, y + 1), (x, y + 1)]
+                        .map(|(x, y)| origin + u * x as f64 / 10. + v * y as f64 / 10.);
+                    let ids = quad.map(|p| {
+                        let key = p.to_array().map(|n| (n * 10.).round() as i32);
+                        *positions.entry(key).or_insert_with(|| {
+                            next += 1;
+                            let id = VertexId(next);
+                            vertices.insert(id, Vertex { pos: p });
+                            id
+                        })
+                    });
+                    for j in 0..4 {
+                        let a = ids[j];
+                        let b = ids[(j + 1) % 4];
+                        edge_keys.entry((a.min(b), a.max(b))).or_insert_with(|| {
+                            next += 1;
+                            let id = EdgeId(next);
+                            edges.insert(id, Edge::new(a, b));
+                            id
+                        });
+                    }
+                    next += 1;
+                    faces.insert(
+                        FaceId(next),
+                        rysmo_mesh::Face {
+                            outer: ids.to_vec(),
+                            holes: Vec::new(),
+                            material: None,
+                            back_material: None,
+                            uv: None,
+                            hidden: false,
+                        },
+                    );
+                }
+            }
+        }
+        let mesh = Mesh::from_parts(vertices, edges, faces).unwrap();
+        assert_eq!(mesh.faces().map(|(id, _)| triangulate_face(&mesh, id).len()).sum::<usize>(), 1200);
+        let mut editor = Editor::new();
+        let a = cube(&mut editor, DVec3::ZERO, DVec3::ONE);
+        let b = cube(&mut editor, DVec3::X * 3., DVec3::ONE);
+        let mut doc = editor.doc().clone();
+        let definition = doc.root.instances[&a].definition;
+        let mesh = mesh.with_fresh_ids(|| doc.reserve_id()).unwrap();
+        doc.definitions.get_mut(&definition).unwrap().mesh = mesh;
+        editor = Editor::with_document(doc);
+        let out = editor
+            .apply(Command::SolidBoolean { left: a, right: b, operation: BooleanOp::Union, keep_inputs: false })
+            .unwrap();
+        let Element::Instance(result) = out.created[0] else { panic!() };
+        assert!((volume(&editor, result) - 2.).abs() < 1e-6);
     }
 }

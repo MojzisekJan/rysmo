@@ -17,6 +17,36 @@ struct Topic {
 }
 static TOPICS: &[Topic] = &[
     Topic {
+        title: "Import and component collections",
+        category: "Files",
+        icon: None,
+        body: "File > Import previews OBJ, embedded GLB and ASCII DXF before placement. Set source units and OBJ up axis, then Place in model. Click to place; Escape cancels and one Undo removes placement. Unsupported records are reported. OBJ companions are not loaded. DXF closed polylines remain underlay linework. File > Component library captures selection with a name and description, shows wire previews, searches and places reusable assets. Save or merge .ryslib collections to transfer components between projects. The library stays in the session across New/Open; save it before exiting.",
+    },
+    Topic {
+        title: "Parametric components",
+        category: "Modelling",
+        icon: None,
+        body: "Model > Parametric components creates windows, doors and stairs in local metres. Windows have frame and column controls, doors have an opening angle, and stairs have rise, tread and step count. Panes are ordinary geometry: assign materials as needed. Automatic wall cutting is not applied. Select a component, choose Edit selected component and Update to regenerate shared instances in one Undo. Make Unique isolates a copy. Regeneration replaces face paint; instance paint and transforms remain. Manual geometry changes and added annotations are protected by refusing regeneration.",
+    },
+    Topic {
+        title: "Scaled vector drawings",
+        category: "Files",
+        icon: None,
+        body: "File > Export drawing exports top/front/right/isometric SVG and PDF with A4/A3 page controls, margins and scale. Active visibility and sections are respected. Include dimensions and attached text as needed. Screen-fixed text stays outside the drawing. Print at 100%, without fit-to-page, to retain physical scale. If geometry does not fit, choose a larger page or scale denominator. Hidden-line removal has a work budget; disable it for larger wireframe drawings.",
+    },
+    Topic {
+        title: "Photo matching",
+        category: "Navigation",
+        icon: None,
+        body: "Camera > Photo matching loads a PNG/JPEG photograph. Align two red lines with parallel X edges and two green lines with perpendicular Y edges. Orange sets the model origin; blue sets the other endpoint of a known ground-plane distance. Set that length in metres and use Reverse X/Y to resolve direction. Apply calibrates the camera and displays geometry over the photo. Orbit, pan or zoom detaches the background; Apply restores it. Original photo and guides are saved. Calibration assumes image-centred principal point, square pixels and negligible distortion. Cropped or nearly orthographic photos can fail.",
+    },
+    Topic {
+        title: "Material surface response",
+        category: "Materials",
+        icon: None,
+        body: "The Materials inspector exposes Roughness, Metallic and normal maps. Sun or Studio lighting displays these effects; Flat is unlit. Load a PNG/JPEG normal map, adjust strength and enable Flip normal Y for DirectX maps. Normal maps share face UV coordinates and colour texture size; without a colour image, one UV unit is one metre. Native files, clipboard and portable collections retain these settings. GLB exports the scalar factors and embedded normal image; other formats retain their existing material capabilities.",
+    },
+    Topic {
         title: r###"Getting started"###,
         category: r###"Start here"###,
         icon: None,
@@ -78,7 +108,7 @@ Undo and Redo track committed model changes. Camera > Previous view has a separa
         icon: None,
         body: "Select exactly two groups or components and open Model > Faces & Edges > Solid Tools. Union combines both volumes. Subtract removes B from A; use Swap A and B to reverse the cut. Intersect keeps only their shared volume. Trim removes B from A and always retains cutter B. Split creates A minus B, B minus A and the shared part as separate groups, omitting empty pieces. Outer Shell combines the solids and removes enclosed internal shells; through-holes remain.
 Results are new groups in the current editing context. Keep original objects retains both operands. Without that option, operations replace the operands in one Undo step; Trim always retains B. Other instances of shared component definitions stay unchanged. An empty Subtract or Intersect result may remove both operands.
-Operands may contain multiple closed shells, cavities and nested solid islands. Their orientation must match the nesting. Nested instances, guides, text, dimensions and section planes are not supported. Unhide operands and their faces first. Stray/open edges, non-manifold contacts and self-intersections are rejected. Complexity limits protect interactive performance: at most 1024 input triangles per operand, plus bounded clipping, stitching and validation work.
+Operands may contain multiple closed shells, cavities and nested solid islands. Their orientation must match the nesting. Nested solid groups/components are supported, including inherited paint and transforms; overlaps within a hierarchy are unioned. Guides, text, dimensions and section planes inside operands are not supported. Unhide operands and their faces first. Stray/open edges, non-manifold contacts and self-intersections are rejected. Complexity limits protect interactive performance: at most 4096 input triangles and 16384 vertices per operand, 4096 occurrences and 32 hierarchy levels, plus bounded clipping, stitching and validation work.
 Rotated, mirrored and nonuniformly scaled instances are supported. Face materials and explicit texture placement are carried into cut fragments. Analytic curves become polygonal boundaries; coplanar subdivision seams are softened. Results may contain disjoint shells or enclosed cavities. Those results can be used in subsequent operations, and Properties reports their combined volume with cavities subtracted. A Split operation commits all pieces in one Undo step. Trim retains B even when its result is empty. Invalid or over-complex results leave the model unchanged.",
     },
     Topic {
@@ -123,7 +153,7 @@ Cuts are non-destructive. Appearance settings control plane symbols, section edg
         icon: None,
         body: r###"File > Settings groups Application, Controls, Workspace, Appearance, Model units and Annotations. Application, Controls and Workspace are saved on this device, outside model Undo. Appearance, units and annotation defaults are saved with the project and participate in Undo/Redo.
 Appearance groups rendering into Lighting, Image quality and Performance. Lighting offers Flat, Sun and Studio. Studio provides Neutral/Warm procedural environments with intensity and rotation; exposure compensation brightens or darkens Sun/Studio views. Studio has no sun shadows. Image quality includes anti-aliasing, tone mapping, ambient occlusion and trilinear or 2x/4x/8x/16x anisotropic texture filtering. Performance offers 50-150% 3D resolution and texture display limits. GUI text and picking remain at native resolution. Mipmaps improve distant textures; original image bytes are retained. Display images and 3D targets are capped at 4096 px on web and 8192 px on native. Presets reset resolution and texture quality as well as lighting. Appearance also controls face/edge modes, profiles, sky, ground and section display. Lower quality and shadow resolution can help large models. Browser rendering exposes only supported effects.
-Editor chooses units, length precision, touch layout and Inspector visibility. Units include millimetres, centimetres, metres, decimal inches, engineering feet, architectural feet/inches and fractional inches. Fractional precision ranges from one inch to 1/64 inch. Architectural output can force zero inches. Decimal unit markers can be disabled. Area units and decimal precision are independent of length units; Automatic uses m² for metric projects and ft² for imperial projects. Volume units and decimal precision are also independent; Automatic uses m³ or ft³. Properties reports the volume of a single closed, consistently oriented group/component shell, including enclosing scale and mirrors. Hover Volume unavailable for the reason when topology cannot be measured. Nested groups, multiple disconnected shells and self-intersection validation remain unsupported. Length and angle snapping are optional, with adjustable increments and angle precision. Typed values and exact geometry inferences take priority over length snapping.
+Editor chooses units, length precision, touch layout and Inspector visibility. Units include millimetres, centimetres, metres, decimal inches, engineering feet, architectural feet/inches and fractional inches. Fractional precision ranges from one inch to 1/64 inch. Architectural output can force zero inches. Decimal unit markers can be disabled. Area units and decimal precision are independent of length units; Automatic uses m² for metric projects and ft² for imperial projects. Volume units and decimal precision are also independent; Automatic uses m³ or ft³. Properties reports the volume of a single closed, consistently oriented group/component shell, including enclosing scale and mirrors. Hover Volume unavailable for the reason when topology cannot be measured. Nested groups remain unavailable in the volume readout; compound shells are validated within a work budget. Length and angle snapping are optional, with adjustable increments and angle precision. Typed values and exact geometry inferences take priority over length snapping.
 Annotations controls text/dimension defaults, visibility and updates to selected entities. Changing defaults does not necessarily restyle existing labels until you apply an update."###,
     },
     Topic {
@@ -132,7 +162,7 @@ Annotations controls text/dimension defaults, visibility and updates to selected
         icon: None,
         body: r###"File > New starts a model. Open and Save use the native .rysmo document, which preserves editable geometry, groups, materials, annotations and project settings. New/Open and closing a modified model offer Save, Discard and Cancel. Cancelling or failing a save keeps the current document open.
 In a browser, opening and importing use file pickers. Save reuses a granted file handle where supported; otherwise it downloads a file. Keep downloaded models somewhere you can find them again. Recent files and browser auto-save help restore a session. Set Enable auto-save and the interval in minutes under File > Settings > Application in the browser version. Auto-save keeps a browser recovery copy; use Save for a model file.
-File > Export provides OBJ, glTF/GLB, COLLADA/DAE and DXF. COLLADA includes colours, UVs and companion texture images; textured browser exports download one ZIP to extract together. DXF exports Z-up 3D faces and loose lines in metres, with face colours and a layer per occurrence. It does not export textures, annotations or editable CAD solids. Native .rysmo remains the format for continuing work with editor-specific data. Import of .skp files is not available.
+File > Export provides OBJ, glTF/GLB, COLLADA/DAE and DXF. COLLADA includes colours, UVs and companion texture images; textured browser exports download one ZIP to extract together. DXF exports Z-up 3D faces and loose lines in metres, with face colours and a layer per occurrence. It does not export textures, annotations or editable CAD solids. Native .rysmo remains the format for continuing work with editor-specific data.
 PNG/JPEG texture import is available on desktop and web. Very detailed curves and large textures increase memory use and download/rendering costs."###,
     },
     Topic {

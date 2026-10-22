@@ -120,7 +120,7 @@ pub(super) fn analyse(mesh: &Mesh) -> Result<Analysis, String> {
             remaining.remove(&id);
         }
     }
-    let mut budget = 2_000_000usize;
+    let mut budget = 16_000_000usize;
     for (i, (face, a)) in triangles.iter().enumerate() {
         for (other, b) in &triangles[i + 1..] {
             if face == other {

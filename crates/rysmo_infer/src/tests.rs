@@ -24,6 +24,7 @@ fn view() -> View {
         fov_y: 0.7,
         parallel: false,
         eye_base_z: 0.0,
+        roll: 0.,
     };
     cam.view(DVec2::new(800.0, 600.0))
 }
