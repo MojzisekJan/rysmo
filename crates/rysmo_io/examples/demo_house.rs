@@ -974,8 +974,7 @@ fn main() -> Result<()> {
         let y = -29. + i as f64 * 3.6;
         cuboid(&mut e, DVec3::new(-17.56, y, 0.05), DVec3::new(-17.44, y + 2., 0.056), p.marking)?;
     }
-    let truck = cybertruck::Paints::new(&mut e)?;
-    cybertruck::build(&mut e, DVec3::new(-17.5, -1.5, 0.05), &truck)?;
+    cybertruck::build(&mut e, DVec3::new(-17.5, -1.5, 0.05))?;
     for i in 0..9 {
         let y = -28. + i as f64 * 3.2;
         rounded(&mut e, DVec3::new(-21.4, y, 0.), DVec3::new(-20.4, y + 2.9, 1.3), 0.35, p.hedge)?;

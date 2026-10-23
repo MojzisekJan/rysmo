@@ -8,8 +8,7 @@ use rysmo_model::Editor;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = std::env::args().nth(1).ok_or("Usage: cybertruck output.rysmo")?;
     let mut e = Editor::new();
-    let paints = cybertruck::Paints::new(&mut e)?;
-    cybertruck::build(&mut e, DVec3::ZERO, &paints)?;
+    cybertruck::build(&mut e, DVec3::ZERO)?;
     let mut doc = e.doc().clone();
     doc.style.lighting = rysmo_model::Lighting::Sun;
     doc.style.shadows = true;

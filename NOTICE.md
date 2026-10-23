@@ -26,3 +26,12 @@ continues to use Rysmo's own vector icons.
 3D text and PDF drawing output embed DejaVu fonts. Their Bitstream Vera / DejaVu
 licence is included in
 [crates/rysmo_model/fonts/LICENSE.txt](crates/rysmo_model/fonts/LICENSE.txt).
+
+The demo scene's Cybertruck (`crates/rysmo_io/examples/assets/cybertruck/`) is
+"Tesla Cybertruck" (https://sketchfab.com/3d-models/tesla-cybertruck-1ab0c3f248fa47019c4311abce9731a0)
+by PolyDucky (https://sketchfab.com/salphytheunemployed), licensed under
+CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). It is converted to a single
+binary glTF file; the licence note is alongside it.
+
+`vendor/bevy_pbr` is bevy_pbr 0.20.0 (MIT OR Apache-2.0, licence files included) with
+the change described in `vendor/README.md`.
