@@ -178,6 +178,22 @@ fn crown(e: &mut Editor, centre: DVec3, radius: f64, up: f64, down: f64, sides: 
     Ok(())
 }
 
+/// A small deterministic random generator (SplitMix64), so the scene is the same each run.
+struct Random(u64);
+impl Random {
+    /// A value in `0..1`.
+    fn next(&mut self) -> f64 {
+        self.0 = self.0.wrapping_add(0x9e37_79b9_7f4a_7c15);
+        let mut z = self.0;
+        z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+        (z ^ (z >> 31)) as f64 / u64::MAX as f64
+    }
+    fn range(&mut self, low: f64, high: f64) -> f64 {
+        low + (high - low) * self.next()
+    }
+}
+
 /// A repeatable pick among `count` variants from a position, so the scene is the same each run.
 fn pick(at: DVec3, count: usize) -> usize {
     ((at.x * 7.31 + at.y * 3.17).abs() * 13.) as usize % count
@@ -187,20 +203,24 @@ fn tree(e: &mut Editor, foot: DVec3, size: f64, p: &Paints) -> Result<()> {
     column(e, foot, 0.12 * size, 2.4 * size, 6, p.bark)?;
     let leaves = p.autumn[pick(foot, p.autumn.len())];
     crown(e, foot + DVec3::Z * 3.4 * size, 1.6 * size, 2.2 * size, 1.4 * size, 8, leaves)?;
-    // Fallen leaves around the trunk.
-    for i in 0..14 {
-        let angle = i as f64 * 2.4 + foot.x;
-        let reach = (0.6 + (i % 5) as f64 * 0.45) * size;
+    // Fallen leaves scattered under the crown, denser near the trunk.
+    let mut random = Random((foot.x * 1000.) as i64 as u64 ^ ((foot.y * 1000.) as i64 as u64).rotate_left(32));
+    for _ in 0..18 {
+        let angle = random.range(0., std::f64::consts::TAU);
+        let reach = random.next().sqrt() * 2.4 * size;
         let at = foot + DVec3::new(angle.cos() * reach, angle.sin() * reach, 0.12);
-        leaf(e, at, p.autumn[(i + pick(foot, 4)) % p.autumn.len()])?;
+        let colour = p.autumn[(random.next() * p.autumn.len() as f64) as usize];
+        leaf(e, at, &mut random, colour)?;
     }
     Ok(())
 }
 
-/// A fallen leaf: a small flat hexagon.
-fn leaf(e: &mut Editor, at: DVec3, colour: MaterialId) -> Result<()> {
-    let start = Some(DVec3::new(at.x.sin(), at.y.cos(), 0.).try_normalize().unwrap_or(DVec3::X));
-    e.apply(Command::DrawPolygon { centre: at, normal: DVec3::Z, radius: 0.1, segments: 6, start })?;
+/// A fallen leaf: a small flat hexagon with a random size and turn.
+fn leaf(e: &mut Editor, at: DVec3, random: &mut Random, colour: MaterialId) -> Result<()> {
+    let turn = random.range(0., std::f64::consts::TAU);
+    let start = Some(DVec3::new(turn.cos(), turn.sin(), 0.));
+    let radius = random.range(0.06, 0.13);
+    e.apply(Command::DrawPolygon { centre: at, normal: DVec3::Z, radius, segments: 6, start })?;
     extrude(e, 0.01, colour)?;
     Ok(())
 }
@@ -822,11 +842,17 @@ fn main() -> Result<()> {
     }
 
     // Leaves blown across the lawn and the terrace, and pumpkins by the steps.
-    for i in 0..90 {
-        let t = i as f64;
-        let (x, y) = (-12. + (t * 7.13) % 30., -24. + (t * 3.71) % 13.);
-        let z = if (-14.0..4.0).contains(&x) && (-10.0..-4.4).contains(&y) { 0.26 } else { ground_at(x, y) + 0.12 };
-        leaf(&mut e, DVec3::new(x, y, z), p.autumn[i % p.autumn.len()])?;
+    let mut random = Random(2026);
+    for _ in 0..140 {
+        let (x, y) = (random.range(-16., 20.), random.range(-26., -4.6));
+        let on_deck = (-14.0..4.0).contains(&x) && (-10.0..-4.4).contains(&y);
+        // The pool and its stone surround stay clear.
+        if (4.5..18.5).contains(&x) && (-15.0..-4.4).contains(&y) {
+            continue;
+        }
+        let z = if on_deck { 0.26 } else { ground_at(x, y) + 0.12 };
+        let colour = p.autumn[(random.next() * p.autumn.len() as f64) as usize];
+        leaf(&mut e, DVec3::new(x, y, z), &mut random, colour)?;
     }
     for (x, y, size) in [(4.6, -4.9, 1.), (4.9, -5.5, 0.8), (-14.6, -5.2, 0.9), (-15.0, -4.6, 0.7)] {
         pumpkin(&mut e, DVec3::new(x, y, 0.25), size, &p)?;
