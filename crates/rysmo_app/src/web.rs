@@ -70,6 +70,8 @@ struct Autosave {
     preferences: Option<crate::autosave::Settings>,
     written_camera: Option<rysmo_math::OrbitCamera>,
     written_dirty: Option<bool>,
+    /// Write without waiting for the interval, so recovery never predates a saved file.
+    flush: bool,
 }
 
 pub fn plugin(app: &mut App) {
@@ -248,8 +250,9 @@ fn take_arrived(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>, time: Res<Ti
                     "download" => format!("Downloaded {name}."),
                     _ => format!("Saved {name}."),
                 });
-                // Write the clean state into the autosave copy too.
+                // Write the clean state into the autosave copy too, before a reload can restore an older one.
                 auto.written = None;
+                auto.flush = true;
             }
             Arrived::Autosaved { version, camera, dirty, success } => {
                 auto.in_flight = false;
@@ -306,7 +309,10 @@ fn autosave_now(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>, time: Res<Ti
     let pending = auto.written != Some(version)
         || auto.written_camera != Some(app.camera)
         || auto.written_dirty != Some(app.editor.is_dirty());
-    if auto.timer.due(time.elapsed_secs_f64(), pending, app.document_generation, settings) {
+    auto.flush &= pending;
+    let due = auto.timer.due(time.elapsed_secs_f64(), pending, app.document_generation, settings);
+    if due || (auto.flush && settings.enabled) {
+        auto.flush = false;
         let name = app
             .path
             .as_ref()

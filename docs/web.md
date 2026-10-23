@@ -52,7 +52,8 @@ the Rust half is `web.rs`.
   unsaved changes). The next visit opens it again, with its title and unsaved mark, and
   says "Restored ... from the last visit". A snapshot counts as saved only after
   IndexedDB commits it. Failed writes show a message and retry after five seconds;
-  the previous recovery copy is retained. If browser storage remains blocked, use
+  the previous recovery copy is retained. A successful Save writes the recovery copy at
+  once, so a reload cannot restore a state older than the saved file. If browser storage remains blocked, use
   Save to keep a model file. `?demo` in the address opens the demo
   instead.
 - **Recent files.** Files opened or saved are listed under File > Open Recent (up to
