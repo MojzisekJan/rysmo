@@ -7,7 +7,10 @@ fn obj_concave_negative_indices_and_source_axis_units() {
     let text = b"v 0 0 0\nv 2 0 0\nv 2 2 0\nv 1 1 0\nv 0 2 0\nf -5 -4 -3 -2 -1\n";
     let imported =
         read("floor.OBJ", text, Options { unit_scale: Some(0.5), obj_up: UpAxis::Z, ..Default::default() }).unwrap();
-    assert_eq!(imported.document.root.mesh.face_count(), 3);
+    // A flat concave polygon stays one editable face.
+    let mesh = &imported.document.root.mesh;
+    assert_eq!(mesh.face_count(), 1);
+    assert_eq!(mesh.faces().next().unwrap().1.outer.len(), 5);
     let (lo, hi) = imported.document.definition_bounds(None).unwrap();
     assert_eq!(lo, DVec3::ZERO);
     assert_eq!(hi, DVec3::new(1., 1., 0.));
@@ -165,4 +168,20 @@ fn dxf_block_basepoint_scale_rotation_and_layer_inheritance_are_applied() {
     assert!(lo.distance(DVec3::new(10., 20., 0.)) < 1e-8);
     assert!(hi.distance(DVec3::new(10., 24., 0.)) < 1e-8);
     assert!(imported.document.tags.values().any(|tag| tag.name == "Walls"));
+}
+
+#[test]
+fn obj_planar_quads_stay_single_faces_unless_bent_or_unevenly_mapped() {
+    let cube = b"v 0 0 0\nv 1 0 0\nv 1 1 0\nv 0 1 0\nv 0 0 1\nv 1 0 1\nv 1 1 1\nv 0 1 1\n\
+vt 0 0\nvt 1 0\nvt 1 1\nvt 0 1\n\
+f 1/1 4/4 3/3 2/2\nf 5/1 6/2 7/3 8/4\nf 1/1 2/2 6/3 5/4\nf 2/1 3/2 7/3 6/4\nf 3/1 4/2 8/3 7/4\nf 4/1 1/2 5/3 8/4\n";
+    let options = Options { obj_up: UpAxis::Z, ..Default::default() };
+    let mesh = read("cube.obj", cube, options).unwrap().document.root.mesh;
+    assert_eq!(mesh.face_count(), 6);
+    assert!(mesh.faces().all(|(_, face)| face.outer.len() == 4 && face.uv.is_some()));
+    // A bent quad and a quad whose UVs are not one affine map keep the triangulated fallback.
+    let bent = b"v 0 0 0\nv 1 0 0\nv 1 1 0.3\nv 0 1 0\nf 1 2 3 4\n";
+    assert_eq!(read("bent.obj", bent, options).unwrap().document.root.mesh.face_count(), 2);
+    let skewed = b"v 0 0 0\nv 1 0 0\nv 1 1 0\nv 0 1 0\nvt 0 0\nvt 1 0\nvt 3 2\nvt 0 1\nf 1/1 2/2 3/3 4/4\n";
+    assert_eq!(read("skewed.obj", skewed, options).unwrap().document.root.mesh.face_count(), 2);
 }

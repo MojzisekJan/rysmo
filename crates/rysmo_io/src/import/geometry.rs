@@ -11,7 +11,7 @@ pub(super) struct Geometry {
     edges: BTreeMap<EdgeId, Edge>,
     edge_keys: BTreeMap<(VertexId, VertexId), EdgeId>,
     faces: BTreeMap<FaceId, Face>,
-    face_keys: BTreeMap<[VertexId; 3], FaceId>,
+    face_keys: BTreeMap<Vec<VertexId>, FaceId>,
     normals: BTreeMap<EdgeId, Vec<DVec3>>,
 }
 impl Geometry {
@@ -72,6 +72,9 @@ impl Geometry {
         if triangles.is_empty() {
             return error("Polygon could not be triangulated.");
         }
+        if self.planar_face(points, uv, material, &plane, &triangles)? {
+            return Ok(());
+        }
         for triangle in triangles.as_chunks::<3>().0 {
             let mut indices = triangle.map(|i| i as usize);
             let mut p = indices.map(|i| points[i]);
@@ -85,7 +88,7 @@ impl Geometry {
             if ids[0] == ids[1] || ids[1] == ids[2] || ids[2] == ids[0] {
                 continue;
             }
-            let mut key = ids;
+            let mut key = ids.to_vec();
             key.sort();
             if let Some(id) = self.face_keys.get(&key) {
                 if let Some(face) = self.faces.get_mut(id) {
@@ -117,6 +120,87 @@ impl Geometry {
         }
         Ok(())
     }
+    /// Keeps a flat, simple polygon as one face when one affine UV map fits all its corners,
+    /// so imported quads and n-gons stay editable as single faces.
+    fn planar_face(
+        &mut self,
+        points: &[DVec3],
+        uv: Option<&[DVec2]>,
+        material: Option<MaterialId>,
+        plane: &Plane,
+        triangles: &[u32],
+    ) -> Result<bool> {
+        if points.len() <= 3 || triangles.len() != 3 * (points.len() - 2) {
+            return Ok(false);
+        }
+        let extent = points.iter().map(|p| p.distance(points[0])).fold(0., f64::max).max(1.);
+        if points.iter().any(|p| plane.distance(*p).abs() > EPS * extent) {
+            return Ok(false);
+        }
+        // Earcut covers exactly the polygon area only when the outline does not cross itself.
+        let flat: Vec<_> = points.iter().map(|p| plane.to_2d(*p)).collect();
+        let outline = (0..flat.len()).map(|i| flat[i].perp_dot(flat[(i + 1) % flat.len()])).sum::<f64>().abs() / 2.;
+        let covered = triangles
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .map(|t| {
+                (flat[t[1] as usize] - flat[t[0] as usize]).perp_dot(flat[t[2] as usize] - flat[t[0] as usize]).abs()
+                    / 2.
+            })
+            .sum::<f64>();
+        if outline < 1e-12 || (outline - covered).abs() > 1e-9 * outline.max(1.) {
+            return Ok(false);
+        }
+        let mut corners = Vec::with_capacity(points.len());
+        for p in points {
+            let id = self.vertex(*p)?;
+            if corners.contains(&id) {
+                return Ok(false);
+            }
+            corners.push(id);
+        }
+        let first = triangles.as_chunks::<3>().0[0].map(|i| i as usize);
+        let mut sample = first.map(|i| points[i]);
+        let mut sample_uv = uv.map(|uv| first.map(|i| uv[i]));
+        if (sample[1] - sample[0]).cross(sample[2] - sample[0]).dot(plane.normal) < 0. {
+            sample.swap(1, 2);
+            if let Some(uv) = &mut sample_uv {
+                uv.swap(1, 2);
+            }
+        }
+        let placement = match (uv, sample_uv) {
+            (Some(uv), Some(sample_uv)) => {
+                if !affine_uv(&flat, uv, first) {
+                    return Ok(false);
+                }
+                texture_placement(sample, sample_uv, plane.normal)
+            }
+            _ => None,
+        };
+        let mut key = corners.clone();
+        key.sort();
+        if let Some(id) = self.face_keys.get(&key) {
+            if let Some(face) = self.faces.get_mut(id) {
+                face.back_material = material.or(face.back_material);
+            }
+            return Ok(true);
+        }
+        if self.faces.len() >= 100_000 {
+            return error("Import exceeds 100,000 triangles.");
+        }
+        for i in 0..corners.len() {
+            let edge = self.edge(corners[i], corners[(i + 1) % corners.len()]);
+            self.normals.entry(edge).or_default().push(plane.normal);
+        }
+        let id = FaceId(self.id());
+        self.faces.insert(
+            id,
+            Face { outer: corners, holes: Vec::new(), material, back_material: material, uv: placement, hidden: false },
+        );
+        self.face_keys.insert(key, id);
+        Ok(true)
+    }
     pub fn finish(self) -> Result<Mesh> {
         let mut mesh = Mesh::from_parts(self.vertices, self.edges, self.faces)?;
         for (id, normals) in self.normals {
@@ -131,6 +215,21 @@ impl Geometry {
         }
         Ok(mesh)
     }
+}
+/// Whether the UV coordinates are one affine function of the in-plane positions.
+fn affine_uv(flat: &[DVec2], uv: &[DVec2], [a, b, c]: [usize; 3]) -> bool {
+    let (e1, e2) = (flat[b] - flat[a], flat[c] - flat[a]);
+    let determinant = e1.perp_dot(e2);
+    if determinant.abs() < 1e-12 {
+        return false;
+    }
+    let scale = uv.iter().map(|t| t.distance(uv[a])).fold(0., f64::max).max(1.);
+    flat.iter().zip(uv).all(|(p, t)| {
+        let q = *p - flat[a];
+        let predicted =
+            uv[a] + (uv[b] - uv[a]) * (q.perp_dot(e2) / determinant) + (uv[c] - uv[a]) * (e1.perp_dot(q) / determinant);
+        predicted.distance(*t) < 1e-6 * scale
+    })
 }
 /// An affine UV map represented by four world-plane tile corners.
 fn texture_placement(p: [DVec3; 3], uv: [DVec2; 3], normal: DVec3) -> Option<TexturePlacement> {

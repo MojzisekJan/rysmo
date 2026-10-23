@@ -11,7 +11,8 @@ controls specify source units, OBJ up axis and DXF curve detail. Placement creat
 one component through the normal paste preview. Escape cancels; one Undo removes
 its placement. Import does not change the current project's Save destination.
 
-OBJ retains polygon geometry, linework and UVs. External MTL/image companions and
+OBJ retains polygon geometry, linework and UVs. Flat polygons stay single faces; bent
+polygons and polygons whose UVs are not one affine map are triangulated with hidden seams. External MTL/image companions and
 authored vertex normals are not loaded. GLB accepts embedded PNG/JPEG images,
 material colours (including texture tint), scalar roughness/metallic and normal maps; static geometry is
 retained for animated/skinned models. Required unsupported extensions are rejected.
