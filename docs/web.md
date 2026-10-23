@@ -38,8 +38,10 @@ repository root.
 
 Before downloading anything the page checks that the browser has WebGL2 and says so if
 not. While the wasm file downloads, a bar shows the megabytes so far (from trunk's
-initializer). When the download is done it says "Starting..."; the app removes the
-loading screen itself after its first frames are drawn.
+initializer). When the download is done it says "Starting...", then "Preparing the 3D
+view..." while the renderer compiles its shaders; the app removes the loading screen itself
+after its first frames are drawn. Firefox on macOS links the main material shader slowly,
+so this step can take several seconds there.
 
 ## Files and storage
 

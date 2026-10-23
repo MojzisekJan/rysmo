@@ -33,7 +33,7 @@ export default function () {
       }
     },
     onComplete: () => status("Starting..."),
-    onSuccess: () => status("Starting..."),
+    onSuccess: () => status("Preparing the 3D view..."),
     onFailure: (error) => {
       const l = loading();
       if (!l) return;
