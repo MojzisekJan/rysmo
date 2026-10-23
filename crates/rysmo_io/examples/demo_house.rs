@@ -34,7 +34,6 @@ struct Paints {
     /// Autumn foliage, chosen per tree from its position.
     autumn: [MaterialId; 4],
     pumpkin: MaterialId,
-    roof: MaterialId,
     conifer: MaterialId,
     hedge: MaterialId,
     fabric: MaterialId,
@@ -50,7 +49,6 @@ struct Paints {
     lamp: MaterialId,
     pool: MaterialId,
     plinth: MaterialId,
-    brick: MaterialId,
     terracotta: MaterialId,
     frame: MaterialId,
     rubber: MaterialId,
@@ -59,6 +57,10 @@ struct Paints {
     worktop: MaterialId,
     cars: [MaterialId; 3],
     bins: [MaterialId; 2],
+    gravel: MaterialId,
+    /// Cut-out lawn tufts, ornamental grass and flowering perennials, with each image's
+    /// height and width in metres.
+    plants: [(MaterialId, [f64; 2]); 3],
 }
 
 fn material(e: &mut Editor, name: &str, color: [f32; 4]) -> Result<MaterialId> {
@@ -146,8 +148,18 @@ fn slab(e: &mut Editor, outline: &[DVec3; 4], height: f64, colour: MaterialId) -
 fn crease(e: &mut Editor, group: InstanceId, crease: f64) -> Result<InstanceId> {
     e.enter(group)?;
     let mesh = e.mesh();
-    let edges: Vec<_> =
-        mesh.edges().map(|(edge, _)| edge).filter(|edge| mesh.edge_angle(*edge).is_some_and(|a| a < crease)).collect();
+    // A broad face stays flat right up to its edge: smoothing into it would tint the whole
+    // face, so only edges between narrow faces (fillets, bevels, cylinder strips) round off.
+    let narrow = |edge: rysmo_model::EdgeId| {
+        let (a, b) = mesh.edge_points(edge);
+        let length = a.distance(b).max(1e-9);
+        mesh.faces_of_edge(edge).iter().all(|f| mesh.face_area(*f) / length < 0.12)
+    };
+    let edges: Vec<_> = mesh
+        .edges()
+        .map(|(edge, _)| edge)
+        .filter(|edge| mesh.edge_angle(*edge).is_some_and(|a| a < 1e-6 || a < crease && narrow(*edge)))
+        .collect();
     if !edges.is_empty() {
         e.apply(Command::SetEdges { edges, soft: Some(true), smooth: Some(true), hidden: None })?;
     }
@@ -1296,6 +1308,81 @@ fn street_lamp(e: &mut Editor, foot: DVec3, out: DVec2, p: &Paints) -> Result<()
     })
 }
 
+/// A plant on upright cut-out quads radiating from its foot, each showing the plant image
+/// upright and scaled to `height`, turned `angle` radians.
+fn plant(
+    e: &mut Editor,
+    foot: DVec3,
+    height: f64,
+    radius: f64,
+    wings: usize,
+    angle: f64,
+    kind: (MaterialId, [f64; 2]),
+) -> Result<()> {
+    let (material, size) = kind;
+    let base = foot - DVec3::Z * 0.02;
+    let mut lines = Vec::new();
+    for k in 0..wings {
+        // Never square to the model axes, so the image's columns always run upright.
+        let a = angle + 0.21 + k as f64 * std::f64::consts::TAU / wings as f64;
+        let d = DVec3::new(a.cos(), a.sin(), 0.) * radius;
+        let quad = [base, base + d, base + d + DVec3::Z * height, base + DVec3::Z * height];
+        lines.extend((0..4).map(|i| [quad[i], quad[(i + 1) % 4]]));
+    }
+    e.apply(Command::DrawLines { lines, facing: None })?;
+    let group = group_loose(e)?;
+    e.enter(group)?;
+    let mesh = e.mesh();
+    let faces: Vec<_> = mesh.faces().map(|(f, _)| f).collect();
+    // The wings radiate evenly, so the mean of all corners lies on the stem.
+    let corners: Vec<DVec3> = mesh.vertices().map(|(_, v)| v.pos).collect();
+    let stem = corners.iter().copied().sum::<DVec3>() / corners.len().max(1) as f64;
+    let placements: Vec<_> = faces
+        .iter()
+        .map(|f| {
+            let n = mesh.face_normal(*f).unwrap_or(DVec3::X);
+            let (u, v) = rysmo_model::texture_axes(n);
+            let points: Vec<DVec3> =
+                mesh.face(*f).map(|face| face.outer.iter().map(|q| mesh.pos(*q)).collect()).unwrap_or_default();
+            let low = |axis: DVec3| points.iter().map(|q| axis.dot(*q)).fold(f64::MAX, f64::min);
+            // The image's middle row on the stem, its foot at the bottom of the wing.
+            let placement = rysmo_model::TexturePlacement {
+                offset: [low(u), v.dot(stem) - radius],
+                scale: [height / size[0], radius * 2. / size[1]],
+                ..Default::default()
+            };
+            (*f, placement)
+        })
+        .collect();
+    e.apply(Command::Paint { faces: faces.clone(), material: Some(material), back: false })?;
+    e.apply(Command::Paint { faces, material: Some(material), back: true })?;
+    for (face, placement) in placements {
+        e.apply(Command::SetTexturePlacement { faces: vec![face], placement: Some(placement) })?;
+    }
+    e.exit();
+    Ok(())
+}
+
+/// A lawn tuft, a clump of ornamental grass (`kind` 1) or a flowering perennial (`kind` 2)
+/// on the ground at `x`, `y`, sized and turned at random.
+fn planting(
+    e: &mut Editor,
+    x: f64,
+    y: f64,
+    kind: usize,
+    ground: &dyn Fn(f64, f64) -> f64,
+    random: &mut Random,
+    p: &Paints,
+) -> Result<()> {
+    let foot = DVec3::new(x, y, ground(x, y));
+    let turn = random.range(0., std::f64::consts::TAU);
+    match kind {
+        0 => plant(e, foot, random.range(0.2, 0.32), random.range(0.16, 0.24), 4, turn, p.plants[0]),
+        1 => plant(e, foot, random.range(0.7, 1.0), random.range(0.32, 0.42), 6, turn, p.plants[1]),
+        _ => plant(e, foot, random.range(0.38, 0.52), random.range(0.26, 0.34), 5, turn, p.plants[2]),
+    }
+}
+
 /// A low-voltage garden bollard with a glowing band under its cap.
 fn bollard(e: &mut Editor, foot: DVec3, p: &Paints) -> Result<()> {
     grouped(e, |e| {
@@ -1370,133 +1457,89 @@ fn parasol(e: &mut Editor, at: DVec3, colours: [MaterialId; 2], p: &Paints) -> R
     })
 }
 
-/// A simple neighbouring house facing +Y: a plinth, rendered walls, windows on both long
-/// sides, a front door under a canopy, a tiled gable roof with fascias, gutters and
-/// downpipes and a chimney, or with no roof material a flat roof behind a parapet.
+/// A contemporary neighbouring house facing +Y on a `w` by `d` footprint, in one of four
+/// styles: rendered ground floors under a dark metal, larch or rendered upper floor, or a
+/// single storey with a larch panel; flat roofs with copings, large dark-framed windows,
+/// a front door under a canopy, downpipes, and a car port at the +X side with an optional
+/// car.
 #[allow(clippy::too_many_arguments)]
 fn neighbour(
     e: &mut Editor,
     base: DVec3,
     w: f64,
     d: f64,
-    h: f64,
-    walls: MaterialId,
-    roof: Option<MaterialId>,
+    style: usize,
     door_colour: MaterialId,
+    parked: Option<MaterialId>,
     p: &Paints,
 ) -> Result<()> {
     grouped(e, |e| {
         let at = |x: f64, y: f64, z: f64| base + DVec3::new(x, y, z);
-        rounded(e, at(-0.05, -0.05, -0.3), at(w + 0.05, d + 0.05, 0.45), 0.01, p.plinth)?;
-        cuboid(e, at(0., 0., 0.45), at(w, d, h), walls)?;
-        if let Some(roof) = roof {
-            // Roof: two tiled slopes over the walls with an overhang, gable ends and a ridge.
-            let rise = d * 0.42;
-            let (over, t) = (0.45, 0.12);
-            let slope = DVec2::new(d / 2. + over, rise * (d / 2. + over) / (d / 2.)).normalize();
-            for (y0, sign) in [(-over, 1.), (d + over, -1.)] {
-                let drop = rise * over / (d / 2.);
-                let eave = |x: f64| at(x, y0, h - drop);
-                let ridge = |x: f64| at(x, d / 2., h + rise);
-                let up = DVec3::new(0., -slope.y * sign, slope.x) * t;
-                prism(e, [eave(-over), eave(w + over), ridge(w + over), ridge(-over)], up, roof)?;
-                // Fascia board, a half-round gutter and a downpipe at each end.
-                rounded(
-                    e,
-                    eave(-over) + DVec3::new(0., -0.03 * sign, -0.2),
-                    eave(w + over) + DVec3::new(0., 0.0, 0.02),
-                    0.01,
-                    p.coping,
-                )?;
-                let g = eave(-over) + DVec3::new(0., -0.1 * sign, -0.12);
-                limb(e, g, g + DVec3::X * (w + 2. * over), 0.07, 0.07, p.dark)?;
-                let wall_y = if sign > 0. { base.y - 0.11 } else { base.y + d + 0.11 };
-                for x in [0.25, w - 0.25] {
-                    let top = DVec3::new(base.x + x, g.y, g.z);
-                    rail(
-                        e,
-                        &[top, DVec3::new(top.x, wall_y, top.z - 0.3), DVec3::new(top.x, wall_y, base.z)],
-                        0.04,
-                        p.dark,
-                    )?;
-                }
-            }
-            // Gable end walls as triangular prisms filling the roof void.
-            for x in [0., w - 0.3] {
-                let tri = [at(x, 0., h), at(x, d, h), at(x, d / 2., h + rise)];
-                let mut triangles =
-                    vec![tri, [tri[0] + DVec3::X * 0.3, tri[2] + DVec3::X * 0.3, tri[1] + DVec3::X * 0.3]];
-                for k in 0..3 {
-                    let n = (k + 1) % 3;
-                    triangles.push([tri[k], tri[n] + DVec3::X * 0.3, tri[n]]);
-                    triangles.push([tri[k], tri[k] + DVec3::X * 0.3, tri[n] + DVec3::X * 0.3]);
-                }
-                let centre = (tri[0] + tri[1] + tri[2]) / 3. + DVec3::X * 0.15;
-                for t in &mut triangles {
-                    let c = (t[0] + t[1] + t[2]) / 3.;
-                    if (t[1] - t[0]).cross(t[2] - t[0]).dot(c - centre) < 0. {
-                        t.swap(1, 2);
-                    }
-                }
-                solid(e, &triangles, 10., walls)?;
-            }
-            // Ridge tiles and a chimney with a cap and two pots.
-            limb(e, at(-over, d / 2., h + rise + 0.1), at(w + over, d / 2., h + rise + 0.1), 0.11, 0.11, roof)?;
-            let cx = w * 0.72;
-            rounded(e, at(cx, d * 0.35, h + rise * 0.5), at(cx + 0.6, d * 0.35 + 0.6, h + rise + 1.0), 0.01, p.brick)?;
-            rounded(
-                e,
-                at(cx - 0.05, d * 0.35 - 0.05, h + rise + 1.0),
-                at(cx + 0.65, d * 0.35 + 0.65, h + rise + 1.08),
-                0.01,
-                p.coping,
-            )?;
-            for dx in [0.18, 0.42] {
-                column(e, at(cx + dx, d * 0.35 + 0.3, h + rise + 1.08), 0.08, 0.3, 24, p.terracotta)?;
-            }
-        } else {
-            // A flat roof behind a parapet with a coping, a steel flue and downpipes.
-            cuboid(e, at(0., 0., h), at(w, d, h + 0.5), walls)?;
-            rounded(e, at(-0.04, -0.04, h + 0.5), at(w + 0.04, d + 0.04, h + 0.56), 0.01, p.coping)?;
-            lathe(
-                e,
-                at(w * 0.7, d * 0.4, h + 0.56),
-                &[(0., 0.), (0.1, 0.), (0.1, 0.9), (0.16, 0.95), (0., 1.05)],
-                24,
-                p.chrome,
-            )?;
-            for x in [0.2, w - 0.2] {
-                rail(e, &[at(x, d + 0.06, h + 0.45), at(x, d + 0.06, 0.)], 0.045, p.dark)?;
+        let (ground, upper) = (3.1, 6.0);
+        let two = style != 2;
+        let lower = if style == 3 { p.concrete } else { p.render };
+        rounded(e, at(-0.05, -0.05, -0.3), at(w + 0.05, d + 0.05, 0.15), 0.01, p.plinth)?;
+        cuboid(e, at(0., 0., 0.15), at(w, d, ground), lower)?;
+        // The upper floor: its extent and finish vary by style.
+        let (ux, uy, finish) = match style {
+            0 => ((0., w * 0.85), (0., d + 1.2), p.dark),
+            1 => ((w * 0.2, w), (0., d - 1.0), p.wood),
+            _ => ((0., w), (-0.8, d), p.render),
+        };
+        let top = if two { upper } else { ground };
+        if two {
+            cuboid(e, at(ux.0, uy.0, ground), at(ux.1, uy.1, upper), finish)?;
+            rounded(e, at(ux.0 - 0.04, uy.0 - 0.04, upper), at(ux.1 + 0.04, uy.1 + 0.04, upper + 0.08), 0.01, p.dark)?;
+        }
+        rounded(e, at(-0.04, -0.04, ground), at(w + 0.04, d + 0.04, ground + 0.08), 0.01, p.dark)?;
+        if style == 2 {
+            cuboid(e, at(0., d, 0.15), at(w * 0.4, d + 0.03, ground), p.wood)?;
+        }
+        // Front: a door under a canopy, a tall slim window and a wide one; the upper floor
+        // has a band window.
+        let front = d;
+        let door = at(1.2, front, 0.15);
+        cuboid(e, door, door + DVec3::new(1.1, 0.05, 2.25), p.dark)?;
+        rounded(e, door + DVec3::new(0.05, 0.02, 0.02), door + DVec3::new(1.05, 0.07, 2.2), 0.008, door_colour)?;
+        limb(e, door + DVec3::new(0.9, 0.12, 0.8), door + DVec3::new(0.9, 0.12, 1.6), 0.014, 0.014, p.chrome)?;
+        if style != 0 {
+            rounded(e, door + DVec3::new(-0.4, 0., 2.55), door + DVec3::new(1.5, 1.2, 2.68), 0.01, p.dark)?;
+        }
+        cuboid(e, door + DVec3::new(-0.3, 0.0, 1.9), door + DVec3::new(-0.18, 0.08, 2.1), p.lamp)?;
+        rounded(e, at(0.9, front, 0.), at(2.6, front + 1.0, 0.15), 0.02, p.coping)?;
+        facade_window(e, at(2.7, front, 0.15), DVec3::X, DVec3::Y, 0.6, 2.2, p.dark, p)?;
+        let wide = (w - 1.0 - 4.0).min(3.2);
+        if wide > 1. {
+            facade_window(e, at(4.0, front, 1.0), DVec3::X, DVec3::Y, wide, 1.4, p.dark, p)?;
+        }
+        if two {
+            let band = ((ux.1 - ux.0) - 2.0).min(4.2);
+            facade_window(e, at(ux.0 + 1.0, uy.1, ground + 0.9), DVec3::X, DVec3::Y, band, 1.4, p.dark, p)?;
+            // Back windows upstairs.
+            let mut x = ux.1 - 1.0;
+            while x - 1.8 > ux.0 + 0.8 {
+                facade_window(e, at(x, uy.0, ground + 0.9), -DVec3::X, -DVec3::Y, 1.8, 1.4, p.dark, p)?;
+                x -= 2.8;
             }
         }
-        // Windows front and back, one or two storeys.
-        let floors = if h > 4. { 2 } else { 1 };
-        let count = ((w - 1.0) / 2.6) as usize;
-        for f in 0..floors {
-            let z = 1.0 + f as f64 * 2.8;
-            for k in 0..count {
-                let x = 1.0 + k as f64 * 2.6;
-                if f == 0 && k == 1 {
-                    // Front door with a step and a canopy.
-                    let door = at(x, d, 0.45);
-                    cuboid(e, door + DVec3::new(-0.08, 0., 0.), door + DVec3::new(1.08, 0.05, 2.2), p.coping)?;
-                    rounded(e, door + DVec3::new(0., 0.02, 0.), door + DVec3::new(1.0, 0.07, 2.12), 0.01, door_colour)?;
-                    limb(
-                        e,
-                        door + DVec3::new(0.85, 0.07, 1.0),
-                        door + DVec3::new(0.85, 0.13, 1.0),
-                        0.01,
-                        0.01,
-                        p.chrome,
-                    )?;
-                    rounded(e, door + DVec3::new(-0.4, 0., 2.5), door + DVec3::new(1.4, 1.0, 2.62), 0.02, p.coping)?;
-                    rounded(e, at(x - 0.3, d, 0.), at(x + 1.3, d + 1.0, 0.43), 0.02, p.coping)?;
-                    cuboid(e, at(x - 0.25, d + 0.0, 2.0), at(x - 0.12, d + 0.08, 2.2), p.lamp)?;
-                    continue;
-                }
-                facade_window(e, at(x, d, z), DVec3::X, DVec3::Y, 1.3, 1.45, p.frame, p)?;
-                facade_window(e, at(x + 1.3, 0., z), -DVec3::X, -DVec3::Y, 1.3, 1.45, p.frame, p)?;
-            }
+        // Garden side: tall sliding doors along most of the ground floor.
+        let mut x = w - 1.0;
+        while x - 2.4 > 0.9 {
+            facade_window(e, at(x, 0., 0.15), -DVec3::X, -DVec3::Y, 2.4, 2.4, p.dark, p)?;
+            x -= 2.6;
+        }
+        facade_window(e, at(0., d - 2.0, 1.0), -DVec3::Y, -DVec3::X, 1.2, 1.4, p.dark, p)?;
+        for x in [0.15, w - 0.15] {
+            rail(e, &[at(x, -0.07, top + 0.05), at(x, -0.07, 0.)], 0.045, p.dark)?;
+        }
+        // The car port beside the house, roofed from the side wall to two posts.
+        for y in [d - 5.6, d - 0.25] {
+            rounded(e, at(w + 3.15, y, 0.), at(w + 3.27, y + 0.12, 2.6), 0.01, p.dark)?;
+        }
+        rounded(e, at(w, d - 5.8, 2.6), at(w + 3.4, d + 0.2, 2.78), 0.01, p.dark)?;
+        rounded(e, at(w, d - 5.8, 0.), at(w + 3.4, d + 0.2, 0.04), 0.01, p.paving)?;
+        if let Some(colour) = parked {
+            car(e, at(w + 1.7, d - 2.9, 0.04), 0., colour, p)?;
         }
         Ok(())
     })
@@ -1573,6 +1616,47 @@ fn car(e: &mut Editor, at: DVec3, degrees: f64, paint_colour: MaterialId, p: &Pa
     })
 }
 
+/// A road along the Catmull-Rom curve through `route`, `width` wide, laid on the ground
+/// with flush concrete edge strips; neighbouring pieces share their corners.
+fn road(e: &mut Editor, route: &[DVec2], width: f64, ground: &dyn Fn(f64, f64) -> f64, p: &Paints) -> Result<()> {
+    let n = route.len() - 1;
+    let at = |t: f64| -> DVec2 {
+        let k = ((t * n as f64).floor() as usize).min(n - 1);
+        let u = t * n as f64 - k as f64;
+        let (p0, p1, p2, p3) = (route[k.saturating_sub(1)], route[k], route[k + 1], route[(k + 2).min(n)]);
+        0.5 * ((2. * p1)
+            + (-p0 + p2) * u
+            + (2. * p0 - 5. * p1 + 4. * p2 - p3) * u * u
+            + (-p0 + 3. * p1 - 3. * p2 + p3) * u * u * u)
+    };
+    let length: f64 = route.windows(2).map(|w| w[0].distance(w[1])).sum();
+    let steps = (length / 2.).ceil() as usize;
+    let centre: Vec<DVec2> = (0..=steps).map(|i| at(i as f64 / steps as f64)).collect();
+    let side = |i: usize| {
+        let d = (centre[(i + 1).min(steps)] - centre[i.saturating_sub(1)]).normalize();
+        DVec2::new(-d.y, d.x)
+    };
+    let lift = |q: DVec2, z: f64| q.extend(ground(q.x, q.y) + z);
+    let half = width / 2.;
+    for i in 0..steps {
+        let (a, b, sa, sb) = (centre[i], centre[i + 1], side(i), side(i + 1));
+        let quad = [
+            lift(a - sa * half, 0.04),
+            lift(b - sb * half, 0.04),
+            lift(b + sb * half, 0.04),
+            lift(a + sa * half, 0.04),
+        ];
+        prism(e, quad, -DVec3::Z * 0.25, p.asphalt)?;
+        for s in [-1., 1.] {
+            let (o, w) = (half, 0.25);
+            let strip =
+                [a + sa * s * o, b + sb * s * o, b + sb * s * (o + w), a + sa * s * (o + w)].map(|q| lift(q, 0.045));
+            prism(e, strip, -DVec3::Z * 0.25, p.concrete)?;
+        }
+    }
+    Ok(())
+}
+
 /// Builds with `build` in a fresh editor holding only the materials, then pastes the result
 /// in one step. Every command copies the whole document for undo, so building in small
 /// editors keeps a large scene quick to generate.
@@ -1607,8 +1691,7 @@ fn main() -> Result<()> {
     let path = std::env::args().nth(1).ok_or("Usage: demo_house output.rysmo")?;
     let mut e = Editor::new();
     let grass = [textures::grass(&mut e, 0)?, textures::grass(&mut e, 1)?, textures::grass(&mut e, 2)?];
-    // Plain colours are sRGB albedos of real materials; foliage tints multiply their
-    // textures directly.
+    // Colours and foliage tints are sRGB albedos of real materials.
     let p = Paints {
         render: textures::render(&mut e)?,
         concrete: textures::concrete(&mut e)?,
@@ -1632,15 +1715,14 @@ fn main() -> Result<()> {
         taillight: surface(&mut e, "Red lens", [0.5, 0.03, 0.02, 1.], 0.2, 0.)?,
         bark: textures::bark(&mut e)?,
         autumn: [
-            textures::foliage(&mut e, "Orange leaves", [0.85, 0.3, 0.04, 1.])?,
-            textures::foliage(&mut e, "Red leaves", [0.6, 0.07, 0.03, 1.])?,
-            textures::foliage(&mut e, "Golden leaves", [0.85, 0.55, 0.05, 1.])?,
-            textures::foliage(&mut e, "Rust leaves", [0.45, 0.16, 0.04, 1.])?,
+            textures::foliage(&mut e, "Orange leaves", [0.93, 0.58, 0.22, 1.])?,
+            textures::foliage(&mut e, "Red leaves", [0.8, 0.29, 0.19, 1.])?,
+            textures::foliage(&mut e, "Golden leaves", [0.93, 0.77, 0.25, 1.])?,
+            textures::foliage(&mut e, "Rust leaves", [0.7, 0.44, 0.22, 1.])?,
         ],
         pumpkin: surface(&mut e, "Pumpkin", [0.8, 0.36, 0.05, 1.], 0.55, 0.)?,
-        roof: surface(&mut e, "Clay roof tiles", [0.36, 0.15, 0.1, 1.], 0.8, 0.)?,
-        conifer: textures::foliage(&mut e, "Spruce", [0.06, 0.13, 0.07, 1.])?,
-        hedge: textures::foliage(&mut e, "Hedge", [0.12, 0.17, 0.05, 1.])?,
+        conifer: textures::foliage(&mut e, "Spruce", [0.27, 0.4, 0.29, 1.])?,
+        hedge: textures::foliage(&mut e, "Hedge", [0.38, 0.45, 0.25, 1.])?,
         fabric: surface(&mut e, "Charcoal fabric", [0.2, 0.21, 0.22, 1.], 0.95, 0.)?,
         linen: surface(&mut e, "Linen", [0.66, 0.62, 0.55, 1.], 0.95, 0.)?,
         accent: surface(&mut e, "Terracotta fabric", [0.55, 0.22, 0.12, 1.], 0.95, 0.)?,
@@ -1657,7 +1739,6 @@ fn main() -> Result<()> {
         lamp: glowing(&mut e, "Warm lamp", [1., 0.8, 0.55, 1.], 30000.)?,
         pool: surface(&mut e, "Pool finish", [0.5, 0.66, 0.7, 1.], 0.35, 0.)?,
         plinth: surface(&mut e, "Grey render", [0.4, 0.4, 0.39, 1.], 0.9, 0.)?,
-        brick: surface(&mut e, "Brick", [0.42, 0.2, 0.14, 1.], 0.9, 0.)?,
         terracotta: surface(&mut e, "Terracotta", [0.6, 0.3, 0.17, 1.], 0.85, 0.)?,
         frame: surface(&mut e, "White window frame", [0.82, 0.82, 0.8, 1.], 0.5, 0.)?,
         rubber: surface(&mut e, "Tyre rubber", [0.03, 0.03, 0.03, 1.], 0.9, 0.)?,
@@ -1672,6 +1753,12 @@ fn main() -> Result<()> {
         bins: [
             surface(&mut e, "Green bin", [0.08, 0.2, 0.1, 1.], 0.6, 0.)?,
             surface(&mut e, "Grey bin", [0.18, 0.19, 0.2, 1.], 0.6, 0.)?,
+        ],
+        gravel: textures::gravel(&mut e)?,
+        plants: [
+            (textures::grass_tuft(&mut e)?, [0.32, 0.5]),
+            (textures::ornamental_grass(&mut e)?, [0.9, 0.9]),
+            (textures::perennial(&mut e)?, [0.55, 0.7]),
         ],
     };
 
@@ -1725,20 +1812,20 @@ fn main() -> Result<()> {
     stamp(&mut e, -96., -30.5, -44., -6., 5., 0.)?;
     stamp(&mut e, 42., -30.5, 92., -6., 5., 0.)?;
     // Houses up the hill behind the plot, along a lane, each on a level pad cut into the
-    // slope: x, width, depth, eaves height and whether the roof is flat.
+    // slope: x, width, depth and style.
     let uphill = [
-        (-90., 11., 9., 5.8, false),
-        (-66., 12., 9., 6.0, false),
-        (-42., 10., 9., 3.4, true),
-        (-18., 12., 9.5, 6.2, false),
-        (6., 11., 10., 6.4, true),
-        (30., 12., 9., 5.9, false),
-        (54., 10., 9., 6.0, false),
-        (78., 13., 10., 6.6, true),
+        (-90., 11., 9., 1),
+        (-66., 12., 9., 0),
+        (-42., 10., 9., 2),
+        (-18., 12., 9.5, 3),
+        (6., 11., 10., 1),
+        (30., 12., 9., 0),
+        (54., 10., 9., 2),
+        (78., 13., 10., 3),
     ];
     let mut pads = Vec::new();
-    for &(x, w, d, _, _) in &uphill {
-        let (x0, y0, x1, y1) = (x - 3., 27., x + w + 3., 30. + d + 3.);
+    for &(x, w, d, _) in &uphill {
+        let (x0, y0, x1, y1) = (x - 4.5, 27., x + w + 3., 30. + d + 3.);
         let mesh = e.mesh();
         let heights: Vec<f64> = mesh
             .vertices()
@@ -2445,8 +2532,10 @@ fn main() -> Result<()> {
             cuboid(e, DVec3::new(x, -36.81, 0.04), DVec3::new(x + 3., -36.69, 0.043), p.marking)?;
         }
         rounded(e, DVec3::new(-160., -40.15, 0.), DVec3::new(160., -40.0, 0.16), 0.02, p.coping)?;
-        for (x0, x1) in [(-160., crossing.0), (crossing.1, 160.)] {
-            let (k0, k1) = if x0 < crossing.0 { (x0, x1 - 0.9) } else { (x0 + 0.9, x1) };
+        // The pavement and kerbs stop at the lane's two junctions and at the crossover.
+        for (x0, x1) in [(-160., -106.5), (-101.5, crossing.0), (crossing.1, 101.5), (106.5, 160.)] {
+            let k0 = if x0 == crossing.1 { x0 + 0.9 } else { x0 };
+            let k1 = if x1 == crossing.0 { x1 - 0.9 } else { x1 };
             rounded(e, DVec3::new(k0, -33.5, 0.), DVec3::new(k1, -33.35, 0.16), 0.02, p.coping)?;
             cuboid(e, DVec3::new(x0, -33.35, 0.), DVec3::new(x1, -31.2, 0.14), p.paving)?;
             rounded(e, DVec3::new(x0, -31.2, 0.), DVec3::new(x1, -31.05, 0.16), 0.02, p.coping)?;
@@ -2556,8 +2645,18 @@ fn main() -> Result<()> {
             slab(e, &bar, 0.004, p.steel)?;
         }
         for i in (6..steps - 6).step_by(6) {
-            let q = centre[i] - side(i) * (half + 0.5);
+            let q = centre[i] + side(i) * (half + 0.5);
             bollard(e, q.extend(ground_at(q.x, q.y)), &p)?;
+        }
+        // Grass grown up against the edge setts.
+        let mut random = Random(303);
+        for i in (3..steps - 2).step_by(2) {
+            for s in [-1., 1.] {
+                if random.next() < 0.6 {
+                    let q = centre[i] + side(i) * s * (half + 0.2 + random.range(0., 0.12));
+                    planting(e, q.x, q.y, 0, &ground_at, &mut random, &p)?;
+                }
+            }
         }
         Ok(())
     })?;
@@ -2678,9 +2777,10 @@ fn main() -> Result<()> {
         let walk = [
             DVec2::new(-6.2, -30.3),
             DVec2::new(-8.6, -22.),
-            DVec2::new(-12.4, -13.),
-            DVec2::new(-14.2, -7.),
-            DVec2::new(-15.45, -2.45),
+            DVec2::new(-12.6, -14.5),
+            DVec2::new(-14.6, -11.2),
+            DVec2::new(-14.62, -5.2),
+            DVec2::new(-14.62, -3.75),
         ];
         let mut slabs = Random(91);
         let mut along = 0.;
@@ -2689,8 +2789,15 @@ fn main() -> Result<()> {
             let length = a.distance(b);
             let dir = (b - a) / length;
             while along < length {
-                let c = a + dir * along + DVec2::new(-dir.y, dir.x) * slabs.range(-0.12, 0.12);
-                let (sw, sd) = (slabs.range(0.55, 0.8), slabs.range(0.42, 0.58));
+                // Narrower slabs where the path squeezes between the drive and the deck.
+                let narrow = a.y > -15.;
+                let jitter = if narrow { 0.04 } else { 0.12 };
+                let c = a + dir * along + DVec2::new(-dir.y, dir.x) * slabs.range(-jitter, jitter);
+                let (sw, sd) = if narrow {
+                    (slabs.range(0.5, 0.62), slabs.range(0.4, 0.5))
+                } else {
+                    (slabs.range(0.55, 0.8), slabs.range(0.42, 0.58))
+                };
                 let at = c.extend(ground_at(c.x, c.y) - 0.03);
                 let slab = rounded(
                     e,
@@ -2700,7 +2807,8 @@ fn main() -> Result<()> {
                     p.paving,
                 )?;
                 let heading = dir.y.atan2(dir.x).to_degrees() + 90.;
-                turn(e, &[slab], at, heading + slabs.range(-14., 14.))?;
+                let wobble = if narrow { 5. } else { 14. };
+                turn(e, &[slab], at, heading + slabs.range(-wobble, wobble))?;
                 along += sd + slabs.range(0.12, 0.22);
             }
             along -= length;
@@ -2857,81 +2965,65 @@ fn main() -> Result<()> {
         Ok(())
     })?;
 
-    // Neighbouring houses across the street, and one either side of the plot, with front
-    // hedges, paved drives and a car or two.
+    // Contemporary neighbouring houses across the street and either side of the plot, with
+    // front hedges, paths, drives to their car ports and parked cars.
     batch(&mut e, &base, |e| {
-        for (k, (x, w, d, h, walls)) in [
-            (-80., 10., 9., 5.8, p.render),
-            (-56., 10., 9., 5.8, p.plinth),
-            (-32., 12., 9.5, 6.2, p.stone),
-            (-6., 11., 9., 3.2, p.render),
-            (20., 10., 8., 6.0, p.render),
-            (44., 13., 10., 6.4, p.concrete),
-            (68., 11., 9., 5.9, p.render),
-        ]
-        .into_iter()
-        .enumerate()
+        for (k, (x, w)) in [(-80., 10.), (-56., 11.), (-32., 12.), (-6., 11.), (20., 10.), (44., 13.), (68., 11.)]
+            .into_iter()
+            .enumerate()
         {
-            let base = DVec3::new(x, -60., 0.);
-            let door_colour = [p.oak, p.cars[1], p.dark, p.oak, p.cars[0], p.dark, p.teak][k];
-            neighbour(e, base, w, d, h, walls, Some(p.roof), door_colour, &p)?;
-            for (h0, h1) in [(x - 1., x + 3.4), (x + 4.8, x + w * 0.58)] {
-                rounded(e, DVec3::new(h0, -44.0, 0.), DVec3::new(h1, -43.1, 1.2), 0.3, p.hedge)?;
+            let (d, front) = (9., -51.);
+            let door_colour = [p.oak, p.dark, p.teak, p.oak, p.dark, p.cars[1], p.teak][k];
+            let parked = (k % 3 != 1).then_some(p.cars[k % 3]);
+            neighbour(e, DVec3::new(x, front - d, 0.), w, d, k % 4, door_colour, parked, &p)?;
+            for (h0, h1) in [(x - 1., x + 0.9), (x + 2.6, x + w - 0.2)] {
+                rounded(e, DVec3::new(h0, -44.0, 0.), DVec3::new(h1, -43.1, 1.1), 0.3, p.hedge)?;
             }
-            cuboid(e, DVec3::new(x + w * 0.6, -51.0, 0.), DVec3::new(x + w * 0.6 + 3.2, -42.45, 0.04), p.paving)?;
-            if k % 3 != 1 {
-                car(e, DVec3::new(x + w * 0.6 + 1.6, -47.0, 0.04), 0., p.cars[k % 3], &p)?;
+            cuboid(e, DVec3::new(x + 1.2, front + 1.0, 0.), DVec3::new(x + 2.3, -42.45, 0.03), p.paving)?;
+            cuboid(e, DVec3::new(x + w, front + 0.2, 0.), DVec3::new(x + w + 3.4, -42.45, 0.04), p.paving)?;
+        }
+        for (k, (x, w, style)) in [(-88., 11., 1), (-64., 12., 0), (48., 11., 3), (74., 12., 2)].into_iter().enumerate()
+        {
+            let (d, front) = (9., -20.);
+            let parked = (k != 2).then_some(p.cars[(k + 1) % 3]);
+            let parts = built(e, |e| neighbour(e, DVec3::new(x, front, 0.), w, d, style, p.dark, parked, &p))?;
+            turn(e, &parts, DVec3::new(x + w / 2., front + d / 2., 0.), 180.)?;
+            let door = x + w - 2.3;
+            for (h0, h1) in [(x - 7., x - 3.6), (x + 0.2, door - 0.2), (door + 1.3, x + w + 2.)] {
+                rounded(e, DVec3::new(h0, -31.0, 0.), DVec3::new(h1, -30.2, 1.2), 0.3, p.hedge)?;
             }
-            // A path from the pavement to the front door.
-            cuboid(e, DVec3::new(x + 3.6, -50.0, 0.), DVec3::new(x + 4.6, -43.1, 0.03), p.paving)?;
+            cuboid(e, DVec3::new(door, -31.05, 0.), DVec3::new(door + 1.1, front - 1.0, 0.03), p.paving)?;
+            cuboid(e, DVec3::new(x - 3.4, -31.05, 0.), DVec3::new(x, front - 0.2, 0.04), p.paving)?;
         }
-        for (x, w, d, h, walls, door_colour) in [
-            (-88., 11., 9., 5.8, p.stone, p.oak),
-            (-64., 12., 9., 6.0, p.render, p.dark),
-            (48., 11., 9., 5.8, p.plinth, p.oak),
-            (74., 12., 9.5, 6.2, p.render, p.teak),
-        ] {
-            let base = DVec3::new(x, -20., 0.);
-            let parts = built(e, |e| neighbour(e, base, w, d, h, walls, Some(p.roof), door_colour, &p))?;
-            turn(e, &parts, base + DVec3::new(w / 2., d / 2., 0.), 180.)?;
-            rounded(e, DVec3::new(x - 4., -31.0, 0.), DVec3::new(x + w * 0.4, -30.2, 1.3), 0.3, p.hedge)?;
-            cuboid(e, DVec3::new(x + w * 0.45, -31.05, 0.), DVec3::new(x + w * 0.45 + 3.2, -20.1, 0.04), p.paving)?;
-        }
-        car(e, DVec3::new(-64. + 12. * 0.45 + 1.6, -25.0, 0.04), 180., p.cars[2], &p)?;
-        car(e, DVec3::new(74. + 12. * 0.45 + 1.6, -26.0, 0.04), 180., p.cars[1], &p)?;
         Ok(())
     })?;
-    // The lane up the hill and the houses along it, with front hedges, paths and cars.
+    // The lane behind the plot: up from the street on each side and along the hillside,
+    // following the ground, with the houses along it.
     batch(&mut e, &base, |e| {
-        let mut x = -112.;
-        while x < 108. {
-            let corner = |x: f64, y: f64| DVec3::new(x, y, ground_at(x, y) + 0.04);
-            prism(
-                e,
-                [corner(x, 23.), corner(x + 4., 23.), corner(x + 4., 26.5), corner(x, 26.5)],
-                -DVec3::Z * 0.2,
-                p.asphalt,
-            )?;
-            x += 4.;
-        }
-        Ok(())
+        let route = [
+            DVec2::new(-104., -33.4),
+            DVec2::new(-104., -8.),
+            DVec2::new(-102., 16.),
+            DVec2::new(-95., 24.75),
+            DVec2::new(95., 24.75),
+            DVec2::new(102., 16.),
+            DVec2::new(104., -8.),
+            DVec2::new(104., -33.4),
+        ];
+        road(e, &route, 4.5, &ground_at, &p)
     })?;
-    for (k, (&(x, w, d, h, flat), &level)) in uphill.iter().zip(&pads).enumerate() {
+    for (k, (&(x, w, d, style), &level)) in uphill.iter().zip(&pads).enumerate() {
         batch(&mut e, &base, |e| {
-            let base = DVec3::new(x, 30., level);
-            let walls = [p.render, p.plinth, p.render, p.stone, p.render, p.concrete, p.render, p.render][k];
             let door_colour = [p.oak, p.dark, p.teak, p.cars[1], p.dark, p.oak, p.cars[0], p.dark][k];
-            let roof = if flat { None } else { Some(p.roof) };
-            let parts = built(e, |e| neighbour(e, base, w, d, h, walls, roof, door_colour, &p))?;
-            turn(e, &parts, base + DVec3::new(w / 2., d / 2., 0.), 180.)?;
-            let door = x + w - 4.6;
-            for (h0, h1) in [(x - 2., door - 0.3), (door + 1.3, x + w + 2.)] {
-                rounded(e, DVec3::new(h0, 27.0, level - 0.1), DVec3::new(h1, 27.8, level + 1.1), 0.3, p.hedge)?;
+            let parked = (k % 2 == 0).then_some(p.cars[(k / 2) % 3]);
+            let parts = built(e, |e| neighbour(e, DVec3::new(x, 30., level), w, d, style, door_colour, parked, &p))?;
+            turn(e, &parts, DVec3::new(x + w / 2., 30. + d / 2., level), 180.)?;
+            let door = x + w - 2.3;
+            for (h0, h1) in [(x - 6., x - 3.6), (x + 0.2, door - 0.2), (door + 1.3, x + w + 2.)] {
+                rounded(e, DVec3::new(h0, 27.1, level - 0.1), DVec3::new(h1, 27.9, level + 1.1), 0.3, p.hedge)?;
             }
-            cuboid(e, DVec3::new(door, 26.6, level - 0.1), DVec3::new(door + 1.0, 30.0, level + 0.03), p.paving)?;
-            if k % 2 == 0 {
-                car(e, DVec3::new(x + w + 1.6, 30.5, level), 180., p.cars[(k / 2) % 3], &p)?;
-            }
+            cuboid(e, DVec3::new(door, 26.9, level - 0.1), DVec3::new(door + 1.1, 29.0, level + 0.03), p.paving)?;
+            cuboid(e, DVec3::new(x - 3.4, 26.9, level - 0.1), DVec3::new(x, 29.8, level + 0.04), p.paving)?;
             Ok(())
         })?;
     }
@@ -2953,6 +3045,85 @@ fn main() -> Result<()> {
             [(-12., -12.5, 1.), (-9., -13.5, 0.8), (1., -15.5, 0.9), (19., -2., 1.1), (-3., 7.2, 0.9), (3., 7.3, 1.)]
         {
             bush(e, DVec3::new(x, y, ground_at(x, y)), size, &p)?;
+        }
+
+        // A strip of washed gravel where the raised pool surround meets the lawn, with loose
+        // pebbles and clumps of ornamental grass.
+        let mut random = Random(808);
+        let strip = |e: &mut Editor, a: DVec2, b: DVec2, across: DVec2| -> Result<()> {
+            let length = a.distance(b);
+            let steps = (length / 0.5).ceil() as usize;
+            for k in 0..steps {
+                let (s0, s1) = (a.lerp(b, k as f64 / steps as f64), a.lerp(b, (k + 1) as f64 / steps as f64));
+                let lift = |q: DVec2| q.extend(ground_at(q.x, q.y) + 0.015);
+                prism(e, [lift(s0), lift(s1), lift(s1 + across), lift(s0 + across)], -DVec3::Z * 0.12, p.gravel)?;
+            }
+            Ok(())
+        };
+        strip(e, DVec2::new(4.0, -15.0), DVec2::new(19.0, -15.0), DVec2::new(0., -0.55))?;
+        strip(e, DVec2::new(18.5, -15.0), DVec2::new(18.5, -4.42), DVec2::new(0.55, 0.))?;
+        strip(e, DVec2::new(4.5, -15.0), DVec2::new(4.5, -10.6), DVec2::new(-0.5, 0.))?;
+        for _ in 0..70 {
+            let (x, y) = if random.next() < 0.6 {
+                (random.range(4.1, 18.9), random.range(-15.5, -15.05))
+            } else {
+                (random.range(18.55, 19.0), random.range(-15.4, -4.5))
+            };
+            let r = random.range(0.03, 0.07);
+            let colour = if random.next() < 0.5 { p.coping } else { p.plinth };
+            clump(
+                e,
+                DVec3::new(x, y, ground_at(x, y) + r * 0.4),
+                DVec3::new(r, r * 1.2, r * 0.6),
+                &mut random,
+                colour,
+            )?;
+        }
+        for k in 0..7 {
+            let x = 5.2 + k as f64 * 2.15 + random.range(-0.3, 0.3);
+            planting(e, x, -15.27, 1, &ground_at, &mut random, &p)?;
+            planting(e, x + 0.7, -15.3, 0, &ground_at, &mut random, &p)?;
+        }
+        for k in 0..4 {
+            let y = -13.6 + k as f64 * 2.6;
+            planting(e, 18.77, y, 1, &ground_at, &mut random, &p)?;
+            planting(e, 18.78, y + 0.9, 0, &ground_at, &mut random, &p)?;
+        }
+        // Borders of grasses and perennials inside the front wall and along the back wall,
+        // tufts along the side fences and the front of the deck.
+        let mut x = -39.3;
+        while x < 39.5 {
+            if !(-16.0..-2.6).contains(&x) {
+                planting(
+                    e,
+                    x,
+                    -29.95 + random.range(-0.15, 0.15),
+                    if random.next() < 0.45 { 1 } else { 2 },
+                    &ground_at,
+                    &mut random,
+                    &p,
+                )?;
+            }
+            x += random.range(1.1, 1.6);
+        }
+        let mut x = -21.;
+        while x < 19.5 {
+            if !(-14.6..-8.8).contains(&x) {
+                planting(e, x, 7.55, if random.next() < 0.35 { 1 } else { 2 }, &ground_at, &mut random, &p)?;
+            }
+            x += random.range(1.2, 1.8);
+        }
+        for fx in [-39.75, 39.75] {
+            let mut y = -29.8;
+            while y < 7.8 {
+                planting(e, fx, y, if random.next() < 0.15 { 1 } else { 0 }, &ground_at, &mut random, &p)?;
+                y += random.range(1.0, 2.0);
+            }
+        }
+        let mut x = -13.6;
+        while x < 3.8 {
+            planting(e, x, -10.75, 0, &ground_at, &mut random, &p)?;
+            x += random.range(0.9, 1.6);
         }
 
         // Leaves blown across the lawn and the terrace, and pumpkins by the steps.
@@ -2998,7 +3169,16 @@ fn main() -> Result<()> {
         (34., -64., 1.2),
         (-23., -67., 0.9),
     ] {
-        batch(&mut e, &base, |e| tree(e, DVec3::new(x, y, ground_at(x, y)), size, &ground_at, &p))?;
+        batch(&mut e, &base, |e| {
+            tree(e, DVec3::new(x, y, ground_at(x, y)), size, &ground_at, &p)?;
+            // Uncut grass round the trunk.
+            let mut random = Random((x * 31. + y * 17.).abs() as u64);
+            for _ in 0..7 {
+                let (a, r) = (random.range(0., std::f64::consts::TAU), random.range(0.4, 1.6));
+                planting(e, x + a.cos() * r, y + a.sin() * r, 0, &ground_at, &mut random, &p)?;
+            }
+            Ok(())
+        })?;
     }
     for (x, y, size) in [
         (-14., 15., 1.3),
@@ -3055,7 +3235,9 @@ fn main() -> Result<()> {
         let (x, y) = (wood.range(-150., 150.), wood.range(-130., 130.));
         let built_up = (-100.0..100.0).contains(&x) && (-75.0..14.0).contains(&y)
             || (-118.0..115.0).contains(&x) && (14.0..52.0).contains(&y);
-        let road = (-34.0..-28.0).contains(&y) || (-48.0..-28.0).contains(&y) && x.abs() > 95.;
+        let road = (-34.0..-28.0).contains(&y)
+            || (-48.0..-28.0).contains(&y) && x.abs() > 95.
+            || (96.0..112.0).contains(&x.abs()) && (-36.0..32.0).contains(&y);
         if built_up || road {
             continue;
         }

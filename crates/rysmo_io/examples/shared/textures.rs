@@ -274,3 +274,191 @@ pub fn foliage(e: &mut Editor, name: &str, tint: [f32; 4]) -> Result<MaterialId>
     });
     add(e, name, s, [0.8, 0.8], 0.8, 0., 5., Some(tint))
 }
+
+/// Washed river gravel: rounded pebbles of mixed greys and buffs packed together.
+pub fn gravel(e: &mut Editor) -> Result<MaterialId> {
+    let cells = 40;
+    let s = surface(|x, y| {
+        let (u, v) = (x / N as f32 * cells as f32, y / N as f32 * cells as f32);
+        let (cx, cy) = (u.floor() as i64, v.floor() as i64);
+        // The nearest and second nearest pebble centres, wrapping across the tile.
+        let (mut d1, mut d2, mut id) = (f32::MAX, f32::MAX, (0, 0));
+        for j in -1..=1 {
+            for i in -1..=1 {
+                let (gx, gy) = (cx + i, cy + j);
+                let (wx, wy) = (gx.rem_euclid(cells), gy.rem_euclid(cells));
+                let px = gx as f32 + 0.15 + 0.7 * hash(wx, wy, 101);
+                let py = gy as f32 + 0.15 + 0.7 * hash(wx, wy, 102);
+                let d = ((u - px).powi(2) + (v - py).powi(2)).sqrt();
+                if d < d1 {
+                    (d2, d1, id) = (d1, d, (wx, wy));
+                } else if d < d2 {
+                    d2 = d;
+                }
+            }
+        }
+        // Height rises from the gap between pebbles to each pebble's middle.
+        let edge = ((d2 - d1) * 2.2).clamp(0., 1.);
+        let dome = edge.sqrt();
+        let tone = hash(id.0, id.1, 103);
+        let base = if tone < 0.55 {
+            mix([0.5, 0.49, 0.47], [0.68, 0.66, 0.62], tone / 0.55)
+        } else {
+            mix([0.62, 0.55, 0.45], [0.74, 0.68, 0.58], (tone - 0.55) / 0.45)
+        };
+        let speck = fbm(x, y, 64, 2, 104);
+        (shade(base, (0.45 + 0.6 * dome) * (0.9 + 0.2 * speck)), dome)
+    });
+    add(e, "Gravel", s, [0.9, 0.9], 0.9, 0., 6., None)
+}
+
+fn png_rgba(rgba: &[[f32; 4]]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut enc = png::Encoder::new(&mut out, N as u32, N as u32);
+    enc.set_color(png::ColorType::Rgba);
+    enc.set_depth(png::BitDepth::Eight);
+    let mut w = enc.write_header().expect("PNG header");
+    let data: Vec<u8> = rgba.iter().flat_map(|p| p.map(|c| (c.clamp(0., 1.) * 255.).round() as u8)).collect();
+    w.write_image_data(&data).expect("PNG data");
+    drop(w);
+    out
+}
+
+/// A cut-out plant image: transparent where `alpha` is clear. On a vertical face the
+/// image's columns run up the plant from its foot at the left edge, its rows across; the
+/// plant grows from the middle row and fans out, clear of the side edges.
+/// `size` is the plant's height and the width of one copy, in metres.
+fn cutout(e: &mut Editor, name: &str, rgba: Vec<[f32; 4]>, size: [f64; 2]) -> Result<MaterialId> {
+    let n = rgba.iter().filter(|p| p[3] > 0.5).count().max(1) as f32;
+    let avg =
+        rgba.iter().filter(|p| p[3] > 0.5).fold([0.; 3], |a, p| [a[0] + p[0] / n, a[1] + p[1] / n, a[2] + p[2] / n]);
+    let out = e.apply(Command::AddTexturedMaterial {
+        name: name.into(),
+        color: [avg[0], avg[1], avg[2], 1.],
+        image_name: format!("{}.png", name.to_lowercase().replace(' ', "-")),
+        mime: "image/png".into(),
+        data: png_rgba(&rgba),
+        size,
+    })?;
+    let material = out.material.ok_or("no material")?;
+    let pbr = Pbr { roughness: 0.85, alpha_cutoff: Some(0.5), ..Default::default() };
+    e.apply(Command::SetMaterialPbr { material, pbr })?;
+    Ok(material)
+}
+
+/// A blade or leaf drawn into a cut-out image: rising from `row` at the foot (column 0)
+/// to `height` columns, leaning `lean` rows at the tip, `width` rows wide at the foot.
+struct Blade {
+    row: f32,
+    height: f32,
+    lean: f32,
+    width: f32,
+    foot: [f32; 3],
+    tip: [f32; 3],
+}
+
+fn draw(image: &mut [[f32; 4]], blade: &Blade) {
+    let h = blade.height.min(N as f32 - 2.);
+    for c in 0..h as usize {
+        let t = c as f32 / h;
+        let centre = blade.row + blade.lean * t * t;
+        let half = blade.width * (1. - t).powf(0.8) / 2. + 0.6;
+        let colour = mix(blade.foot, blade.tip, t.powf(0.7));
+        // A paler midrib down the middle of wider leaves.
+        for r in (centre - half).floor() as i64..=(centre + half).ceil() as i64 {
+            let d = (r as f32 - centre).abs() / half;
+            if d <= 1. {
+                let k = if blade.width > 8. && d < 0.15 { 1.15 } else { 0.9 + 0.15 * (1. - d) };
+                let row = r.rem_euclid(N as i64) as usize;
+                image[row * N + c] = [colour[0] * k, colour[1] * k, colour[2] * k, 1.];
+            }
+        }
+    }
+}
+
+fn blades(seed: u64, count: usize, shape: impl Fn(u64) -> Blade) -> Vec<[f32; 4]> {
+    let mut image = vec![[0.; 4]; N * N];
+    for i in 0..count as u64 {
+        draw(&mut image, &shape(seed * 1000 + i));
+    }
+    image
+}
+
+fn rand(k: u64, salt: i64) -> f32 {
+    hash(k as i64, salt, 7)
+}
+
+/// A tuft of autumn lawn grass: fine blades, green at the foot and straw at the tips.
+pub fn grass_tuft(e: &mut Editor) -> Result<MaterialId> {
+    let image = blades(1, 140, |k| Blade {
+        row: (0.44 + 0.12 * rand(k, 1)) * N as f32,
+        height: (0.35 + 0.6 * rand(k, 2)) * N as f32,
+        lean: (rand(k, 3) - 0.5) * 0.8 * N as f32,
+        width: 3. + 4. * rand(k, 4),
+        foot: mix([0.16, 0.24, 0.08], [0.22, 0.28, 0.1], rand(k, 5)),
+        tip: mix([0.42, 0.44, 0.2], [0.66, 0.58, 0.34], rand(k, 6)),
+    });
+    cutout(e, "Grass tuft", image, [0.32, 0.5])
+}
+
+/// Ornamental grass in autumn: tall arching blades in buff and copper with feathery plumes.
+pub fn ornamental_grass(e: &mut Editor) -> Result<MaterialId> {
+    let mut image = blades(2, 160, |k| Blade {
+        row: (0.42 + 0.16 * rand(k, 1)) * N as f32,
+        height: (0.5 + 0.48 * rand(k, 2)) * N as f32,
+        lean: (rand(k, 3) - 0.5) * 0.72 * N as f32,
+        width: 3. + 3. * rand(k, 4),
+        foot: mix([0.3, 0.3, 0.14], [0.38, 0.34, 0.16], rand(k, 5)),
+        tip: mix([0.72, 0.6, 0.38], [0.62, 0.4, 0.22], rand(k, 6)),
+    });
+    // Plumes: soft, pale seed heads near the tops of the stems.
+    for k in 0..22u64 {
+        let row = (0.25 + 0.5 * rand(k, 11)) * N as f32 + (rand(k, 12) - 0.5) * 60.;
+        let top = (0.82 + 0.15 * rand(k, 13)) * N as f32;
+        for c in (top - 70.) as usize..top.min(N as f32 - 1.) as usize {
+            let t = (c as f32 - (top - 70.)) / 70.;
+            let half = 5. * (1. - (2. * t - 1.).powi(2)) + 1.;
+            for r in (row - half) as i64..=(row + half) as i64 {
+                if hash(r, c as i64, 13) > 0.35 {
+                    let rr = r.rem_euclid(N as i64) as usize;
+                    image[rr * N + c] = [0.84, 0.76, 0.6, 1.];
+                }
+            }
+        }
+    }
+    cutout(e, "Ornamental grass", image, [0.9, 0.9])
+}
+
+/// A low flowering perennial: broad leaves with a scatter of purple and golden flowers.
+pub fn perennial(e: &mut Editor) -> Result<MaterialId> {
+    let mut image = blades(3, 120, |k| Blade {
+        row: (0.4 + 0.2 * rand(k, 1)) * N as f32,
+        height: (0.35 + 0.4 * rand(k, 2)) * N as f32,
+        lean: (rand(k, 3) - 0.5) * 0.6 * N as f32,
+        width: 10. + 14. * rand(k, 4),
+        foot: [0.12, 0.2, 0.08],
+        tip: mix([0.22, 0.34, 0.12], [0.36, 0.38, 0.14], rand(k, 6)),
+    });
+    for k in 0..70u64 {
+        let (row, col) = ((0.2 + 0.6 * rand(k, 21)) * N as f32, (0.5 + 0.42 * rand(k, 22)) * N as f32);
+        let colour = if rand(k, 23) < 0.6 { [0.42, 0.28, 0.62] } else { [0.86, 0.62, 0.12] };
+        // A thin stem down from each flower.
+        for c in (col * 0.6) as usize..col as usize {
+            let rr = (row as i64).rem_euclid(N as i64) as usize;
+            image[rr * N + c] = [0.2, 0.3, 0.1, 1.];
+        }
+        for dr in -9i64..=9 {
+            for dc in -9i64..=9 {
+                if dr * dr + dc * dc <= 81 {
+                    let (r, c) = (
+                        (row as i64 + dr).rem_euclid(N as i64) as usize,
+                        (col as i64 + dc).clamp(0, N as i64 - 1) as usize,
+                    );
+                    let k = if dr * dr + dc * dc <= 9 { 0.55 } else { 1. };
+                    image[r * N + c] = [colour[0] * k, colour[1] * k, colour[2] * k, 1.];
+                }
+            }
+        }
+    }
+    cutout(e, "Perennial", image, [0.55, 0.7])
+}
