@@ -88,24 +88,27 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
         Cancel,
     }
     let mut choice = None;
-    egui::Modal::new(egui::Id::new("unsaved_changes")).show(ctx, |ui| {
-        ui.set_width(360.);
-        ui.heading("Save changes?");
-        ui.add_space(8.);
-        ui.label("This model has unsaved changes. Save them before continuing?");
-        ui.add_space(12.);
-        ui.horizontal(|ui| {
-            if ui.button("Save").clicked() {
-                choice = Some(Choice::Save);
-            }
-            if ui.button("Discard").clicked() {
-                choice = Some(Choice::Discard);
-            }
-            if ui.button("Cancel").clicked() {
-                choice = Some(Choice::Cancel);
-            }
-        });
-    });
+    egui::Modal::new(egui::Id::new("unsaved_changes")).frame(egui::Frame::window(&ctx.global_style())).show(
+        ctx,
+        |ui| {
+            ui.set_width(360.);
+            ui.heading("Save changes?");
+            ui.add_space(8.);
+            ui.label("This model has unsaved changes. Save them before continuing?");
+            ui.add_space(12.);
+            ui.horizontal(|ui| {
+                if ui.button("Save").clicked() {
+                    choice = Some(Choice::Save);
+                }
+                if ui.button("Discard").clicked() {
+                    choice = Some(Choice::Discard);
+                }
+                if ui.button("Cancel").clicked() {
+                    choice = Some(Choice::Cancel);
+                }
+            });
+        },
+    );
     if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
         choice = Some(Choice::Cancel);
     }

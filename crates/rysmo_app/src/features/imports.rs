@@ -61,12 +61,13 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
         }
         if draft.name.to_ascii_lowercase().ends_with(".dxf") {draft.needs_update|=ui.add(crate::widgets::Number::new(&mut draft.options.curve_segments).range(8..=256).prefix("Circle segments ")).changed();}
         crate::widgets::checkbox(ui,&mut draft.preserve_origin,"Keep source origin");
-        if draft.needs_update && ui.button("Update preview").clicked() {draft.parse();}
+        // Reparse once a control settles; dragging a value would otherwise parse every frame.
+        if draft.needs_update && !ui.ctx().egui_is_using_pointer() {draft.parse();}
         if let Some(error)=&draft.error {ui.colored_label(egui::Color32::LIGHT_RED,error);}
         if let Some(imported)=&draft.imported {
             if let Some(preview)=&draft.preview {
                 super::library::thumbnail(ui,preview);
-                ui.label(format!("{} occurrences · {} faces",preview.occurrences,preview.faces));
+                ui.label(format!("{} · {}",count(preview.occurrences,"occurrence"),count(preview.faces,"face")));
             }
             for warning in &imported.warnings {ui.colored_label(egui::Color32::from_rgb(230,180,80),warning);}
             ui.weak("Import creates a component. Click in the model to place it; Escape cancels. One Undo removes the import.");
@@ -84,4 +85,7 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
     } else if open {
         app.features.import = Some(draft);
     }
+}
+fn count(n: usize, noun: &str) -> String {
+    if n == 1 { format!("1 {noun}") } else { format!("{n} {noun}s") }
 }

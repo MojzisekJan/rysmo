@@ -1503,23 +1503,26 @@ pub fn entity_info_ui(ui: &mut egui::Ui, app: &mut App3d) {
 pub fn resize_confirmation(ctx: &egui::Context, app: &mut App3d) {
     let Some(factor) = app.tools.pending_resize_factor() else { return };
     let mut answer = None;
-    egui::Modal::new(egui::Id::new("resize-confirmation")).show(ctx, |ui| {
-        ui.heading("Resize model?");
-        ui.label(if app.editor.context().is_empty() {
-            "Resize the whole model to the measured dimension?"
-        } else {
-            "Resize the group/component being edited to the measured dimension?"
-        });
-        ui.label(format!("Scale factor: {factor:.6}"));
-        ui.horizontal(|ui| {
-            if ui.button("Yes").clicked() {
-                answer = Some(true);
-            }
-            if ui.button("No").clicked() {
-                answer = Some(false);
-            }
-        });
-    });
+    egui::Modal::new(egui::Id::new("resize-confirmation")).frame(egui::Frame::window(&ctx.global_style())).show(
+        ctx,
+        |ui| {
+            ui.heading("Resize model?");
+            ui.label(if app.editor.context().is_empty() {
+                "Resize the whole model to the measured dimension?"
+            } else {
+                "Resize the group/component being edited to the measured dimension?"
+            });
+            ui.label(format!("Scale factor: {factor:.6}"));
+            ui.horizontal(|ui| {
+                if ui.button("Yes").clicked() {
+                    answer = Some(true);
+                }
+                if ui.button("No").clicked() {
+                    answer = Some(false);
+                }
+            });
+        },
+    );
     if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
         answer = Some(false);
     }

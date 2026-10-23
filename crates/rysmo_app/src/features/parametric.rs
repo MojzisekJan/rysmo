@@ -33,17 +33,19 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
                 if ui.selectable_label(state.spec.name()==label,label).clicked() {state.spec=spec;state.editing=None;state.error=None;}
             }
         });
-        if let Some(id)=selected && ui.button("Edit selected component").clicked() {
-                state.spec=app.editor.doc().definitions[&id].parametric.clone().unwrap();state.editing=Some(id);state.error=None;
+        if let Some(id)=selected && ui.button("Edit selected component").clicked()
+            && let Some(spec)=app.editor.doc().definitions.get(&id).and_then(|d| d.parametric.clone()) {
+                state.spec=spec;state.editing=Some(id);state.error=None;
         }
         let length=|ui:&mut egui::Ui,label:&str,v:&mut f64| {
-            ui.horizontal(|ui| {ui.label(label);ui.add(crate::widgets::Number::new(v).speed(0.005).range(0.001..=1000.).suffix(" m"));});
+            ui.label(label);ui.add(crate::widgets::Number::new(v).speed(0.005).range(0.001..=1000.).suffix(" m"));ui.end_row();
         };
-        match &mut state.spec {
-            Spec::Window{width,height,depth,frame,columns}=>{length(ui,"Width",width);length(ui,"Height",height);length(ui,"Depth",depth);length(ui,"Frame",frame);ui.add(crate::widgets::Number::new(columns).range(1..=16).prefix("Columns "));},
-            Spec::Door{width,height,depth,frame,opening}=>{length(ui,"Width",width);length(ui,"Height",height);length(ui,"Depth",depth);length(ui,"Frame",frame);ui.add(crate::widgets::Number::new(opening).range(0. ..=170.).suffix("°").prefix("Opening "));},
-            Spec::Stairs{width,rise,tread,steps}=>{length(ui,"Width",width);length(ui,"Rise",rise);length(ui,"Tread",tread);ui.add(crate::widgets::Number::new(steps).range(1..=128).prefix("Steps "));},
-        }
+        // One grid keeps every value field aligned, whatever the label widths.
+        egui::Grid::new("parametric-values").num_columns(2).spacing([12.,8.]).show(ui,|ui| match &mut state.spec {
+            Spec::Window{width,height,depth,frame,columns}=>{length(ui,"Width",width);length(ui,"Height",height);length(ui,"Depth",depth);length(ui,"Frame",frame);ui.label("Columns");ui.add(crate::widgets::Number::new(columns).range(1..=16));ui.end_row();},
+            Spec::Door{width,height,depth,frame,opening}=>{length(ui,"Width",width);length(ui,"Height",height);length(ui,"Depth",depth);length(ui,"Frame",frame);ui.label("Opening");ui.add(crate::widgets::Number::new(opening).range(0. ..=170.).suffix("°"));ui.end_row();},
+            Spec::Stairs{width,rise,tread,steps}=>{length(ui,"Width",width);length(ui,"Rise",rise);length(ui,"Tread",tread);ui.label("Steps");ui.add(crate::widgets::Number::new(steps).range(1..=128));ui.end_row();},
+        });
         let validation=state.spec.validate();
         if let Err(error)=&validation {ui.colored_label(egui::Color32::LIGHT_RED,error);}
         if let Some(error)=&state.error {ui.colored_label(egui::Color32::LIGHT_RED,error);}
@@ -52,7 +54,7 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
             create=ui.add_enabled(validation.is_ok(),egui::Button::new("Place new component")).clicked();
             if let Some(id)=state.editing {
                 let count=app.editor.doc().instance_count(id);
-                update=ui.add_enabled(validation.is_ok() && app.editor.doc().definitions.contains_key(&id),egui::Button::new(format!("Update {count} instance(s)"))).clicked();
+                update=ui.add_enabled(validation.is_ok() && app.editor.doc().definitions.contains_key(&id),egui::Button::new(if count==1 {"Update 1 instance".to_owned()} else {format!("Update {count} instances")})).clicked();
             }
         });
     });

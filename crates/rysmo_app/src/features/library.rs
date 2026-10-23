@@ -131,13 +131,13 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
         ui.separator();
         ui.add(crate::theme::singleline(&mut state.name).desired_width(f32::INFINITY).hint_text("New component name"));
         ui.add(crate::theme::singleline(&mut state.description).desired_width(f32::INFINITY).hint_text("Description"));
-        if ui.add_enabled(!app.editor.selected().is_empty(),egui::Button::new("Add selection to collection")).clicked() {
+        if ui.add_enabled(!app.editor.selected().is_empty()&&!state.name.trim().is_empty(),egui::Button::new("Add selection to collection")).on_disabled_hover_text("Select model objects and enter a component name.").clicked() {
             let result=(||->Result<(),String>{
                 let clipboard=Clipboard::capture(&app.editor,app.editor.selected()).map_err(|e|e.to_string())?;
                 let asset=Asset::from_clipboard(state.name.trim().into(),state.description.clone(),&clipboard);
                 let mut collection=state.collection.clone();collection.assets.push(asset);collection.validate()?;
                 let document=collection.assets.last().ok_or("Missing new asset")?.document().map_err(|e|e.to_string())?;
-                state.collection=collection;state.previews.push(Preview::new(&document));state.documents.push(document);state.modified=true;Ok(())
+                state.collection=collection;state.previews.push(Preview::new(&document));state.documents.push(document);state.modified=true;state.name.clear();state.description.clear();Ok(())
             })();state.error=result.err();
         }
         ui.separator();ui.add(crate::theme::singleline(&mut state.filter).desired_width(f32::INFINITY).hint_text("Search collection"));

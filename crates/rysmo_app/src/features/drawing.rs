@@ -14,7 +14,7 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
     let mut state = std::mem::take(&mut app.features.drawing);
     let mut export = None;
     let result=crate::theme::window("Export drawing").open(&mut state.open).default_width(420.).resizable(true).show(ctx,|ui| {
-        ui.label("Title");ui.text_edit_singleline(&mut state.options.title);
+        ui.label("Title");ui.add(crate::theme::singleline(&mut state.options.title).desired_width(f32::INFINITY));
         egui::ComboBox::from_label("View").selected_text(state.options.orientation.name()).show_ui(ui,|ui| {
             for view in [Orientation::Top,Orientation::Front,Orientation::Right,Orientation::Isometric] {ui.selectable_value(&mut state.options.orientation,view,view.name());}
         });

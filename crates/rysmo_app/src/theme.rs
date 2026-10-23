@@ -30,10 +30,21 @@ pub struct Window<'a> {
     beside: bool,
 }
 
+/// Dialogs use macOS chrome natively and in browsers on Apple platforms.
+fn mac_chrome() -> bool {
+    #[cfg(target_arch = "wasm32")]
+    {
+        static APPLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        *APPLE.get_or_init(crate::web::apple_platform)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    cfg!(target_os = "macos")
+}
+
 pub fn window(title: &str) -> Window<'_> {
     Window {
         // macOS windows have no collapse arrow; their close dot is painted below.
-        inner: base_window(title).collapsible(!cfg!(target_os = "macos")),
+        inner: base_window(title).collapsible(!mac_chrome()),
         key: title.into(),
         has_close: false,
         pos: None,
@@ -111,7 +122,11 @@ impl<'a> Window<'a> {
             let window = self.inner.fixed_rect(dock).title_bar(false).resizable(false).movable(false);
             return window.constrain_to(dock).show(ctx, contents);
         }
-        let area = ctx.content_rect().shrink(8.);
+        // Keep floating windows clear of the toolbars and status bar unless the model area is too small.
+        let content = ctx.content_rect();
+        let central = ctx.data(|d| d.get_temp::<egui::Rect>(egui::Id::new(MODEL_AREA))).unwrap_or(content);
+        let area = if central.width() >= 360. && central.height() >= 360. { central } else { content };
+        let area = area.shrink(8.);
         let area = self.constrain.map_or(area, |r| r.intersect(area));
         let fit = |v: egui::Vec2| v.min(area.size()).max(egui::Vec2::ZERO);
         self.inner = self.inner.constrain_to(area).max_size(self.max.min(area.size()));
@@ -156,7 +171,7 @@ impl<'a> Window<'a> {
             layout.0.insert(self.key, [r.left(), r.top(), r.width(), r.height()]);
             crate::preferences::set_layout(ctx, layout);
         }
-        let mac = cfg!(target_os = "macos");
+        let mac = mac_chrome();
         #[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
         let mac = mac
             || (std::env::var_os("RYSMO_MAC_CHROME_PREVIEW").is_some()
@@ -169,6 +184,13 @@ impl<'a> Window<'a> {
         }
         result
     }
+}
+
+const MODEL_AREA: &str = "model-area";
+
+/// Records the model area between the toolbars, palette and status bar for floating windows.
+pub fn set_model_area(ctx: &egui::Context, rect: egui::Rect) {
+    ctx.data_mut(|d| d.insert_temp(egui::Id::new(MODEL_AREA), rect));
 }
 
 /// Places the window titled `key` in `rect` this frame, as a tab of the tablet sidebar.

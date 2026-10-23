@@ -210,7 +210,13 @@ impl<T: egui::emath::Numeric> egui::Widget for Number<'_, T> {
             if let Some(decimals) = self.max_decimals {
                 drag = drag.max_decimals(decimals);
             }
-            ui.add(drag)
+            // A minimum width keeps the field from shrinking to its typed text while editing.
+            ui.scope(|ui| {
+                let size = &mut ui.spacing_mut().interact_size.x;
+                *size = size.max(64.);
+                ui.add(drag)
+            })
+            .inner
         }
     }
 }
