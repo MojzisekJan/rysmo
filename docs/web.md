@@ -174,7 +174,9 @@ The 3D resolution slider supports 50–150%. A separate render target is composi
 behind the native-resolution egui interface whenever the scale differs from 100%.
 Picking and annotation layout keep their original canvas coordinates. At 100%,
 the direct window rendering path returns and the offscreen image is reduced to 1×1.
-Existing SSAO/TAA platform restrictions remain.
+Existing SSAO/TAA platform restrictions remain. Bloom around glowing materials is
+desktop-only: in WebGL2 it stopped the view from presenting new frames. Glowing materials
+and their lights still render in the browser.
 
 ## Auto-save preferences
 

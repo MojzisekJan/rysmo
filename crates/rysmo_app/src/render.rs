@@ -230,8 +230,9 @@ fn apply_style(
     } else {
         e.remove::<(AtmosphereSettings, bevy::camera::Hdr)>();
     }
-    // Glowing materials spill a soft glare around them.
-    if glowing && style.lighting != Lighting::Flat {
+    // Glowing materials spill a soft glare around them. Not in WebGL2: with bloom the
+    // browser view stops presenting new frames (verified in Chromium and Firefox on macOS).
+    if glowing && style.lighting != Lighting::Flat && cfg!(not(target_arch = "wasm32")) {
         e.insert(bevy::post_process::bloom::Bloom::NATURAL);
     } else {
         e.remove::<bevy::post_process::bloom::Bloom>();
