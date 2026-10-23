@@ -10,13 +10,18 @@ fn decode(bytes: &[u8]) -> (Vec<u8>, u32, u32) {
 }
 
 pub fn image(ui: &mut egui::Ui, size: f32) -> egui::Response {
-    let id = egui::Id::new("rysmo-brand-texture");
+    // Downscale the 512 px logo to the displayed pixel size on the CPU: sampling it directly
+    // without mipmaps aliases its curved edges.
+    let pixels = (size * ui.ctx().pixels_per_point()).round().clamp(16., 512.) as u32;
+    let id = egui::Id::new(("rysmo-brand-texture", pixels));
     let texture = ui.ctx().data_mut(|data| data.get_temp::<egui::TextureHandle>(id));
     let texture = texture.unwrap_or_else(|| {
         let (rgba, width, height) = decode(include_bytes!("../brand/logo.png"));
+        let source = image::RgbaImage::from_raw(width, height, rgba).expect("brand image buffer");
+        let scaled = image::imageops::resize(&source, pixels, pixels, image::imageops::FilterType::Lanczos3);
         let texture = ui.ctx().load_texture(
             "Rysmo logo",
-            egui::ColorImage::from_rgba_unmultiplied([width as usize, height as usize], &rgba),
+            egui::ColorImage::from_rgba_unmultiplied([pixels as usize, pixels as usize], scaled.as_raw()),
             egui::TextureOptions::LINEAR,
         );
         ui.ctx().data_mut(|data| data.insert_temp(id, texture.clone()));

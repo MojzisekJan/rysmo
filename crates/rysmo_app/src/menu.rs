@@ -19,6 +19,8 @@ pub fn style(style: &mut egui::Style) {
     style.spacing.item_spacing = egui::vec2(4., 2.);
 }
 
+/// An icon and text label. Both are centred on the row, because the icon font is larger
+/// and would otherwise sit on the text baseline, above the text's visual centre.
 pub fn label(icon: &str, text: &str) -> egui::text::LayoutJob {
     let mut job = egui::text::LayoutJob::default();
     job.append(
@@ -27,6 +29,7 @@ pub fn label(icon: &str, text: &str) -> egui::text::LayoutJob {
         egui::TextFormat {
             font_id: FontId::new(MENU_ICON, egui::FontFamily::Name("phosphor".into())),
             color: Color32::PLACEHOLDER,
+            valign: egui::Align::Center,
             ..Default::default()
         },
     );
@@ -36,6 +39,7 @@ pub fn label(icon: &str, text: &str) -> egui::text::LayoutJob {
         egui::TextFormat {
             font_id: FontId::proportional(MENU_TEXT),
             color: Color32::PLACEHOLDER,
+            valign: egui::Align::Center,
             ..Default::default()
         },
     );

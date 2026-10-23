@@ -21,10 +21,10 @@ pub fn show(ctx: &egui::Context, app: &mut App3d) -> bool {
     egui::Area::new("welcome-page".into()).fixed_pos(content.min).order(egui::Order::Background).show(ctx, |ui| {
         #[cfg(target_os = "macos")]
         crate::macos::titlebar_area(ui, egui::Rect::from_min_size(content.min, egui::vec2(content.width(), 28.)));
-        let frame = egui::Frame::new()
-            .fill(ui.visuals().panel_fill)
-            .inner_margin(egui::Margin { top: margin + title, ..egui::Margin::same(margin) });
+        paint_glow(ui, content);
+        let frame = egui::Frame::new().inner_margin(egui::Margin { top: margin + title, ..egui::Margin::same(margin) });
         frame.show(ui, |ui| {
+            ui.style_mut().interaction.selectable_labels = false;
             // An Area does not limit its width, so wrapping needs the page size set here.
             let inset = egui::vec2(2. * margin as f32, 2. * margin as f32 + title as f32);
             let page = (content.size() - inset).max(egui::vec2(240., 240.));
@@ -85,30 +85,38 @@ fn page_contents(ui: &mut egui::Ui, app: &mut App3d, width: f32) {
             }
         });
     }
-    ui.add_space(14.);
-    ui.horizontal_wrapped(|ui| {
-        let size = egui::vec2(0., 36.);
-        let open = egui::Button::new(crate::menu::label(glyph::FOLDER_OPEN, "Open model...")).min_size(size);
-        if ui.add(open).clicked() {
-            unsaved::request(app, unsaved::Action::Open);
-        }
-        let current = app.path.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned());
-        let label = match &current {
-            Some(name) => format!("Continue {name}"),
-            None => "Continue editing".to_owned(),
-        };
-        let resume = egui::Button::new(crate::menu::label(glyph::ARROW_RIGHT, &label)).min_size(size).truncate();
-        if ui.add(resume).clicked() {
-            app.welcome = false;
-        }
-        if ui.add(egui::Button::new(crate::menu::label(glyph::QUESTION, "Help & tools")).min_size(size)).clicked() {
-            app.help.open = true;
-        }
-        if ui.add(egui::Button::new(crate::menu::label(glyph::GEAR_SIX, "Settings")).min_size(size)).clicked() {
-            app.show_settings = true;
-            app.settings_tab = 3;
-        }
-    });
+    ui.add_space(6.);
+    // Secondary actions share the card grid: four equal columns, or two on narrow pages.
+    let current = app.path.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned());
+    let resume = match &current {
+        Some(name) => format!("Continue {name}"),
+        None => "Continue editing".to_owned(),
+    };
+    let actions = [
+        (glyph::FOLDER_OPEN, "Open model...".to_owned()),
+        (glyph::ARROW_RIGHT, resume),
+        (glyph::QUESTION, "Help & tools".to_owned()),
+        (glyph::GEAR_SIX, "Settings".to_owned()),
+    ];
+    let per_row = if width >= 540. { 4 } else { 2 };
+    let button = egui::vec2((width - gap * (per_row - 1) as f32) / per_row as f32, 36.);
+    for (row, chunk) in actions.chunks(per_row).enumerate() {
+        ui.horizontal(|ui| {
+            for (column, (icon, text)) in chunk.iter().enumerate() {
+                let clicked = icon_button(ui, button, icon, text, egui::Align::Center).clicked();
+                match (clicked, row * per_row + column) {
+                    (true, 0) => unsaved::request(app, unsaved::Action::Open),
+                    (true, 1) => app.welcome = false,
+                    (true, 2) => app.help.open = true,
+                    (true, _) => {
+                        app.show_settings = true;
+                        app.settings_tab = 3;
+                    }
+                    _ => {}
+                }
+            }
+        });
+    }
     ui.add_space(28.);
     section(ui, "Recent models");
     egui::Frame::new()
@@ -119,17 +127,20 @@ fn page_contents(ui: &mut egui::Ui, app: &mut App3d, width: f32) {
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             if app.recent.is_empty() {
-                ui.add_space(10.);
-                ui.vertical_centered(|ui| ui.weak("Models you open or save will appear here."));
-                ui.add_space(10.);
+                // Paint the hint at the exact centre of a fixed-height row.
+                let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 44.), egui::Sense::hover());
+                ui.painter().text(
+                    rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    "Models you open or save will appear here.",
+                    egui::FontId::proportional(14.),
+                    ui.visuals().weak_text_color(),
+                );
             }
             for name in app.recent.clone().iter().take(8) {
                 let label = std::path::Path::new(name).file_name().unwrap_or_default().to_string_lossy();
-                let row = egui::Button::new(crate::menu::label(glyph::FILE, &label))
-                    .frame_when_inactive(false)
-                    .min_size(egui::vec2(ui.available_width(), 36.))
-                    .truncate();
-                if ui.add(row).on_hover_text(name).clicked() {
+                let size = egui::vec2(ui.available_width(), 36.);
+                if icon_button(ui, size, glyph::FILE, &label, egui::Align::Min).on_hover_text(name).clicked() {
                     unsaved::request(app, unsaved::Action::Recent(name.clone()));
                 }
             }
@@ -149,6 +160,100 @@ fn page_contents(ui: &mut egui::Ui, app: &mut App3d, width: f32) {
         ui.add_space(8.);
         ui.label(message);
     }
+}
+
+/// A button whose icon and text are positioned separately: the icon font sits higher than
+/// the text's visual centre when both share a baseline.
+fn icon_button(ui: &mut egui::Ui, size: egui::Vec2, icon: &str, text: &str, align: egui::Align) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), text));
+    let style = ui.style().interact(&response);
+    let painter = ui.painter();
+    let flat = align == egui::Align::Min && !response.hovered() && !response.is_pointer_button_down_on();
+    if !flat {
+        painter.rect(rect, style.corner_radius, style.weak_bg_fill, style.bg_stroke, egui::StrokeKind::Inside);
+    }
+    let color = style.text_color();
+    let icon = painter.layout_no_wrap(
+        icon.to_owned(),
+        egui::FontId::new(18., egui::FontFamily::Name("phosphor".into())),
+        color,
+    );
+    let gap = 8.;
+    let room = rect.width() - 24. - icon.size().x - gap;
+    let mut job = egui::text::LayoutJob::simple_singleline(text.to_owned(), egui::FontId::proportional(15.), color);
+    job.wrap = egui::text::TextWrapping::truncate_at_width(room.max(0.));
+    let label = painter.layout_job(job);
+    let width = icon.size().x + gap + label.size().x;
+    let left = match align {
+        egui::Align::Center => rect.center().x - width / 2.,
+        _ => rect.left() + 12.,
+    };
+    // Align the icon with the middle of lower-case text rather than with its line box.
+    let centre = rect.center().y;
+    painter.galley(egui::pos2(left, centre - icon.size().y / 2. + ICON_DROP), icon, color);
+    painter.galley(egui::pos2(left + width - label.size().x, centre - label.size().y / 2. - TEXT_LIFT), label, color);
+    response.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// Optical offsets for 18 px Phosphor icons beside 15 px text.
+const ICON_DROP: f32 = 0.5;
+const TEXT_LIFT: f32 = 0.5;
+
+/// Soft, low-contrast colour glows behind the page, in the logo and accent hues. The
+/// background is rendered once per page size into an opaque, dithered image, so the
+/// faint gradients show no 8-bit banding.
+fn paint_glow(ui: &egui::Ui, rect: egui::Rect) {
+    const SCALE: f32 = 0.5;
+    let size = [(rect.width() * SCALE).ceil().max(1.) as usize, (rect.height() * SCALE).ceil().max(1.) as usize];
+    let id = egui::Id::new("welcome-glow");
+    let cached = ui.ctx().data(|d| d.get_temp::<([usize; 2], egui::TextureHandle)>(id));
+    let texture = match cached {
+        Some((cached, texture)) if cached == size => texture,
+        _ => {
+            let texture = ui.ctx().load_texture(
+                "welcome-glow",
+                glow_image(size, ui.visuals().panel_fill),
+                egui::TextureOptions::LINEAR,
+            );
+            ui.ctx().data_mut(|d| d.insert_temp(id, (size, texture.clone())));
+            texture
+        }
+    };
+    ui.painter().image(
+        texture.id(),
+        rect,
+        egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1., 1.)),
+        egui::Color32::WHITE,
+    );
+}
+
+fn glow_image([w, h]: [usize; 2], base: egui::Color32) -> egui::ColorImage {
+    let glows = [
+        ([0.15, 0.15], 0.5, [0x4f, 0x8d, 0xf0], 0.18),
+        ([0.88, 0.85], 0.5, [0xb0, 0x4c, 0xe6], 0.15),
+        ([0.7, 0.02], 0.32, [0xff, 0x8a, 0x3d], 0.10),
+    ];
+    let span = w.max(h) as f32;
+    let mut pixels = Vec::with_capacity(w * h);
+    for y in 0..h {
+        for x in 0..w {
+            let mut c = [base.r() as f32, base.g() as f32, base.b() as f32];
+            for (at, radius, colour, strength) in glows {
+                let dx = (x as f32 - at[0] * w as f32) / (radius * span);
+                let dy = (y as f32 - at[1] * h as f32) / (radius * span);
+                let weight = strength * (-2.5 * (dx * dx + dy * dy)).exp();
+                for k in 0..3 {
+                    c[k] += (colour[k] as f32 - c[k]) * weight;
+                }
+            }
+            // Ordered dither of ±0.5 levels breaks up banding in the faint gradient.
+            let dither = ((x * 7 + y * 13) % 16) as f32 / 16. - 0.5;
+            let v = c.map(|v| (v + dither).round().clamp(0., 255.) as u8);
+            pixels.push(egui::Color32::from_rgb(v[0], v[1], v[2]));
+        }
+    }
+    egui::ColorImage { size: [w, h], pixels, source_size: egui::vec2(w as f32, h as f32) }
 }
 
 fn section(ui: &mut egui::Ui, title: &str) {
