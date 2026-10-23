@@ -193,6 +193,7 @@ pub fn desktop_sidebar(root: &mut egui::Ui, app: &mut App3d, rects: &mut Vec<egu
     if st.sidebar {
         let free = root.available_rect_before_wrap();
         let panel = egui::Panel::right("desktop-sidebar")
+            .show_separator_line(false)
             .frame(panel_frame(root, 10, 8))
             .default_size(330_f32.min(free.width() * 0.4))
             .size_range(280_f32..=(free.width() * 0.5).max(300.))

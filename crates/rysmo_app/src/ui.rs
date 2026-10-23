@@ -173,35 +173,51 @@ fn tool_tray(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
         });
 }
 
-/// Compact tool shelf. Short viewports use more columns instead of scrolling.
+/// Width of a palette tray: its icon grid plus the tray's margins.
+fn palette_tray_width(columns: usize, touch: bool) -> f32 {
+    let icon = if touch { 26. } else { 22. } + 14.;
+    columns as f32 * icon + (columns - 1) as f32 * 3. + 8.
+}
+
+/// Compact tool shelf: each group in a rounded tray, trays centred in the panel.
+/// Short viewports use more columns instead of scrolling.
 fn tool_palette(ui: &mut egui::Ui, app: &mut App3d, columns: usize) {
     let icon_size = if app.touch.enabled { 26. } else { 22. };
-    ui.spacing_mut().item_spacing = egui::vec2(3., 4.);
+    let tray = palette_tray_width(columns, app.touch.enabled);
     for (group, slots) in LEFT_TOOLS.split(|slot| matches!(slot, Slot::Gap)).enumerate() {
         if group > 0 {
-            ui.add_space(4.);
+            ui.add_space(6.);
         }
-        egui::Frame::new().fill(ui.visuals().faint_bg_color).corner_radius(8).inner_margin(egui::Margin::same(3)).show(
-            ui,
-            |ui| {
-                egui::Grid::new(("tool-group", group))
-                    .num_columns(columns)
-                    .min_col_width(icon_size + 14.)
-                    .spacing(egui::vec2(3., 3.))
-                    .show(ui, |ui| {
-                        for (index, slot) in slots.iter().enumerate() {
-                            slot_button(ui, app, slot, icon_size);
-                            if (index + 1) % columns == 0 {
+        ui.vertical_centered(|ui| {
+            egui::Frame::new()
+                .fill(ui.visuals().faint_bg_color)
+                .corner_radius(8)
+                .inner_margin(egui::Margin::same(4))
+                .show(ui, |ui| {
+                    ui.set_width(tray - 8.);
+                    egui::Grid::new(("tool-group", group))
+                        .num_columns(columns)
+                        .min_col_width(icon_size + 14.)
+                        .spacing(egui::vec2(3., 3.))
+                        .show(ui, |ui| {
+                            for (index, slot) in slots.iter().enumerate() {
+                                slot_button(ui, app, slot, icon_size);
+                                if (index + 1) % columns == 0 {
+                                    ui.end_row();
+                                }
+                            }
+                            if slots.len() % columns != 0 {
                                 ui.end_row();
                             }
-                        }
-                        if slots.len() % columns != 0 {
-                            ui.end_row();
-                        }
-                    });
-            },
-        );
+                        });
+                });
+        });
     }
+}
+
+/// The frame of the editor's chrome panels: one fill, no edge lines.
+fn chrome_frame(ui: &egui::Ui, x: i8, y: i8) -> egui::Frame {
+    egui::Frame::new().fill(ui.visuals().panel_fill).inner_margin(egui::Margin::symmetric(x, y))
 }
 
 fn panels(
@@ -234,6 +250,7 @@ fn panels(
     } else {
         crate::theme::undock(ctx);
         let top = egui::Panel::top("menu")
+            .show_separator_line(false)
             .frame(egui::Frame::new().fill(root.visuals().panel_fill).inner_margin(egui::Margin::symmetric(10, 6)))
             .show(&mut root, |ui| {
                 #[cfg(target_os = "macos")]
@@ -293,17 +310,23 @@ fn panels(
             });
         rects.push(top.response.rect);
         if !app.editor.doc().scenes.is_empty() {
-            let tabs = egui::Panel::top("scenes").show(&mut root, |ui| crate::scene_panel::tabs(ui, &mut app));
+            let tabs = egui::Panel::top("scenes")
+                .show_separator_line(false)
+                .frame(chrome_frame(&root, 10, 4))
+                .show(&mut root, |ui| crate::scene_panel::tabs(ui, &mut app));
             rects.push(tabs.response.rect);
         }
 
         if app.preferences.tool_panel {
-            let options = egui::Panel::top("tool-options").show(&mut root, |ui| crate::tool_panel::panel(ui, &mut app));
+            let options = egui::Panel::top("tool-options")
+                .show_separator_line(false)
+                .frame(chrome_frame(&root, 10, 4))
+                .show(&mut root, |ui| crate::tool_panel::panel(ui, &mut app));
             rects.push(options.response.rect);
         }
-        let bottom = egui::Panel::bottom("status")
-            .frame(egui::Frame::new().fill(root.visuals().panel_fill).inner_margin(egui::Margin::symmetric(10, 5)))
-            .show(&mut root, |ui| {
+        let bottom = egui::Panel::bottom("status").show_separator_line(false).frame(chrome_frame(&root, 10, 5)).show(
+            &mut root,
+            |ui| {
                 if touch {
                     ui.horizontal(|ui| {
                         for (label, which) in [("Shift", 0), ("Ctrl", 1), ("Alt", 2)] {
@@ -381,11 +404,14 @@ fn panels(
                         });
                     });
                 });
-            });
+            },
+        );
         rects.push(bottom.response.rect);
         let columns = if root.available_rect_before_wrap().height() < if touch { 410. } else { 370. } { 4 } else { 2 };
-        let palette_width = columns as f32 * (if touch { 40. } else { 36. }) + (columns - 1) as f32 * 3. + 16.;
+        let palette_width = palette_tray_width(columns, touch) + 12.;
         let palette = egui::Panel::left("tool-palette")
+            .show_separator_line(false)
+            .frame(chrome_frame(&root, 6, 6))
             .default_size(palette_width)
             .size_range(palette_width..=palette_width)
             .resizable(false)
