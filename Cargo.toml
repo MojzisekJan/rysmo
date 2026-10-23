@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
+exclude = ["vendor"]
 
 [workspace.package]
 version = "0.1.0"
@@ -64,3 +65,7 @@ opt-level = 1
 
 [profile.portable.package."*"]
 opt-level = 1
+
+# A copy of bevy_pbr 0.20.0 with a smaller WebGL2 light array; see vendor/README.md.
+[patch.crates-io]
+bevy_pbr = { path = "vendor/bevy_pbr" }
