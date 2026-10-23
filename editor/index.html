@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <title>Rysmo</title>
+  <meta name="theme-color" content="#20252c">
+  
+  
+  <link rel="icon" type="image/svg+xml" href="brand/favicon.svg">
+  <link rel="icon" type="image/x-icon" href="brand/favicon.ico">
+  <link rel="apple-touch-icon" sizes="180x180" href="brand/apple-touch-icon.png">
+  
+<script type="module">
+async function __trunkInitializer(init, source, sourceSize, initializer, initWithObject) {
+  if (initializer === undefined) {
+    return await init(initWithObject ? { module_or_path: source } : source);
+  }
+
+  const {
+    onStart, onProgress, onComplete, onSuccess, onFailure
+  } = initializer;
+
+  onStart?.();
+
+  const response = fetch(source)
+      .then((response) => {
+        const reader = response.body.getReader();
+        const headers = response.headers;
+        const status = response.status;
+        const statusText = response.statusText;
+
+        const total = sourceSize;
+        let current = 0;
+
+        const stream = new ReadableStream({
+          start(controller) {
+            function push() {
+              reader.read().then(({done, value}) => {
+                if (done) {
+                  onProgress?.({current: total, total});
+                  controller.close();
+                  return;
+                }
+
+                current += value.byteLength;
+                onProgress?.({current, total});
+                controller.enqueue(value);
+                push();
+              });
+            }
+
+            push();
+          },
+        });
+
+        return {
+          stream, init: {
+            headers, status, statusText
+          }
+        };
+      })
+      .then(({stream, init}) =>
+          new Response(stream, init),
+      );
+
+  return init(initWithObject ? { module_or_path: response } : response)
+      .then((value) => {
+        onComplete?.();
+        onSuccess?.(value);
+        return value;
+      }, (reason) => {
+        onComplete?.();
+        onFailure?.(reason);
+        return reason;
+      });
+}
+
+
+import init, * as bindings from './rysmo-bf1c41bedf70317b.js';
+import initializer from './b99cc1f056c3f5f1-loader.mjs';
+
+const wasm = await __trunkInitializer(init, './rysmo-5a6fb10098e0ba11_bg.wasm', 61555963, initializer(), true);
+
+
+window.wasmBindings = bindings;
+
+
+dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
+
+</script>
+  <style>
+    /* The viewport's sky and panel colours, so the loader hands over without a flash. */
+    :root { --sky: #d6e3f0; --panel: #f7f7f7; --fg: #1d2025; --dim: #5e646c; --track: #c3ccd6; --accent: #3d7bd9; --error: #c0392b; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: var(--sky); }
+    /* Bevy sizes the canvas to its parent. */
+    #rysmo { display: block; width: 100%; height: 100%; touch-action: none; outline: none; }
+    #loading { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+               justify-content: center; gap: 12px; background: var(--sky); color: var(--fg);
+               font: 15px system-ui, -apple-system, "Segoe UI", sans-serif; }
+    #loading .logo { width: 96px; height: 96px; }
+    #loading .name { font-size: 22px; font-weight: 600; letter-spacing: 0.02em; }
+    #loading .bar { width: 260px; max-width: 70vw; height: 4px; border-radius: 2px; background: var(--track); overflow: hidden; }
+    #loading .fill { height: 100%; width: 0; background: var(--accent); transition: width 0.15s; }
+    #loading.waiting .fill { width: 30%; animation: sweep 1.2s ease-in-out infinite; }
+    @keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+    #loading .status { color: var(--dim); font-size: 13px; min-height: 1.3em; text-align: center; max-width: 80vw; }
+    #loading.failed .status { color: var(--error); }
+    #loading.failed .bar { display: none; }
+  </style>
+<link rel="modulepreload" href="./rysmo-bf1c41bedf70317b.js" crossorigin="anonymous" integrity="sha384-h7Nyyw/zef9+GYF5hWt23EDiPlFlLzVDMeaW+QVbrxMXj48bEtKuetsyp7uQdCrk"><link rel="modulepreload" href="./snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js?v=a2eb6b7c99fb59ef" crossorigin="anonymous" integrity="sha384-TQxDBysi12QOsQR7Nq6+AtZxLq5IDQgCHWd/q1nwI43uE+b3PSKLjhmON++38DlL"><link rel="modulepreload" href="./b99cc1f056c3f5f1-loader.mjs" crossorigin="anonymous" integrity="sha384-gApVotHAEjKMBQ9IudpHPhyVR7EQhhqWztWMRJq5BVSsfkPZEMO7XaAgsQbqoLvx"><link rel="preload" href="./rysmo-5a6fb10098e0ba11_bg.wasm" crossorigin="anonymous" integrity="sha384-fG7b+FUo0K+XEaQ3lRIy1uOCT2d7DISlgCu4Yb16gvV5f0CeUOmGdEda9+EhpRH5" as="fetch" type="application/wasm"><meta name="rysmo-wasm-bytes" content="28309456"></head>
+<body>
+  <canvas id="rysmo" tabindex="0" role="application" aria-label="Rysmo 3D editor"></canvas>
+  <div id="loading" class="waiting">
+    <img class="logo" src="brand/logo.svg" width="96" height="96" alt="">
+    <div class="name">Rysmo</div>
+    <div class="bar"><div class="fill"></div></div>
+    <div class="status">Loading...</div>
+    <noscript>Rysmo needs JavaScript and WebGL2.</noscript>
+  </div>
+  <script>
+    // Before downloading megabytes, check that the browser can draw at all.
+    (function () {
+      const gl = document.createElement("canvas").getContext("webgl2");
+      if (!gl) {
+        const l = document.getElementById("loading");
+        l.className = "failed";
+        l.querySelector(".status").textContent = "This browser has no WebGL2, which Rysmo needs.";
+      }
+    })();
+  </script>
+  <script type="module" src="web_diagnostics.mjs"></script>
+</body>
+</html>

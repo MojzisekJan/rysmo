@@ -1,0 +1,78 @@
+{
+  "revision": "082833097def905246bc548af3da03b206ca4e19",
+  "tracked_changes": false,
+  "assets": {
+    "LICENSE": {
+      "bytes": 35147,
+      "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+    },
+    "SOURCE.txt": {
+      "bytes": 193,
+      "sha256": "fc40c89896ab12f394cb0b5b2bc841050ca92fae252be0fdf3ea1c852fcfc89f"
+    },
+    "b99cc1f056c3f5f1-loader.mjs": {
+      "bytes": 1751,
+      "sha256": "8047af76fb0ae2d185d1f6748a05dd6304bde1033c4efee6ab116356af184330"
+    },
+    "brand/apple-touch-icon.png": {
+      "bytes": 13178,
+      "sha256": "e33310f819e794621e39ab714798b4c2e15b72edb3d7b55ce8ad66e8c0bf2ec6"
+    },
+    "brand/favicon.ico": {
+      "bytes": 33424,
+      "sha256": "fb4f280743220ed8a14d91cb220fb54b9443fcd0220a042573288a8065ffcab7"
+    },
+    "brand/favicon.svg": {
+      "bytes": 1054,
+      "sha256": "eee05956dd4ca13ea3b20586843156b25faf40f103dfaa819a808499c1343b11"
+    },
+    "brand/icon-192.png": {
+      "bytes": 16065,
+      "sha256": "d50aea8ee951aea6e2b477ce045796cd7b0c4e96d27eed2d1f75b5cf8cfb0302"
+    },
+    "brand/icon-32.png": {
+      "bytes": 1983,
+      "sha256": "4341db96fb52ce7d2611991b3801fbf519db437bf1c378ddc41cbbd2d2770724"
+    },
+    "brand/icon-512.png": {
+      "bytes": 51433,
+      "sha256": "993a60b1aee20f363a332483e54a274c30fc294eb3c315140577ddb73d2c29a4"
+    },
+    "brand/icon-64.png": {
+      "bytes": 4613,
+      "sha256": "bb0a1ce62d65d33eeaa8d04607f8da5fda25f944038335972099049121f9bda1"
+    },
+    "brand/logo.png": {
+      "bytes": 47005,
+      "sha256": "c906402124b899a867190327509c41c27151b9cf31afc80aa7df6fb037a115dd"
+    },
+    "brand/logo.svg": {
+      "bytes": 999,
+      "sha256": "ac618f2e5eb9d3f16b08918d8b47184c494c219e55fe413006e0e58856a8d366"
+    },
+    "index.html": {
+      "bytes": 5700,
+      "sha256": "73dbaa90f35bf51bc26a6cfa1f45338c0789259ad3bd13f71929f533859cd2ac"
+    },
+    "rysmo-5a6fb10098e0ba11_bg.wasm": {
+      "bytes": 28309456,
+      "sha256": "592eb0f595bf9829acd19f4a7a9a1034e5e923f3b5e65a9862fc7e1891dcf4c8"
+    },
+    "rysmo-bf1c41bedf70317b.js": {
+      "bytes": 118886,
+      "sha256": "bf1c41bedf70317b9fe9da63e6d62aed179da734ce49886dc2cdb66dd816af13"
+    },
+    "snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js": {
+      "bytes": 12458,
+      "sha256": "a2eb6b7c99fb59efd706d4e4bef85f6ff654919f11caf798a1d38cc475274dda"
+    },
+    "source.tar.gz": {
+      "bytes": 9357273,
+      "sha256": "32e6b4222f6387d71503c3619968d85397a37eb74fadfd4822e734197af26574"
+    },
+    "web_diagnostics.mjs": {
+      "bytes": 2091,
+      "sha256": "b887a2d4556d9437371e560276498235425a555e29a76febc8d856c578d046bb"
+    }
+  }
+}

@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rysmo manual</title>
+  <meta name="description" content="How to use Rysmo: tools, shortcuts, measurements, materials, terrain and files.">
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <link rel="stylesheet" href="../site.css">
+  <script>
+    // Apply the saved theme before the first paint; without one the page follows the system.
+    document.documentElement.classList.add('js');
+    try { var t = localStorage.getItem('rysmo-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+  <script src="../theme.js" defer></script>
+</head>
+<body>
+  <div class="top">
+    <div class="wrap">
+      <header>
+        <a class="brand" href="../"><img src="../logo.svg" alt="">Rysmo</a>
+        <nav>
+          <a href="./" aria-current="page">Manual</a>
+          <a class="github" href="https://github.com/MojzisekJan/rysmo">GitHub</a>
+          <button class="theme-toggle" type="button" aria-label="Switch theme">
+            <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>
+            <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
+          </button>
+          <a class="button primary" href="../editor/">Open editor</a>
+        </nav>
+      </header>
+    </div>
+  </div>
+
+  <div class="wrap manual">
+    <aside class="manual-nav">
+      <input class="manual-search" type="search" placeholder="Search 63 topics" aria-label="Search the manual" hidden>
+      <div class="toc">
+        <h2>Start here</h2>
+        <ul>
+          <li><a href="#getting-started">Getting started</a></li>
+          <li><a href="#command-search">Command search</a></li>
+          <li><a href="#measurements-and-inference">Measurements and inference</a></li>
+          <li><a href="#keyboard-shortcuts">Keyboard shortcuts</a></li>
+          <li><a href="#touch-and-troubleshooting">Touch and troubleshooting</a></li>
+        </ul>
+      </div>
+      <div class="toc">
+        <h2>Selection</h2>
+        <ul>
+          <li><a href="#select">Select</a></li>
+          <li><a href="#eraser">Eraser</a></li>
+        </ul>
+      </div>
+      <div class="toc">
+        <h2>Drawing</h2>
+        <ul>
+          <li><a href="#line">Line</a></li>
+          <li><a href="#freehand">Freehand</a></li>
+          <li><a href="#fillet">Fillet</a></li>
+          <li><a href="#arc">Arc</a></li>
+          <li><a href="#three-point-arc">Three Point Arc</a></li>
+          <li><a href="#center-arc">Center Arc</a></li>
+          <li><a href="#pie">Pie</a></li>
+          <li><a href="#rectangle">Rectangle</a></li>
+          <li><a href="#rotated-rectangle">Rotated Rectangle</a></li>
+          <li><a href="#circle">Circle</a></li>
+          <li><a href="#polygon">Polygon</a></li>
+        </ul>
+      </div>
+      <div class="toc">
+        <h2>Editing</h2>
+        <ul>
+          <li><a href="#push-pull">Push/Pull</a></li>
+          <li><a href="#offset">Offset</a></li>
+          <li><a href="#follow-me">Follow Me</a></li>
+          <li><a href="#move">Move</a></li>
+          <li><a href="#rotate">Rotate</a></li>
+          <li><a href="#scale">Scale</a></li>
+          <li><a href="#intersect-faces">Intersect Faces</a></li>
+        </ul>
+      </div>
+      <div class="toc">
+        <h2>Construction</h2>
+        <ul>
+          <li><a href="#tape-measure">Tape Measure</a></li>
+          <li><a href="#protractor">Protractor</a></li>
+          <li><a href="#axes">Axes</a></li>
+        </ul>
+      </div>
+      <div class="toc">
+        <h2>Materials</h2>
+        <ul>
+          <li><a href="#material-surface-response">Material surface response</a></li>
+          <li><a href="#materials-and-texture-position">Materials and texture position</a></li>
+          <li><a href="#paint-bucket">Paint Bucket</a></li>
+        </ul>
+      </div>
+      <div class="toc">
+        <h2>Camera</h2>
+        <ul>
+          <li><a href="#views-scenes-and-sections">Views, scenes and sections</a></li>
+          <li><a href="#orbit">Orbit</a></li>
+          <li><a href="#pan">Pan</a></li>
+          <li><a href="#zoom">Zoom</a></li>
+          <li><a href="#zoom-window">Zoom Window</a></li>
+          <li><a href="#position-camera">Position Camera</a></li>
+          <li><a href="#look-around">Look Around</a></li>
+          <li><a href="#walk">Walk</a></li>
+          <li><a href="#section-plane">Section Plane</a></li>
+          <li><a href="#zoom-extents">Zoom Extents</a></li>
+        </ul>
+      </div>
+      <div class="toc">
+        <h2>Annotations</h2>
+        <ul>
+          <li><a href="#dimensions">Dimensions</a></li>
+          <li><a href="#text">Text</a></li>
+          <li><a href="#3d-text">3D Text</a></li>
+        </ul>
+      </div>
+      <div class="toc">
+        <h2>Model organisation</h2>
+        <ul>
+          <li><a href="#groups-and-components">Groups and components</a></li>
+          <li><a href="#copy-paste-and-history">Copy, paste and history</a></li>
+          <li><a href="#inspector-and-outliner">Inspector and Outliner</a></li>
+          <li><a href="#tags-and-visibility">Tags and visibility</a></li>
+          <li><a href="#make-component">Make Component</a></li>
+        </ul>
+      </div>
+      <div class="toc">
+        <h2>Terrain</h2>
+        <ul>
+          <li><a href="#from-scratch">From Scratch</a></li>
+          <li><a href="#from-contours">From Contours</a></li>
+          <li><a href="#smoove">Smoove</a></li>
+          <li><a href="#stamp">Stamp</a></li>
+          <li><a href="#drape">Drape</a></li>
+          <li><a href="#add-detail">Add Detail</a></li>
+          <li><a href="#flip-edge">Flip Edge</a></li>
+        </ul>
+      </div>
+      <div class="toc">
+        <h2>Settings and files</h2>
+        <ul>
+          <li><a href="#settings-and-rendering">Settings and rendering</a></li>
+          <li><a href="#files-and-browser-use">Files and browser use</a></li>
+        </ul>
+      </div>
+      <div class="toc">
+        <h2>Files</h2>
+        <ul>
+          <li><a href="#import-and-component-collections">Import and component collections</a></li>
+          <li><a href="#scaled-vector-drawings">Scaled vector drawings</a></li>
+        </ul>
+      </div>
+      <div class="toc">
+        <h2>Modelling</h2>
+        <ul>
+          <li><a href="#parametric-components">Parametric components</a></li>
+          <li><a href="#solid-tools">Solid Tools</a></li>
+        </ul>
+      </div>
+      <div class="toc">
+        <h2>Navigation</h2>
+        <ul>
+          <li><a href="#photo-matching">Photo matching</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <main class="manual-main">
+      <h1>Manual</h1>
+      <p class="no-results" hidden>No matching topics. Try a tool name, a shortcut or a shorter search.</p>
+      <section class="manual-category">
+        <h2>Start here</h2>
+      <article class="topic" id="getting-started" data-category="start here">
+        <h3>Getting started <a class="anchor" href="#getting-started" aria-label="Link to Getting started">#</a></h3>
+        <p>Edit contains clipboard, grouping, visibility and selection commands. Model contains Flip, Faces &amp; Edges, Terrain and Construction operations.</p>
+        <p>Choose a drawing tool from the left toolbar. Navigation, construction, annotations and terrain tools are above the canvas. Hover a button to see its name and shortcut.</p>
+        <p>Draw a closed planar outline, then use Push/Pull to give it depth. Group separate objects before drawing nearby geometry so their edges do not merge.</p>
+        <p>The bottom status line explains the current step. Type exact values into Measurements without clicking the box, then press Enter. Escape cancels the current operation; Space returns to Select.</p>
+        <p>Open this guide from Help &gt; Editor Help. F1 or Help for Current Tool opens the active tool topic. Search covers both topic titles and their contents.</p>
+      </article>
+      <article class="topic" id="command-search" data-category="start here">
+        <h3>Command search <a class="anchor" href="#command-search" aria-label="Link to Command search">#</a></h3>
+        <p>Open Help &gt; Search Commands, or press Shift+S while Measurements is empty. Type part of a tool, action, window or shortcut name. Search also recognises terms such as renderer, units, guides and glTF.</p>
+        <p>Use Up/Down to choose a result and Enter to run it, or click a result. Unavailable actions stay disabled until the selection or history supports them.</p>
+        <p>Escape closes search and preserves the unfinished tool and Measurements text. Choosing a command uses the same operation and file-replacement safeguards as the menus. Ctrl+Shift+S still opens Save As.</p>
+      </article>
+      <article class="topic" id="measurements-and-inference" data-category="start here">
+        <h3>Measurements and inference <a class="anchor" href="#measurements-and-inference" aria-label="Link to Measurements and inference">#</a></h3>
+        <p>Model geometry is stored in metres. File &gt; Settings &gt; Model units chooses displayed units and length precision. Display rounding does not round geometry. Fractional and architectural output use reduced inch fractions.</p>
+        <p>Numbers without suffixes use project units. Explicit suffixes override them: 125cm, 24in, 2ft or 5&#x27; 3 1/2&quot;. A leading ~ marks an approximate display value.</p>
+        <p>Rectangles accept width,depth, or width;depth with decimal commas. Copy arrays use 5x or /5. Radial curves accept segment counts such as 24s. The status line and Measurements label identify the value expected at each step.</p>
+        <p>Inference markers locate endpoints, midpoints, faces, axes, intersections and guides. Shift holds an inference direction. Arrow locks follow the tool and current drawing axes. Exact typed input overrides a visual snap.</p>
+      </article>
+      <article class="topic" id="keyboard-shortcuts" data-category="start here">
+        <h3>Keyboard shortcuts <a class="anchor" href="#keyboard-shortcuts" aria-label="Link to Keyboard shortcuts">#</a></h3>
+        <p>Space Select; E Eraser; L Line; A Arc; R Rectangle; C Circle; P Push/Pull; F Offset; M Move; Q Rotate; S Scale; T Tape Measure; B Paint Bucket; O Orbit; H Pan; Z Zoom.</p>
+        <p>G creates a component. Shift+Z frames the model. Ctrl+Shift+W starts Zoom Window. F1 opens help for the current tool.</p>
+        <p>Ctrl+C Copy; Ctrl+X Cut; Ctrl+V Paste; Ctrl+Shift+V Paste in Place; Ctrl+D Duplicate. Delete erases the selection. Ctrl+Z Undo; Ctrl+Y or Ctrl+Shift+Z Redo.</p>
+        <p>Ctrl+S saves, Ctrl+O opens, Ctrl+N starts a new model. While editing text, typing and text shortcuts belong to the text field rather than the modelling tools. Browser or operating-system shortcuts may be reserved outside the canvas.</p>
+      </article>
+      <article class="topic" id="touch-and-troubleshooting" data-category="start here">
+        <h3>Touch and troubleshooting <a class="anchor" href="#touch-and-troubleshooting" aria-label="Link to Touch and troubleshooting">#</a></h3>
+        <p>File &gt; Settings &gt; Controls enables the touch layout. A one-finger drag orbits with Select or Orbit and drives many other tools; use on-screen modifiers when needed. Two fingers pan and pinch zooms.</p>
+        <p>If geometry disappears, use Zoom Extents, check tags and hidden instances, and leave any unintended editing context. Check whether a section cut is hiding the area.</p>
+        <p>If a numeric value fails, check the Measurements label, units, separator and current stage. Escape cancels an unfinished operation. Undo restores committed changes.</p>
+        <p>This guide describes the implemented editor. Use native saves regularly while working.</p>
+      </article>
+      </section>
+      <section class="manual-category">
+        <h2>Selection</h2>
+      <article class="topic" id="select" data-category="selection">
+        <h3>Select <kbd>Space</kbd> <a class="anchor" href="#select" aria-label="Link to Select">#</a></h3>
+        <p>Click an entity to select it. Drag left to right to select entities fully inside the box; drag right to left to include anything the box crosses.</p>
+        <p>Ctrl adds, Shift toggles, and Ctrl+Shift removes. Double-click a face to include its boundary; triple-click selects connected geometry. Double-click a group or component to edit it.</p>
+        <p>Press Space to return to Select. Selection is limited to the current editing context. Use the Model inspector to find nested or hidden instances.</p>
+      </article>
+      <article class="topic" id="eraser" data-category="selection">
+        <h3>Eraser <kbd>E</kbd> <a class="anchor" href="#eraser" aria-label="Link to Eraser">#</a></h3>
+        <p>Click or drag over edges, guides or instances to erase them. Removing an edge between coplanar faces can merge the faces.</p>
+        <p>Hold Ctrl to soften and smooth edges, Shift to hide them, or Ctrl+Shift to remove softening. Hidden edges can be restored from the Edit or context menu.</p>
+        <p>Use Delete to erase the current selection, and Undo to restore an accidental deletion.</p>
+      </article>
+      </section>
+      <section class="manual-category">
+        <h2>Drawing</h2>
+      <article class="topic" id="line" data-category="drawing">
+        <h3>Line <kbd>L</kbd> <a class="anchor" href="#line" aria-label="Link to Line">#</a></h3>
+        <p>Click the start and end, or press, drag and release. Continue clicking to draw connected edges. Closing a planar loop creates a face.</p>
+        <p>Type a length and press Enter while choosing the endpoint. Inference markers help you find endpoints, midpoints, intersections and drawing axes. Shift holds the current inference direction; arrow keys lock axes.</p>
+        <p>Escape cancels the current segment. Use separate groups to keep new edges from merging with other geometry.</p>
+      </article>
+      <article class="topic" id="freehand" data-category="drawing">
+        <h3>Freehand <a class="anchor" href="#freehand" aria-label="Link to Freehand">#</a></h3>
+        <p>Press and drag to draw a planar curve, then release to finish. Return near the starting point to close a loop and create a face.</p>
+        <p>The curve belongs to one drawing plane. Escape cancels the stroke; Undo removes the completed stroke in one step.</p>
+        <p>Freehand is intended for planar outlines. Decorative freehand strokes through three-dimensional space are not supported.</p>
+      </article>
+      <article class="topic" id="fillet" data-category="drawing">
+        <h3>Fillet <a class="anchor" href="#fillet" aria-label="Link to Fillet">#</a></h3>
+        <p>Select exactly two adjacent straight edges, then choose Model &gt; Faces &amp; Edges &gt; Fillet or search for Fillet with Shift+S. Set a positive radius, including units such as 100mm or 1in, and 2-512 segments. A cyan preview shows the replacement arc and shortened sides. Apply trims the corner and creates an analytic arc in one Undo step. Escape or Cancel leaves the model unchanged.</p>
+        <p>Wire corners and convex outlines of one face without holes are supported. Both edges must share an unbranched corner. Curved, hidden, solid and intersecting geometry is rejected. A radius that reaches either adjacent endpoint is too large. Face facing, front/back materials and texture placement are retained. Fillet does not round a solid&#x27;s 3D edges.</p>
+      </article>
+      <article class="topic" id="arc" data-category="drawing">
+        <h3>Arc <kbd>A</kbd> <a class="anchor" href="#arc" aria-label="Link to Arc">#</a></h3>
+        <p>Click the start, the end of the chord, and then a point that sets the bulge. The preview indicates a half circle when it snaps.</p>
+        <p>Measurements accepts chord length, bulge, a radius followed by r such as 500mmr, or segment count such as 12s, depending on the stage.</p>
+        <p>Select an intact arc to inspect its radius and segments in Properties. Segment changes can be rejected when attachments or intersections would make the replacement ambiguous.</p>
+        <p>At an unconnected endpoint of a straight edge or analytic arc, move the bulge until the preview turns cyan and reads Tangent. Tangency can be acquired at either end of the new arc. Hold Shift after acquisition to retain that tangent while moving the pointer; release Shift to resume free bulge movement. For exact-radius corner trimming, use Model &gt; Faces &amp; Edges &gt; Fillet.</p>
+      </article>
+      <article class="topic" id="three-point-arc" data-category="drawing">
+        <h3>Three Point Arc <a class="anchor" href="#three-point-arc" aria-label="Link to Three Point Arc">#</a></h3>
+        <p>Click the start, a point that the arc must pass through, and the endpoint. Before the first click, arrow keys choose the drawing plane. Later, arrows and Shift hold a direction from the last point. Collinear or repeated points cannot define an arc.</p>
+        <p>Enter a distance to place the second point precisely along the pointer direction. At the final step, first show a valid circle with the pointer, then enter signed total degrees to extend or shorten that circle while retaining the through point. The requested sweep must still pass through the second point.</p>
+        <p>Enter 24s to set segments. After creation, signed degrees, 500mmr, 24s or 20c correct the same Undo step. The through point is a real curve vertex; segments are distributed on both sides of it. Later Properties resampling may redistribute free vertices and rejects attached vertices it cannot preserve. Radius remains editable as for other arcs.</p>
+        <p>Escape and changing tools cancel drafts. Model or context changes block stale creation and corrections.</p>
+      </article>
+      <article class="topic" id="center-arc" data-category="drawing">
+        <h3>Center Arc <a class="anchor" href="#center-arc" aria-label="Link to Center Arc">#</a></h3>
+        <p>Click the centre, a radius/start point and then the arc endpoint. Move around the centre to draw beyond 180 degrees; clockwise sweeps are negative. Before choosing the radius, arrows set the plane. Shift holds a direction or the final angle.</p>
+        <p>Enter a radius in project units or with a unit suffix, then enter signed degrees such as 90, -45deg or 270°. Enter 24s for segments. During the angle step, 500mmr changes the radius without committing. Geometry points take priority over optional snapping.</p>
+        <p>After creation, enter a new angle, radius with r, or segment count to amend the same Undo step. Enter 20c to derive the current arc segment count from a 20-segment circle, rounded up; this converts the current angle once. Curve identity, radius and segments remain editable in Properties, subject to attachment checks. Escape cancels the draft; model/context changes invalidate drafts and corrections. Use Circle for a complete turn.</p>
+      </article>
+      <article class="topic" id="pie" data-category="drawing">
+        <h3>Pie <a class="anchor" href="#pie" aria-label="Link to Pie">#</a></h3>
+        <p>Click a centre, radius/start point and endpoint to draw a sector closed by two radii. Pie shares Center Arc&#x27;s plane, Shift, radius, signed-angle and segment controls.</p>
+        <p>The arc retains editable curve identity; the two radius edges remain ordinary edges. Creation and immediate numeric corrections occupy one Undo step. Overlapping geometry can split or join the face, as with other drawing tools. Use Circle for a full turn.</p>
+      </article>
+      <article class="topic" id="rectangle" data-category="drawing">
+        <h3>Rectangle <kbd>R</kbd> <a class="anchor" href="#rectangle" aria-label="Link to Rectangle">#</a></h3>
+        <p>Click one corner, move diagonally, then click the opposite corner. The first face under the pointer supplies the drawing plane; empty space uses the current drawing axes.</p>
+        <p>Type width,depth and press Enter, for example 2000,1000 in a millimetre project. Use a semicolon when values contain decimal commas.</p>
+        <p>Square and golden-section proportions snap near the pointer. A dashed diagonal marks a square while drawing. Exact numeric dimensions and geometry inferences take priority.</p>
+        <p>The arrow keys lock the drawing plane: Right is perpendicular to red, Left to green, Up is horizontal; Down unlocks. Press one before the first click, or after it to turn the plane about that corner. Typing new dimensions right after drawing corrects the rectangle.</p>
+      </article>
+      <article class="topic" id="rotated-rectangle" data-category="drawing">
+        <h3>Rotated Rectangle <a class="anchor" href="#rotated-rectangle" aria-label="Link to Rotated Rectangle">#</a></h3>
+        <p>Click a first corner, a first-edge endpoint and then a width point. The third point sets both width and tilt around the first edge. Only the final step changes the model.</p>
+        <p>Before the first click, Right/Left/Up select a plane normal to the drawing red/green/blue axis. During the first edge, arrow keys lock its direction and Alt-click locks the current drawing plane without advancing. Down clears constraints. Shift holds the current edge direction or width angle.</p>
+        <p>Enter a first-edge length, then a width; or enter length,width at the width stage. Explicit unit suffixes and decimal-comma values separated with a semicolon are supported. Enter an angle such as 30deg to hold a tilt relative to the initial plane, then enter the width. Alt-click sets a new angle baseline without committing.</p>
+        <p>Immediately after drawing, enter length,width to correct both dimensions in the same Undo step. Escape or changing tools discards the draft. Edits or an editing-context change invalidate a draft or correction.</p>
+      </article>
+      <article class="topic" id="circle" data-category="drawing">
+        <h3>Circle <kbd>C</kbd> <a class="anchor" href="#circle" aria-label="Link to Circle">#</a></h3>
+        <p>Click the centre, then click to set the radius. The face under the centre supplies the plane.</p>
+        <p>Type a radius and press Enter. Enter a segment count such as 24s to control smoothness. Immediate numeric correction is available after creation until another operation intervenes.</p>
+        <p>The arrow keys lock the plane as for Rectangle: Right perpendicular to red, Left to green, Up horizontal, Down unlocks. Polygon and Arc use the same keys.</p>
+        <p>Select a circle to edit its radius or segment count in Properties. More segments increase geometry and rendering cost.</p>
+      </article>
+      <article class="topic" id="polygon" data-category="drawing">
+        <h3>Polygon <a class="anchor" href="#polygon" aria-label="Link to Polygon">#</a></h3>
+        <p>Click a centre and then a radius point to draw a regular polygon. Enter a radius or a side count such as 6s through Measurements.</p>
+        <p>Polygon sides remain sharp when extruded, unlike smooth circle facets. Radius and side count can be edited for intact planar polygons in Properties.</p>
+        <p>Split curves, attached intermediate vertices or new intersections can prevent segment replacement. Undo restores the original geometry.</p>
+      </article>
+      </section>
+      <section class="manual-category">
+        <h2>Editing</h2>
+      <article class="topic" id="push-pull" data-category="editing">
+        <h3>Push/Pull <kbd>P</kbd> <a class="anchor" href="#push-pull" aria-label="Link to Push/Pull">#</a></h3>
+        <p>Click a face, move perpendicular to it and click to finish. Type a distance for an exact extrusion; double-click another face to repeat the last distance.</p>
+        <p>Ctrl keeps the starting face as a new base. Pulling circles creates softened side edges; polygon sides stay sharp. Pushing through suitable geometry can cut a hole.</p>
+        <p>Push/Pull acts on faces in the active context. Open a group first to edit its faces.</p>
+      </article>
+      <article class="topic" id="offset" data-category="editing">
+        <h3>Offset <kbd>F</kbd> <a class="anchor" href="#offset" aria-label="Link to Offset">#</a></h3>
+        <p>Click a face to offset its outline, or preselect a coplanar edge chain. Move to choose the side and distance, then click to finish.</p>
+        <p>Type a distance for an exact offset. Double-click repeats the last distance. Face offsets include inner hole boundaries.</p>
+        <p>Collapsed or self-intersecting results are rejected. An invalid value leaves the original geometry intact.</p>
+      </article>
+      <article class="topic" id="follow-me" data-category="editing">
+        <h3>Follow Me <a class="anchor" href="#follow-me" aria-label="Link to Follow Me">#</a></h3>
+        <p>Select connected path edges, choose Follow Me, then click the profile face to sweep it along the path. Open and closed paths are supported.</p>
+        <p>You can also start from a profile and trace connected edges interactively, or press, drag and release along the path. A preselected face can supply its boundary as a path; Alt supports automatic surface paths.</p>
+        <p>The preview shows the proposed sweep. Escape cancels. Keep the profile and path in the same editing context.</p>
+      </article>
+      <article class="topic" id="move" data-category="editing">
+        <h3>Move <kbd>M</kbd> <a class="anchor" href="#move" aria-label="Link to Move">#</a></h3>
+        <p>Select geometry, click a reference point, then click its destination. With no selection, Move can pick an entity under the pointer. Type a distance for an exact move.</p>
+        <p>Ctrl toggles copy mode. After a copy, enter 5x for five copies at the same spacing, or /5 to divide the original span into five intervals. Shift and arrow locks constrain direction.</p>
+        <p>Glued components drag within their host plane. Use Unglue for free movement. Immediate correction updates the same Undo step. It stops being available after unrelated edits, selection changes or a context change.</p>
+      </article>
+      <article class="topic" id="rotate" data-category="editing">
+        <h3>Rotate <kbd>Q</kbd> <a class="anchor" href="#rotate" aria-label="Link to Rotate">#</a></h3>
+        <p>Choose a rotation plane, click the centre, click a reference direction, then click the target angle. Arrow keys choose a plane; the protractor uses the angle increment in File &gt; Settings &gt; Model units.</p>
+        <p>Type an angle in degrees and press Enter. Ctrl toggles copies. After a copied rotation, 5x repeats the spacing and /5 divides the angle.</p>
+        <p>Selected groups and components show coloured handles at the bounding box face centres. Click a handle to fix the pivot and rotation plane, then choose the reference direction and angle. Arrow locks override the handle plane. Handles can be picked through other geometry.</p>
+        <p>Rotate supports selected geometry, groups, annotations and section symbols. Escape cancels the current operation.</p>
+      </article>
+      <article class="topic" id="scale" data-category="editing">
+        <h3>Scale <kbd>S</kbd> <a class="anchor" href="#scale" aria-label="Link to Scale">#</a></h3>
+        <p>Select entities and drag a scaling grip. Grips follow the current drawing axes and can be picked through geometry. The nearest grip on screen wins; overlapping grips prefer the one nearest the camera. Corner grips start with uniform scaling; Shift toggles uniformity.</p>
+        <p>Ctrl changes between an opposite grip pivot and the centre. Measurements accepts factors such as 2 or 2,3, or explicit lengths such as 1.5m. Negative factors mirror the selection.</p>
+        <p>Geometry changes size, while annotation font sizes remain display settings. Immediate numeric correction shares the original Undo step.</p>
+      </article>
+      <article class="topic" id="intersect-faces" data-category="editing">
+        <h3>Intersect Faces <a class="anchor" href="#intersect-faces" aria-label="Link to Intersect Faces">#</a></h3>
+        <p>Select faces and use Intersect Faces with Model or Intersect Faces with Selection from Edit or the context menu.</p>
+        <p>The first considers surrounding model geometry, while the second limits intersections to the selected set. Resulting edges are placed in the active editing context, including transformed group intersections.</p>
+        <p>Intersection creates cutting edges; remove unwanted pieces afterwards. It is not a general solid Boolean operation.</p>
+      </article>
+      </section>
+      <section class="manual-category">
+        <h2>Construction</h2>
+      <article class="topic" id="tape-measure" data-category="construction">
+        <h3>Tape Measure <kbd>T</kbd> <a class="anchor" href="#tape-measure" aria-label="Link to Tape Measure">#</a></h3>
+        <p>Click two points to measure their distance. Starting from an edge creates a parallel guide line; starting from a point creates a guide point. Press and release Ctrl to toggle measure-only mode. Measuring from an edge then reports the full point-to-point distance.</p>
+        <p>Type a positive or negative distance to place a guide precisely. Immediately typing another distance corrects the guide in the same Undo step. After clicking two measured points, typing a new length requests proportional resizing of the model or active context. Review the confirmation before accepting.</p>
+        <p>Guide points retain a finite dashed segment from the measured start. The segment and endpoint can be selected or erased. Hide Selected Geometry also hides guides; Unhide All Geometry restores them. Window &gt; Guides toggles all construction guides. Delete Guides clears guides in the current context. Guides are not solid model geometry.</p>
+      </article>
+      <article class="topic" id="protractor" data-category="construction">
+        <h3>Protractor <a class="anchor" href="#protractor" aria-label="Link to Protractor">#</a></h3>
+        <p>Choose the angle plane, click its centre and reference direction, then set the measured angle. Arrow keys choose a plane.</p>
+        <p>Measurements accepts an exact angle in degrees. Ctrl creates an angled construction guide. Angle snapping and display precision are configured in File &gt; Settings &gt; Model units.</p>
+        <p>Use Rotate to transform geometry; Protractor measures angles and creates guides.</p>
+      </article>
+      <article class="topic" id="axes" data-category="construction">
+        <h3>Axes <a class="anchor" href="#axes" aria-label="Link to Axes">#</a></h3>
+        <p>Click the new origin, a point along red, then a point toward green. This sets the drawing frame for the current context.</p>
+        <p>Drawing tools, inference locks and Scale grips use these axes. Moving the axes does not move model geometry.</p>
+        <p>Window &gt; Reset drawing axes restores the default frame. Groups can have their own local drawing axes.</p>
+      </article>
+      </section>
+      <section class="manual-category">
+        <h2>Materials</h2>
+      <article class="topic" id="material-surface-response" data-category="materials">
+        <h3>Material surface response <a class="anchor" href="#material-surface-response" aria-label="Link to Material surface response">#</a></h3>
+        <p>The Materials inspector exposes Roughness, Metallic and normal maps. Sun or Studio lighting displays these effects; Flat is unlit. Load a PNG/JPEG normal map, adjust strength and enable Flip normal Y for DirectX maps. Normal maps share face UV coordinates and colour texture size; without a colour image, one UV unit is one metre. Native files, clipboard and portable collections retain these settings. GLB exports the scalar factors and embedded normal image; other formats retain their existing material capabilities.</p>
+      </article>
+      <article class="topic" id="materials-and-texture-position" data-category="materials">
+        <h3>Materials and texture position <a class="anchor" href="#materials-and-texture-position" aria-label="Link to Materials and texture position">#</a></h3>
+        <p>Window &gt; Materials offers in-model materials, a bundled library, colour/opacity and PNG/JPEG texture loading. Texture width and height use model units. Properties assigns front, back and independent edge materials.</p>
+        <p>Select a textured face and choose Texture Position in Properties or the context menu. Drag its face-plane pins or the texture itself. Fixed pins move, rotate/scale, shear and distort; free pins deform individual corners. Click a pin to relocate its anchor. Shift keeps scale while rotating.</p>
+        <p>Done or Enter finishes the session as one Undo step. Cancel or Escape restores its starting placement. Reset clears custom positioning. Camera navigation remains available.</p>
+        <p>Alt+Paint Bucket transfers texture placement and projection. Painting connected soft faces wraps coordinates across their shared edges. Closed surfaces can have one seam. By Material edge display uses edge assignments independently from face materials.</p>
+      </article>
+      <article class="topic" id="paint-bucket" data-category="materials">
+        <h3>Paint Bucket <kbd>B</kbd> <a class="anchor" href="#paint-bucket" aria-label="Link to Paint Bucket">#</a></h3>
+        <p>Choose a material in Window &gt; Materials and click a visible face side, edge, group or component. With a selection, painting applies to the selected entities.</p>
+        <p>Alt samples material and texture placement. Ctrl fills adjacent matching faces, Shift replaces matching materials in the context, and Ctrl+Shift replaces matching materials within connected geometry.</p>
+        <p>Paint connected surfaces treats soft facets as one surface. Turn it off to paint a single facet. Back-face painting is separate from front-face and edge materials.</p>
+      </article>
+      </section>
+      <section class="manual-category">
+        <h2>Camera</h2>
+      <article class="topic" id="views-scenes-and-sections" data-category="camera">
+        <h3>Views, scenes and sections <a class="anchor" href="#views-scenes-and-sections" aria-label="Link to Views, scenes and sections">#</a></h3>
+        <p>Camera offers standard views, perspective, parallel projection, field of view and Previous view. Shift+Z frames the visible model. Wheel bursts and navigation sessions are grouped in view history.</p>
+        <p>Window &gt; Scenes saves views and selected model properties. Choose which camera, visibility, tags, sections, style, shadows and axes properties to capture or update. Scene tabs recall stored states. Scene animation is not included.</p>
+        <p>Section Plane places a cutting plane on geometry. Window &gt; Section Planes controls its name, transform, direction and active cut. Select, Move, Rotate or copy the visible plane symbol; double-click activates its cut.</p>
+        <p>Cuts are non-destructive. Appearance settings control plane symbols, section edges, fill colours and line width.</p>
+      </article>
+      <article class="topic" id="orbit" data-category="camera">
+        <h3>Orbit <kbd>O</kbd> <a class="anchor" href="#orbit" aria-label="Link to Orbit">#</a></h3>
+        <p>Drag to rotate the view around a picked visible surface, or around the current camera target when no surface is picked.</p>
+        <p>Middle-button dragging temporarily orbits while another tool is active. Wheel zoom remains available.</p>
+        <p>Touch: one-finger dragging orbits with Select or Orbit; other tools may use that gesture for their own operation.</p>
+      </article>
+      <article class="topic" id="pan" data-category="camera">
+        <h3>Pan <kbd>H</kbd> <a class="anchor" href="#pan" aria-label="Link to Pan">#</a></h3>
+        <p>Drag to slide the camera sideways and vertically without changing its viewing direction.</p>
+        <p>Shift+middle-button drag temporarily pans while another tool is active. On touch screens, use two fingers.</p>
+        <p>Pan changes only the view. Model geometry is unaffected.</p>
+      </article>
+      <article class="topic" id="zoom" data-category="camera">
+        <h3>Zoom <kbd>Z</kbd> <a class="anchor" href="#zoom" aria-label="Link to Zoom">#</a></h3>
+        <p>Drag with Zoom or use the mouse wheel. Wheel zoom moves toward the pointer. Touch supports pinch zoom.</p>
+        <p>In perspective, Shift-drag adjusts field of view. Measurements accepts an angle or a focal length in millimetres.</p>
+        <p>Use Camera &gt; Previous view to return to an earlier view, or Zoom Extents to find your model.</p>
+      </article>
+      <article class="topic" id="zoom-window" data-category="camera">
+        <h3>Zoom Window <a class="anchor" href="#zoom-window" aria-label="Link to Zoom Window">#</a></h3>
+        <p>Drag a rectangle over the part of the model you want to see. Release to frame that area.</p>
+        <p>Use Ctrl+Shift+W to activate the tool. Escape cancels an unfinished rectangle.</p>
+        <p>The tool works in perspective and parallel projection and records the previous camera view.</p>
+      </article>
+      <article class="topic" id="position-camera" data-category="camera">
+        <h3>Position Camera <a class="anchor" href="#position-camera" aria-label="Link to Position Camera">#</a></h3>
+        <p>Click a point to place the camera. Drag while placing to aim its direction. Geometry inference helps locate the position.</p>
+        <p>Measurements sets eye height. Follow with Look Around to turn from a fixed position, or Walk to move through the model.</p>
+        <p>Camera placement affects the view rather than creating a camera object in the document.</p>
+      </article>
+      <article class="topic" id="look-around" data-category="camera">
+        <h3>Look Around <a class="anchor" href="#look-around" aria-label="Link to Look Around">#</a></h3>
+        <p>Drag to look left, right, up or down while keeping the eye position fixed.</p>
+        <p>Measurements sets eye height. Use Position Camera first to place the eye accurately.</p>
+        <p>Use Orbit to turn around an object instead, or Walk to change position.</p>
+      </article>
+      <article class="topic" id="walk" data-category="camera">
+        <h3>Walk <a class="anchor" href="#walk" aria-label="Link to Walk">#</a></h3>
+        <p>Press and drag from the walking crosshair to move through the model. Distance from the crosshair controls speed.</p>
+        <p>Ctrl runs, Shift changes to vertical motion, and Alt bypasses collision. The middle button temporarily looks around. Eye height is available through Measurements.</p>
+        <p>Ground following and body collision help navigate spaces, but imperfect or open geometry may affect movement.</p>
+      </article>
+      <article class="topic" id="section-plane" data-category="camera">
+        <h3>Section Plane <a class="anchor" href="#section-plane" aria-label="Link to Section Plane">#</a></h3>
+        <p>Choose Section Plane and click a face to place a cutting plane. Manage planes in Window &gt; Section Planes.</p>
+        <p>Select, Move, Rotate or copy the visible plane symbol. Double-click a symbol activates its cut; reverse its direction in the panel. Planes belong to their editing context.</p>
+        <p>Section cuts change visibility without deleting geometry. File &gt; Settings &gt; Appearance controls section display.</p>
+      </article>
+      <article class="topic" id="zoom-extents" data-category="camera">
+        <h3>Zoom Extents <a class="anchor" href="#zoom-extents" aria-label="Link to Zoom Extents">#</a></h3>
+        <p>Use Zoom Extents or Shift+Z to frame the model. This is useful after navigation or when opening unfamiliar geometry.</p>
+        <p>Hidden or tag-invisible geometry does not help explain what you can currently see. If objects remain missing, inspect visibility and section settings.</p>
+        <p>Camera &gt; Previous view restores an earlier view.</p>
+      </article>
+      </section>
+      <section class="manual-category">
+        <h2>Annotations</h2>
+      <article class="topic" id="dimensions" data-category="annotations">
+        <h3>Dimensions <a class="anchor" href="#dimensions" aria-label="Link to Dimensions">#</a></h3>
+        <p>Click an edge, circle or arc for a quick dimension, or choose two points and then place the dimension line. Ctrl starts a point instead of using an entity shortcut.</p>
+        <p>Measurements sets the physical offset. Dimensions can follow referenced geometry; Properties edits text, endpoints, font and alignment. Use &lt;&gt; inside custom text to retain the automatic value.</p>
+        <p>File &gt; Settings &gt; Annotations controls defaults and visibility. Deleted geometry can leave a dimension unassociated; review its highlighted state and anchors.</p>
+      </article>
+      <article class="topic" id="text" data-category="annotations">
+        <h3>Text <a class="anchor" href="#text" aria-label="Link to Text">#</a></h3>
+        <p>Click empty space for screen text, or click geometry and place an attached leader. Double-click a face for an area label; double-click an existing text label to edit it.</p>
+        <p>Enter adds a line. Enter twice, Ctrl+Enter, Create or a canvas click completes the draft. Escape cancels.</p>
+        <p>Properties edits content and appearance. File &gt; Settings &gt; Annotations controls defaults. Screen text stays in the viewport; attached labels belong to the model.</p>
+      </article>
+      <article class="topic" id="3d-text" data-category="annotations">
+        <h3>3D Text <a class="anchor" href="#3d-text" aria-label="Link to 3D Text">#</a></h3>
+        <p>Enter text in the 3D Text dialog, choose Sans/Serif/Mono, bold, alignment, height and optional fill/extrusion depth. Lengths accept project units or explicit suffixes.</p>
+        <p>Place builds a geometry preview. Move it to the target, click to commit, or Escape to cancel. The result is editable model geometry in an instance, rather than an annotation.</p>
+        <p>Complex text and fine outlines create more geometry. Font options are the supplied families, rather than a system font browser.</p>
+      </article>
+      </section>
+      <section class="manual-category">
+        <h2>Model organisation</h2>
+      <article class="topic" id="groups-and-components" data-category="model organisation">
+        <h3>Groups and components <a class="anchor" href="#groups-and-components" aria-label="Link to Groups and components">#</a></h3>
+        <p>Select entities and use Make Group or Make Component from Edit &gt; Groups &amp; Components or the context menu&#x27;s Groups &amp; Components submenu. Double-click an instance to edit it. Escape or Close Group leaves its context. Other contexts are faded.</p>
+        <p>Components share a definition: editing one changes all its instances. Make Unique separates the selected instance. Copied groups become independent when edited. Explode returns an instance&#x27;s contents to its parent context.</p>
+        <p>Window &gt; Components lists in-model definitions. Filter by name or description, inspect a thumbnail, place an instance and adjust its origin, rotation or scale. Insertion axes are independent of drawing axes.</p>
+        <p>Unused component definitions remain available until explicitly deleted. External component collections are not available yet. In Window &gt; Components, edit a definition and choose Glue to to align new instances to a face. Horizontal/Vertical/Sloped use the editing context&#x27;s blue axis.</p>
+        <p>Cut opening uses a closed outline in the insertion plane to cut one host face. The outline must fit wholly inside the face and cannot overlap another opening. Moving or deleting the component updates the opening; Unglue detaches it and restores the host. The host face must be in the current editing context. Explode converts an opening to editable boundary geometry.</p>
+      </article>
+      <article class="topic" id="copy-paste-and-history" data-category="model organisation">
+        <h3>Copy, paste and history <a class="anchor" href="#copy-paste-and-history" aria-label="Link to Copy, paste and history">#</a></h3>
+        <p>Copy captures selected objects without changing the model. Cut removes them in one Undo step. Paste shows a placement preview; click or press Enter to commit, or Escape to cancel.</p>
+        <p>Paste in Place uses original world coordinates, even in another editing context. Duplicate starts a separate copy preview without replacing clipboard contents. Materials, textures, curves and holes travel with copied geometry.</p>
+        <p>Model &gt; Flip opens a mirror preview. Choose Red, Green or Blue (or use the arrow keys), click or drag a coloured plane, drag its centre handle or adjust Plane offset in metres, and confirm Flip Selection or enable Create mirrored copy. The plane starts at the selection centre. The selection-axes option uses a single instance’s orientation; turn it off for the current drawing axes. Escape or Cancel leaves the model unchanged. End-on views require numeric offset input. Pick model face previews a magenta plane on visible geometry, including transformed groups/components. Click to lock that plane, or drag to offset it. Escape while picking returns to the previous plane; arrows return to axis planes. The final Flip confirmation commits one Undo step.</p>
+        <p>Components retain shared definitions when pasted within the same model; group snapshots are independent. The object clipboard survives New/Open in this editor session. It does not transfer objects between separate tabs or applications.</p>
+        <p>Undo and Redo track committed model changes. Camera &gt; Previous view has a separate view history. Drafts normally do not enter model history until completed.</p>
+      </article>
+      <article class="topic" id="inspector-and-outliner" data-category="model organisation">
+        <h3>Inspector and Outliner <a class="anchor" href="#inspector-and-outliner" aria-label="Link to Inspector and Outliner">#</a></h3>
+        <p>The floating Inspector has Model and Properties tabs. Drag its title to move it and its border to resize it. Window &gt; Inspector reopens a closed panel.</p>
+        <p>Model lists nested groups/components. Search, expand/collapse, sort by name, rename or show/hide instances. Opening an Outliner item enters its editing context.</p>
+        <p>Properties shows controls for the selection: lengths, face areas, instance bounds, materials, edge flags, curve parameters, text, dimensions and texture placement. Only applicable controls appear.</p>
+        <p>If a tool cannot see an object, check the active editing context, instance visibility and its tag.</p>
+      </article>
+      <article class="topic" id="tags-and-visibility" data-category="model organisation">
+        <h3>Tags and visibility <a class="anchor" href="#tags-and-visibility" aria-label="Link to Tags and visibility">#</a></h3>
+        <p>Window &gt; Tags creates and removes tags, switches visibility and assigns a tag to selected groups/components. Tags apply to instances, rather than raw faces or edges.</p>
+        <p>Use the Model inspector or Edit/context menu to hide or show instances. Eraser with Shift hides edges; Unhide All Edges restores them in the current context.</p>
+        <p>Soft edges join facets into a surface. Smooth controls shading. Properties exposes separate flags and an angle-based softening control. Edit &gt; Visibility &gt; Hide Selected Geometry hides faces, edges and instances. Unhide Selected Geometry restores just the selection; Unhide All Geometry restores everything in the current context. Window &gt; Hidden Geometry reveals hidden faces translucently and hidden/soft edges as dashed lines so you can pick individual facets.</p>
+        <p>A hidden tag can prevent an otherwise visible instance from appearing. Show the tag explicitly when needed.</p>
+      </article>
+      <article class="topic" id="make-component" data-category="model organisation">
+        <h3>Make Component <a class="anchor" href="#make-component" aria-label="Link to Make Component">#</a></h3>
+        <p>Select geometry and use Make Component, or press G. The new instance contains that geometry and uses a reusable definition.</p>
+        <p>Copies of a component share edits. Make Unique separates a copy. The Components window provides in-model browsing, staged insertion and insertion-axis editing.</p>
+        <p>Use Make Group when you want a separate object without shared component editing.</p>
+      </article>
+      </section>
+      <section class="manual-category">
+        <h2>Terrain</h2>
+      <article class="topic" id="from-scratch" data-category="terrain">
+        <h3>From Scratch <a class="anchor" href="#from-scratch" aria-label="Link to From Scratch">#</a></h3>
+        <p>Set Grid Spacing in Measurements before the first click. Click the origin, a point defining length, and a perpendicular width point.</p>
+        <p>Measurements accepts exact dimensions. The result is a grouped triangulated grid with softened diagonals. Enter the group before editing its vertices.</p>
+        <p>Escape cancels the preview. A finished grid is one Undo step. Keep spacing large enough to avoid unnecessary triangles.</p>
+      </article>
+      <article class="topic" id="from-contours" data-category="terrain">
+        <h3>From Contours <a class="anchor" href="#from-contours" aria-label="Link to From Contours">#</a></h3>
+        <p>Select survey contour edges and run From Contours to triangulate them into terrain. Contour elevation supplies the surface height.</p>
+        <p>Inspect the result for gaps or unexpected triangulation where contours are sparse, duplicate or ambiguous.</p>
+        <p>The operation creates terrain geometry; keep a copy of source contours when you need them for later reference.</p>
+      </article>
+      <article class="topic" id="smoove" data-category="terrain">
+        <h3>Smoove <a class="anchor" href="#smoove" aria-label="Link to Smoove">#</a></h3>
+        <p>Enter or explode the terrain group first. Set a radius in Measurements, click a triangle near the desired vertex, move along blue and click to finish.</p>
+        <p>Type an offset after choosing a centre, or enter a radius with r, for example 2mr. Preselection can restrict eligible terrain vertices.</p>
+        <p>The deformation falls off away from the centre. Double-click repeats the last displacement. Escape cancels the current preview.</p>
+      </article>
+      <article class="topic" id="stamp" data-category="terrain">
+        <h3>Stamp <a class="anchor" href="#stamp" aria-label="Link to Stamp">#</a></h3>
+        <p>Start Stamp, choose the footprint and target terrain following the status line, then choose the transition offset and elevation.</p>
+        <p>Measurements supplies exact values at each stage. The tool flattens terrain under the footprint and builds a transition to the surrounding surface.</p>
+        <p>Review the preview before committing. Invalid or ambiguous terrain intersections are rejected.</p>
+      </article>
+      <article class="topic" id="drape" data-category="terrain">
+        <h3>Drape <a class="anchor" href="#drape" aria-label="Link to Drape">#</a></h3>
+        <p>Choose the source outline and target terrain as requested by the status line. Drape projects the outline onto the surface.</p>
+        <p>The preview shows where projected edges will divide terrain triangles. Click to finish or Escape to cancel.</p>
+        <p>Source and target must be accessible in the current context. Drape adds outlines rather than flattening terrain.</p>
+      </article>
+      <article class="topic" id="add-detail" data-category="terrain">
+        <h3>Add Detail <a class="anchor" href="#add-detail" aria-label="Link to Add Detail">#</a></h3>
+        <p>Enter the terrain context and choose Add Detail. Pick a terrain location to subdivide its triangles and add a vertex.</p>
+        <p>Move the new detail and use Measurements for a precise displacement when requested by the tool.</p>
+        <p>Use this locally where extra resolution is needed. Refining the entire terrain unnecessarily increases model size.</p>
+      </article>
+      <article class="topic" id="flip-edge" data-category="terrain">
+        <h3>Flip Edge <a class="anchor" href="#flip-edge" aria-label="Link to Flip Edge">#</a></h3>
+        <p>Enter the terrain group and choose Flip Edge. Point at an eligible internal diagonal shared by two triangles.</p>
+        <p>The preview shows the alternative diagonal. Click to commit or Escape to cancel.</p>
+        <p>Boundary edges or configurations that would create invalid triangles cannot be flipped.</p>
+      </article>
+      </section>
+      <section class="manual-category">
+        <h2>Settings and files</h2>
+      <article class="topic" id="settings-and-rendering" data-category="settings and files">
+        <h3>Settings and rendering <a class="anchor" href="#settings-and-rendering" aria-label="Link to Settings and rendering">#</a></h3>
+        <p>File &gt; Settings groups Application, Controls, Workspace, Appearance, Model units and Annotations. Application, Controls and Workspace are saved on this device, outside model Undo. Appearance, units and annotation defaults are saved with the project and participate in Undo/Redo.</p>
+        <p>Appearance groups rendering into Lighting, Image quality and Performance. Lighting offers Flat, Sun and Studio. Studio provides Neutral/Warm procedural environments with intensity and rotation; exposure compensation brightens or darkens Sun/Studio views. Studio has no sun shadows. Image quality includes anti-aliasing, tone mapping, ambient occlusion and trilinear or 2x/4x/8x/16x anisotropic texture filtering. Performance offers 50-150% 3D resolution and texture display limits. GUI text and picking remain at native resolution. Mipmaps improve distant textures; original image bytes are retained. Display images and 3D targets are capped at 4096 px on web and 8192 px on native. Presets reset resolution and texture quality as well as lighting. Appearance also controls face/edge modes, profiles, sky, ground and section display. Lower quality and shadow resolution can help large models. Browser rendering exposes only supported effects.</p>
+        <p>Editor chooses units, length precision, touch layout and Inspector visibility. Units include millimetres, centimetres, metres, decimal inches, engineering feet, architectural feet/inches and fractional inches. Fractional precision ranges from one inch to 1/64 inch. Architectural output can force zero inches. Decimal unit markers can be disabled. Area units and decimal precision are independent of length units; Automatic uses m² for metric projects and ft² for imperial projects. Volume units and decimal precision are also independent; Automatic uses m³ or ft³. Properties reports the volume of a single closed, consistently oriented group/component shell, including enclosing scale and mirrors. Hover Volume unavailable for the reason when topology cannot be measured. Nested groups remain unavailable in the volume readout; compound shells are validated within a work budget. Length and angle snapping are optional, with adjustable increments and angle precision. Typed values and exact geometry inferences take priority over length snapping.</p>
+        <p>Annotations controls text/dimension defaults, visibility and updates to selected entities. Changing defaults does not necessarily restyle existing labels until you apply an update.</p>
+      </article>
+      <article class="topic" id="files-and-browser-use" data-category="settings and files">
+        <h3>Files and browser use <a class="anchor" href="#files-and-browser-use" aria-label="Link to Files and browser use">#</a></h3>
+        <p>File &gt; New starts a model. Open and Save use the native .rysmo document, which preserves editable geometry, groups, materials, annotations and project settings. New/Open and closing a modified model offer Save, Discard and Cancel. Cancelling or failing a save keeps the current document open.</p>
+        <p>In a browser, opening and importing use file pickers. Save reuses a granted file handle where supported; otherwise it downloads a file. Keep downloaded models somewhere you can find them again. Recent files and browser auto-save help restore a session. Set Enable auto-save and the interval in minutes under File &gt; Settings &gt; Application in the browser version. Auto-save keeps a browser recovery copy; use Save for a model file.</p>
+        <p>File &gt; Export provides OBJ, glTF/GLB, COLLADA/DAE and DXF. COLLADA includes colours, UVs and companion texture images; textured browser exports download one ZIP to extract together. DXF exports Z-up 3D faces and loose lines in metres, with face colours and a layer per occurrence. It does not export textures, annotations or editable CAD solids. Native .rysmo remains the format for continuing work with editor-specific data.</p>
+        <p>PNG/JPEG texture import is available on desktop and web. Very detailed curves and large textures increase memory use and download/rendering costs.</p>
+      </article>
+      </section>
+      <section class="manual-category">
+        <h2>Files</h2>
+      <article class="topic" id="import-and-component-collections" data-category="files">
+        <h3>Import and component collections <a class="anchor" href="#import-and-component-collections" aria-label="Link to Import and component collections">#</a></h3>
+        <p>File &gt; Import previews OBJ, embedded GLB and ASCII DXF before placement. Set source units and OBJ up axis, then Place in model. Click to place; Escape cancels and one Undo removes placement. Unsupported records are reported. OBJ companions are not loaded. DXF closed polylines remain underlay linework. File &gt; Component library captures selection with a name and description, shows wire previews, searches and places reusable assets. Save or merge .ryslib collections to transfer components between projects. The library stays in the session across New/Open; save it before exiting.</p>
+      </article>
+      <article class="topic" id="scaled-vector-drawings" data-category="files">
+        <h3>Scaled vector drawings <a class="anchor" href="#scaled-vector-drawings" aria-label="Link to Scaled vector drawings">#</a></h3>
+        <p>File &gt; Export drawing exports top/front/right/isometric SVG and PDF with A4/A3 page controls, margins and scale. Active visibility and sections are respected. Include dimensions and attached text as needed. Screen-fixed text stays outside the drawing. Print at 100%, without fit-to-page, to retain physical scale. If geometry does not fit, choose a larger page or scale denominator. Hidden-line removal has a work budget; disable it for larger wireframe drawings.</p>
+      </article>
+      </section>
+      <section class="manual-category">
+        <h2>Modelling</h2>
+      <article class="topic" id="parametric-components" data-category="modelling">
+        <h3>Parametric components <a class="anchor" href="#parametric-components" aria-label="Link to Parametric components">#</a></h3>
+        <p>Model &gt; Parametric components creates windows, doors and stairs in local metres. Windows have frame and column controls, doors have an opening angle, and stairs have rise, tread and step count. Panes are ordinary geometry: assign materials as needed. Automatic wall cutting is not applied. Select a component, choose Edit selected component and Update to regenerate shared instances in one Undo. Make Unique isolates a copy. Regeneration replaces face paint; instance paint and transforms remain. Manual geometry changes and added annotations are protected by refusing regeneration.</p>
+      </article>
+      <article class="topic" id="solid-tools" data-category="modelling">
+        <h3>Solid Tools <a class="anchor" href="#solid-tools" aria-label="Link to Solid Tools">#</a></h3>
+        <p>Select exactly two groups or components and open Model &gt; Faces &amp; Edges &gt; Solid Tools. Union combines both volumes. Subtract removes B from A; use Swap A and B to reverse the cut. Intersect keeps only their shared volume. Trim removes B from A and always retains cutter B. Split creates A minus B, B minus A and the shared part as separate groups, omitting empty pieces. Outer Shell combines the solids and removes enclosed internal shells; through-holes remain.</p>
+        <p>Results are new groups in the current editing context. Keep original objects retains both operands. Without that option, operations replace the operands in one Undo step; Trim always retains B. Other instances of shared component definitions stay unchanged. An empty Subtract or Intersect result may remove both operands.</p>
+        <p>Operands may contain multiple closed shells, cavities and nested solid islands. Their orientation must match the nesting. Nested solid groups/components are supported, including inherited paint and transforms; overlaps within a hierarchy are unioned. Guides, text, dimensions and section planes inside operands are not supported. Unhide operands and their faces first. Stray/open edges, non-manifold contacts and self-intersections are rejected. Complexity limits protect interactive performance: at most 4096 input triangles and 16384 vertices per operand, 4096 occurrences and 32 hierarchy levels, plus bounded clipping, stitching and validation work.</p>
+        <p>Rotated, mirrored and nonuniformly scaled instances are supported. Face materials and explicit texture placement are carried into cut fragments. Analytic curves become polygonal boundaries; coplanar subdivision seams are softened. Results may contain disjoint shells or enclosed cavities. Those results can be used in subsequent operations, and Properties reports their combined volume with cavities subtracted. A Split operation commits all pieces in one Undo step. Trim retains B even when its result is empty. Invalid or over-complex results leave the model unchanged.</p>
+      </article>
+      </section>
+      <section class="manual-category">
+        <h2>Navigation</h2>
+      <article class="topic" id="photo-matching" data-category="navigation">
+        <h3>Photo matching <a class="anchor" href="#photo-matching" aria-label="Link to Photo matching">#</a></h3>
+        <p>Camera &gt; Photo matching loads a PNG/JPEG photograph. Align two red lines with parallel X edges and two green lines with perpendicular Y edges. Orange sets the model origin; blue sets the other endpoint of a known ground-plane distance. Set that length in metres and use Reverse X/Y to resolve direction; Apply rejects directions that would put the camera below the ground. Apply calibrates the camera and displays geometry over the photo. Orbit, pan or zoom detaches the background; Apply restores it. Original photo and guides are saved. Calibration assumes image-centred principal point, square pixels and negligible distortion. Cropped or nearly orthographic photos can fail.</p>
+      </article>
+      </section>
+    </main>
+  </div>
+
+  <div class="wrap">
+    <footer>
+      <span>Rysmo is free software under the GPL-3.0-or-later.</span>
+      <a href="https://github.com/MojzisekJan/rysmo">github.com/MojzisekJan/rysmo</a>
+    </footer>
+  </div>
+
+  <script>
+    // Search keeps the topics that contain every typed word, as the search in the app does.
+    (function () {
+      var input = document.querySelector('.manual-search');
+      var topics = [].slice.call(document.querySelectorAll('.topic'));
+      var empty = document.querySelector('.no-results');
+      input.hidden = false;
+      input.addEventListener('input', function () {
+        var words = input.value.toLowerCase().split(/\s+/).filter(Boolean), shown = 0;
+        topics.forEach(function (topic) {
+          var text = topic.dataset.category + ' ' + topic.textContent.toLowerCase();
+          var match = words.every(function (w) { return text.indexOf(w) >= 0; });
+          topic.hidden = !match;
+          var link = document.querySelector('.toc a[href="#' + topic.id + '"]');
+          if (link) link.parentNode.hidden = !match;
+          if (match) shown++;
+        });
+        [].forEach.call(document.querySelectorAll('.manual-category, .toc'), function (group) {
+          group.hidden = !group.querySelector('.topic:not([hidden]), li:not([hidden])');
+        });
+        empty.hidden = shown > 0;
+      });
+    })();
+  </script>
+</body>
+</html>
