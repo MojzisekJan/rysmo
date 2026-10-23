@@ -121,12 +121,14 @@ pub fn plugin(app: &mut bevy::prelude::App) {
 /// a double click zooms it. Call it before the row's widgets so they keep their clicks.
 pub fn titlebar_area(ui: &mut egui::Ui, rect: egui::Rect) {
     let response = ui.interact(rect, ui.scope_id().with("macos-titlebar"), egui::Sense::click_and_drag());
-    if response.drag_started() || response.double_clicked() {
+    // Read the response before locking the context's data: these queries lock it too.
+    let (drag, zoom) = (response.drag_started(), response.double_clicked());
+    if drag || zoom {
         let id = egui::Id::unique("macos-titlebar");
         ui.ctx().data_mut(|d| {
             let t: &mut Titlebar = d.get_temp_mut_or_default(id);
-            t.drag |= response.drag_started();
-            t.zoom |= response.double_clicked();
+            t.drag |= drag;
+            t.zoom |= zoom;
         });
     }
 }
