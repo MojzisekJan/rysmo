@@ -1,6 +1,11 @@
 //! Welcome page uses the same guarded file operations as the editor menus.
+use crate::menu::glyph;
 use crate::{state::App3d, unsaved};
 use bevy_egui::egui;
+
+/// Width of the centred welcome column.
+const COLUMN: f32 = 760.;
+
 pub fn show(ctx: &egui::Context, app: &mut App3d) -> bool {
     if !app.welcome {
         return false;
@@ -26,68 +31,21 @@ pub fn show(ctx: &egui::Context, app: &mut App3d) -> bool {
             ui.set_min_size(page);
             ui.set_max_size(page);
             egui::ScrollArea::vertical().id_salt("welcome-scroll").show(ui, |ui| {
-                ui.set_max_width(ui.available_width().min(800.));
+                // Centre the column vertically using the height measured in the previous frame.
+                let height_id = egui::Id::new("welcome-height");
+                let last = ui.ctx().data(|d| d.get_temp::<f32>(height_id)).unwrap_or(page.y);
+                ui.add_space(((page.y - last) / 2.).max(0.));
+                let width = ui.available_width().min(COLUMN);
+                let top = ui.cursor().top();
                 ui.horizontal(|ui| {
-                    crate::brand::image(ui, 56.);
+                    ui.add_space(((ui.available_width() - width) / 2.).max(0.));
                     ui.vertical(|ui| {
-                        ui.heading("Rysmo");
-                        ui.weak("A simple 3D modeller.");
+                        ui.set_width(width);
+                        page_contents(ui, app, width);
                     });
                 });
-                ui.add_space(24.);
-                ui.heading("Start creating");
-                ui.label("Choose a starting unit, or open an existing model.");
-                ui.add_space(12.);
-                ui.horizontal_wrapped(|ui| {
-                    for (label, units) in [
-                        ("Millimetres", rysmo_model::Units::Millimetres),
-                        ("Metres", rysmo_model::Units::Metres),
-                        ("Feet & inches", rysmo_model::Units::Architectural),
-                    ] {
-                        if ui.add_sized([160., 48.], egui::Button::new(format!("New · {label}"))).clicked() {
-                            unsaved::request(app, unsaved::Action::NewWithUnits(units));
-                        }
-                    }
-                });
-                ui.add_space(12.);
-                ui.horizontal_wrapped(|ui| {
-                    if ui.button("Continue editing").clicked() {
-                        app.welcome = false;
-                    }
-                    if ui.button(crate::menu::label(crate::menu::glyph::FOLDER_OPEN, "Open model...")).clicked() {
-                        unsaved::request(app, unsaved::Action::Open);
-                    }
-                    if ui.button("Help & tools").clicked() {
-                        app.help.open = true;
-                    }
-                    if ui.button("Settings").clicked() {
-                        app.show_settings = true;
-                        app.settings_tab = 3;
-                    }
-                });
-                ui.add_space(24.);
-                ui.strong("Recent models");
-                if app.recent.is_empty() {
-                    ui.weak("Models you open or save will appear here.");
-                }
-                for name in app.recent.clone().iter().take(8) {
-                    let label = std::path::Path::new(name).file_name().unwrap_or_default().to_string_lossy();
-                    if ui
-                        .add_sized([ui.available_width().min(600.), 36.], egui::Button::new(label).truncate())
-                        .on_hover_text(name)
-                        .clicked()
-                    {
-                        unsaved::request(app, unsaved::Action::Recent(name.clone()));
-                    }
-                }
-                ui.add_space(24.);
-                ui.separator();
-                crate::widgets::checkbox(ui, &mut app.preferences.show_welcome, "Show this page at startup");
-                ui.weak("Space selects · R draws a rectangle · P pulls a face · Shift+S searches commands");
-                if let Some(message) = &app.message {
-                    ui.add_space(8.);
-                    ui.label(message);
-                }
+                let height = ui.cursor().top() - top;
+                ui.ctx().data_mut(|d| d.insert_temp(height_id, height));
             });
         });
     });
@@ -98,6 +56,143 @@ pub fn show(ctx: &egui::Context, app: &mut App3d) -> bool {
     app.canvas = None;
     app.ui_rects = vec![(rysmo_math::DVec2::ZERO, app.viewport)];
     true
+}
+
+fn page_contents(ui: &mut egui::Ui, app: &mut App3d, width: f32) {
+    ui.vertical_centered(|ui| {
+        crate::brand::image(ui, 72.);
+        ui.add_space(6.);
+        ui.label(egui::RichText::new("Rysmo").size(30.).strong());
+        ui.weak(egui::RichText::new("A simple 3D modeller.").size(15.));
+    });
+    ui.add_space(28.);
+    section(ui, "New model");
+    let units = [
+        (glyph::RULER, "Millimetres", "Products, furniture and details", rysmo_model::Units::Millimetres),
+        (glyph::BUILDINGS, "Metres", "Buildings, rooms and sites", rysmo_model::Units::Metres),
+        (glyph::HOUSE_LINE, "Feet & inches", "Imperial building projects", rysmo_model::Units::Architectural),
+    ];
+    let columns = if width >= 540. { 3 } else { 1 };
+    let gap = ui.spacing().item_spacing.x;
+    // Narrow pages stack compact cards with the icon beside the text.
+    let card = egui::vec2((width - gap * (columns - 1) as f32) / columns as f32, if columns == 1 { 60. } else { 92. });
+    for row in units.chunks(columns) {
+        ui.horizontal(|ui| {
+            for (icon, label, detail, units) in row {
+                if unit_card(ui, card, icon, label, detail).clicked() {
+                    unsaved::request(app, unsaved::Action::NewWithUnits(*units));
+                }
+            }
+        });
+    }
+    ui.add_space(14.);
+    ui.horizontal_wrapped(|ui| {
+        let size = egui::vec2(0., 36.);
+        let open = egui::Button::new(crate::menu::label(glyph::FOLDER_OPEN, "Open model...")).min_size(size);
+        if ui.add(open).clicked() {
+            unsaved::request(app, unsaved::Action::Open);
+        }
+        let current = app.path.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned());
+        let label = match &current {
+            Some(name) => format!("Continue {name}"),
+            None => "Continue editing".to_owned(),
+        };
+        let resume = egui::Button::new(crate::menu::label(glyph::ARROW_RIGHT, &label)).min_size(size).truncate();
+        if ui.add(resume).clicked() {
+            app.welcome = false;
+        }
+        if ui.add(egui::Button::new(crate::menu::label(glyph::QUESTION, "Help & tools")).min_size(size)).clicked() {
+            app.help.open = true;
+        }
+        if ui.add(egui::Button::new(crate::menu::label(glyph::GEAR_SIX, "Settings")).min_size(size)).clicked() {
+            app.show_settings = true;
+            app.settings_tab = 3;
+        }
+    });
+    ui.add_space(28.);
+    section(ui, "Recent models");
+    egui::Frame::new()
+        .fill(ui.visuals().extreme_bg_color)
+        .stroke(ui.visuals().widgets.noninteractive.bg_stroke)
+        .corner_radius(8)
+        .inner_margin(6)
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            if app.recent.is_empty() {
+                ui.add_space(10.);
+                ui.vertical_centered(|ui| ui.weak("Models you open or save will appear here."));
+                ui.add_space(10.);
+            }
+            for name in app.recent.clone().iter().take(8) {
+                let label = std::path::Path::new(name).file_name().unwrap_or_default().to_string_lossy();
+                let row = egui::Button::new(crate::menu::label(glyph::FILE, &label))
+                    .frame_when_inactive(false)
+                    .min_size(egui::vec2(ui.available_width(), 36.))
+                    .truncate();
+                if ui.add(row).on_hover_text(name).clicked() {
+                    unsaved::request(app, unsaved::Action::Recent(name.clone()));
+                }
+            }
+        });
+    ui.add_space(20.);
+    ui.horizontal_wrapped(|ui| {
+        crate::widgets::checkbox(ui, &mut app.preferences.show_welcome, "Show this page at startup");
+        if width < 640. {
+            // Keep the shortcut hint on its own line instead of wrapping it beside the checkbox.
+            ui.end_row();
+        } else {
+            ui.add_space(12.);
+        }
+        ui.weak("Space selects · R draws a rectangle · P pulls a face · Shift+S searches commands");
+    });
+    if let Some(message) = &app.message {
+        ui.add_space(8.);
+        ui.label(message);
+    }
+}
+
+fn section(ui: &mut egui::Ui, title: &str) {
+    ui.label(egui::RichText::new(title).size(13.).strong().color(ui.visuals().weak_text_color()));
+    ui.add_space(2.);
+}
+
+/// A clickable card; hover changes only colours, so the layout never shifts.
+fn unit_card(ui: &mut egui::Ui, size: egui::Vec2, icon: &str, title: &str, detail: &str) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    let visuals = ui.visuals();
+    let (fill, stroke) = if response.is_pointer_button_down_on() {
+        (visuals.widgets.active.bg_fill, visuals.widgets.active.bg_stroke)
+    } else if response.hovered() || response.has_focus() {
+        (visuals.widgets.hovered.bg_fill, visuals.widgets.hovered.bg_stroke)
+    } else {
+        (visuals.faint_bg_color, visuals.widgets.noninteractive.bg_stroke)
+    };
+    let painter = ui.painter();
+    painter.rect(rect, 8., fill, egui::Stroke::new(1., stroke.color), egui::StrokeKind::Inside);
+    let compact = rect.height() < 80.;
+    let (icon_at, text_at) = if compact {
+        (egui::pos2(rect.left() + 16., rect.center().y - 12.), egui::pos2(rect.left() + 56., rect.top() + 10.))
+    } else {
+        (rect.left_top() + egui::vec2(16., 14.), rect.left_top() + egui::vec2(16., 46.))
+    };
+    painter.text(
+        icon_at,
+        egui::Align2::LEFT_TOP,
+        icon,
+        egui::FontId::new(24., egui::FontFamily::Name("phosphor".into())),
+        crate::theme::ACCENT,
+    );
+    painter.text(text_at, egui::Align2::LEFT_TOP, title, egui::FontId::proportional(16.), visuals.strong_text_color());
+    let detail = painter.layout(
+        detail.to_owned(),
+        egui::FontId::proportional(13.),
+        visuals.weak_text_color(),
+        rect.right() - text_at.x - 16.,
+    );
+    painter.galley(text_at + egui::vec2(0., 22.), detail, visuals.weak_text_color());
+    response
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .on_hover_text(format!("New model in {}", title.to_lowercase()))
 }
 
 #[cfg(test)]
