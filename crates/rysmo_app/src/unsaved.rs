@@ -88,7 +88,7 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
         Cancel,
     }
     let mut choice = None;
-    egui::Modal::new(egui::Id::new("unsaved_changes")).frame(egui::Frame::window(&ctx.global_style())).show(
+    egui::Modal::new(egui::Id::unique("unsaved_changes")).frame(egui::Frame::window(&ctx.global_style())).show(
         ctx,
         |ui| {
             ui.set_width(360.);

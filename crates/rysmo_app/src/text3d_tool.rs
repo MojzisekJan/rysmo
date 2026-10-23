@@ -147,7 +147,7 @@ fn panel_sized(ctx: &egui::Context, app: &mut App3d, size: egui::Vec2) {
         .show(ctx, |ui| {
             let edit = ui.add(
                 crate::theme::multiline(&mut draft.content)
-                    .id(egui::Id::new("text3d_content"))
+                    .id(egui::Id::unique("text3d_content"))
                     .desired_width(f32::INFINITY)
                     .desired_rows(
                         ((ui.available_height().min(ctx.content_rect().height()) - 340.) / 20.).clamp(4., 16.) as usize,
@@ -238,7 +238,7 @@ mod tests {
                 );
                 output.textures_delta.clear();
             }
-            let rect = ctx.read_response(egui::Id::new("text3d_content")).unwrap().rect;
+            let rect = ctx.read_response(egui::Id::unique("text3d_content")).unwrap().rect;
             assert!(rect.is_finite());
             widths.push(rect.width());
             assert_eq!(app.editor.doc(), &before);

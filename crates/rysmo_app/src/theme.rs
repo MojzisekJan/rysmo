@@ -124,7 +124,7 @@ impl<'a> Window<'a> {
         }
         // Keep floating windows clear of the toolbars and status bar unless the model area is too small.
         let content = ctx.content_rect();
-        let central = ctx.data(|d| d.get_temp::<egui::Rect>(egui::Id::new(MODEL_AREA))).unwrap_or(content);
+        let central = ctx.data(|d| d.get_temp::<egui::Rect>(egui::Id::unique(MODEL_AREA))).unwrap_or(content);
         let area = if central.width() >= 360. && central.height() >= 360. { central } else { content };
         let area = area.shrink(8.);
         let area = self.constrain.map_or(area, |r| r.intersect(area));
@@ -190,21 +190,21 @@ const MODEL_AREA: &str = "model-area";
 
 /// Records the model area between the toolbars, palette and status bar for floating windows.
 pub fn set_model_area(ctx: &egui::Context, rect: egui::Rect) {
-    ctx.data_mut(|d| d.insert_temp(egui::Id::new(MODEL_AREA), rect));
+    ctx.data_mut(|d| d.insert_temp(egui::Id::unique(MODEL_AREA), rect));
 }
 
 /// Places the window titled `key` in `rect` this frame, as a tab of the tablet sidebar.
 pub fn dock(ctx: &egui::Context, key: &str, rect: egui::Rect) {
-    ctx.data_mut(|d| d.insert_temp(egui::Id::new("tablet-dock"), Some((key.to_owned(), rect))));
+    ctx.data_mut(|d| d.insert_temp(egui::Id::unique("tablet-dock"), Some((key.to_owned(), rect))));
 }
 
 /// Ends any docking, so windows float again.
 pub fn undock(ctx: &egui::Context) {
-    ctx.data_mut(|d| d.insert_temp::<Option<(String, egui::Rect)>>(egui::Id::new("tablet-dock"), None));
+    ctx.data_mut(|d| d.insert_temp::<Option<(String, egui::Rect)>>(egui::Id::unique("tablet-dock"), None));
 }
 
 fn docked(ctx: &egui::Context, key: &str) -> Option<egui::Rect> {
-    ctx.data(|d| d.get_temp::<Option<(String, egui::Rect)>>(egui::Id::new("tablet-dock")))
+    ctx.data(|d| d.get_temp::<Option<(String, egui::Rect)>>(egui::Id::unique("tablet-dock")))
         .flatten()
         .filter(|(docked, _)| docked == key)
         .map(|(_, rect)| rect)
@@ -429,7 +429,7 @@ mod layout_tests {
     }
 }
 
-/// Font updates installed during an egui pass become available on its next pass.
+/// Whether the icon font is installed. Fonts set during a pass may only appear on a later one.
 pub fn fonts_ready(ctx: &egui::Context) -> bool {
     ctx.fonts(|fonts| fonts.families().contains(&egui::FontFamily::Name("phosphor".into())))
 }
@@ -451,7 +451,8 @@ mod font_startup_tests {
                     if pass == 0 {
                         install(ui.ctx());
                     }
-                    assert_eq!(fonts_ready(ui.ctx()), pass > 0);
+                    // egui 0.37 applies them at once, older versions on the next pass.
+                    assert!(fonts_ready(ui.ctx()) || pass == 0);
                     crate::welcome::show(ui.ctx(), &mut app);
                 },
             );

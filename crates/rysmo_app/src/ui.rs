@@ -199,10 +199,10 @@ fn panels(
         return Ok(());
     }
     let touch = app.touch.enabled;
-    // egui 0.36 panels live in a parent Ui; this one spans the window.
+    // egui panels live in a parent Ui; this one spans the window.
     let mut root = egui::Ui::new(
         ctx.clone(),
-        "root".into(),
+        egui::Id::unique("root"),
         egui::UiBuilder::new().layer_id(egui::LayerId::background()).max_rect(ctx.content_rect()),
     );
     let mut rects = Vec::new();
@@ -347,7 +347,7 @@ fn panels(
     if app.show_entity_info {
         let mut open = true;
         let inspector = crate::theme::window("Inspector")
-            .id(egui::Id::new("floating-inspector"))
+            .id(egui::Id::unique("floating-inspector"))
             .open(&mut open)
             .default_pos(egui::pos2((canvas.right() - 336.).max(canvas.left() + 8.), canvas.top() + 8.))
             .default_size(egui::vec2(320., (canvas.height() * 0.75).clamp(180., 520.)))
@@ -414,7 +414,7 @@ fn panels(
         let mut close = false;
         let mut open = true;
         let popup = egui::Popup::new(
-            egui::Id::new("context-menu"),
+            egui::Id::unique("context-menu"),
             ctx.clone(),
             egui::pos2(at.x as f32, at.y as f32),
             egui::LayerId::background(),
@@ -853,7 +853,7 @@ fn overlay(mut contexts: EguiContexts, mut app: ResMut<App3d>) -> Result {
     if app.welcome {
         return Ok(());
     }
-    let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Background, egui::Id::new("overlay")));
+    let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Background, egui::Id::unique("overlay")));
     app.dimension_text_sizes = draw_dimensions(&painter, &app);
     app.text_sizes = draw_texts(&painter, &app);
     crate::text3d_tool::draw(&painter, &app);

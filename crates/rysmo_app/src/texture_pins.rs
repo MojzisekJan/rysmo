@@ -36,7 +36,7 @@ pub fn drag(pins: [[f64; 2]; 4], index: usize, target: DVec2, fixed: bool) -> Op
 }
 
 pub fn controls(ui: &mut egui::Ui, placement: &mut TexturePlacement) -> bool {
-    let id = ui.id().with("texture-pins-fixed");
+    let id = ui.scope_id().with("texture-pins-fixed");
     let mut fixed = ui.ctx().data_mut(|data| data.get_temp::<bool>(id).unwrap_or(true));
     crate::widgets::checkbox(ui, &mut fixed, "Fixed pins");
     ui.ctx().data_mut(|data| data.insert_temp(id, fixed));
@@ -53,7 +53,7 @@ pub fn controls(ui: &mut egui::Ui, placement: &mut TexturePlacement) -> bool {
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 6.0, ui.visuals().extreme_bg_color);
     // Keep the coordinate frame stable throughout a drag, so moving a pin cannot move the widget.
-    let view_id = ui.id().with("texture-pins-view");
+    let view_id = ui.scope_id().with("texture-pins-view");
     let fit = || {
         let points = pins.map(DVec2::from_array);
         let lo = points.into_iter().reduce(DVec2::min).unwrap();
@@ -98,7 +98,7 @@ pub fn controls(ui: &mut egui::Ui, placement: &mut TexturePlacement) -> bool {
         let response = ui
             .interact(
                 egui::Rect::from_center_size(pos, egui::vec2(24., 24.)).intersect(rect),
-                ui.id().with(("texture-pin", i)),
+                ui.scope_id().with(("texture-pin", i)),
                 egui::Sense::drag(),
             )
             .on_hover_text(names[i]);

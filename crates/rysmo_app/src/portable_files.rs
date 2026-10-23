@@ -175,7 +175,7 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
         Operation::DataExport(_) => "Export file",
     };
     let window = crate::theme::window(title)
-        .id(egui::Id::new("device-files"))
+        .id(egui::Id::unique("device-files"))
         .open(&mut open)
         .default_width(400.)
         .max_height((ctx.content_rect().height() - 100.).max(180.))

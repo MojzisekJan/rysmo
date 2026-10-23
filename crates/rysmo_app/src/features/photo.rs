@@ -126,12 +126,12 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
                     let color=if family==0 {egui::Color32::from_rgb(255,90,80)}else{egui::Color32::from_rgb(80,230,130)};
                     for line in 0..2 {
                         ui.painter().line_segment(setup.guides[family][line].map(at),egui::Stroke::new(2.,color));
-                        for end in 0..2 {handle(ui,rect,&mut setup.guides[family][line][end],egui::Id::new(("photo-guide",family,line,end)),color);}
+                        for end in 0..2 {handle(ui,rect,&mut setup.guides[family][line][end],egui::Id::unique(("photo-guide",family,line,end)),color);}
                     }
                 }
                 ui.painter().line_segment([at(setup.origin),at(setup.reference)],egui::Stroke::new(1.5,egui::Color32::LIGHT_BLUE));
-                handle(ui,rect,&mut setup.origin,egui::Id::new("photo-origin"),egui::Color32::from_rgb(255,170,50));
-                handle(ui,rect,&mut setup.reference,egui::Id::new("photo-reference"),egui::Color32::LIGHT_BLUE);
+                handle(ui,rect,&mut setup.origin,egui::Id::unique("photo-origin"),egui::Color32::from_rgb(255,170,50));
+                handle(ui,rect,&mut setup.reference,egui::Id::unique("photo-reference"),egui::Color32::LIGHT_BLUE);
             }
             ui.add(crate::widgets::Number::new(&mut setup.reference_length).range(0.001..=1e6).speed(0.01).prefix("Reference length ").suffix(" m"));
             ui.horizontal(|ui| {crate::widgets::checkbox(ui,&mut setup.flip_x,"Reverse X");crate::widgets::checkbox(ui,&mut setup.flip_y,"Reverse Y");});

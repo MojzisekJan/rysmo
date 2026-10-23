@@ -580,7 +580,7 @@ fn topic_button(ui: &mut egui::Ui, title: &str, selected: bool, width: f32) -> e
     );
     let (rect, response) =
         ui.allocate_exact_size(egui::vec2(width, (text.size().y + 14.).max(32.)), egui::Sense::click());
-    response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), selected, title));
+    response.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, ui.is_enabled(), selected, title));
     let visuals = ui.style().interact_selectable(&response, selected);
     if selected || response.hovered() || response.has_focus() {
         ui.painter().rect_filled(rect, 5., visuals.weak_bg_fill);

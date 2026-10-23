@@ -89,7 +89,7 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
             ui.separator();
             let mut edit = false;
             ui.label("Name");
-            let key = egui::Id::new(("scene_name", scene.id));
+            let key = egui::Id::unique(("scene_name", scene.id));
             let mut name = ctx.data_mut(|d| d.get_temp::<String>(key)).unwrap_or_else(|| scene.name.clone());
             let response = ui.add(crate::theme::singleline(&mut name).desired_width(f32::INFINITY));
             if response.changed() {
@@ -101,7 +101,7 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
                 ctx.data_mut(|d| d.remove::<String>(key));
             }
             ui.label("Description");
-            let key = egui::Id::new(("scene_description", scene.id));
+            let key = egui::Id::unique(("scene_description", scene.id));
             let mut description =
                 ctx.data_mut(|d| d.get_temp::<String>(key)).unwrap_or_else(|| scene.description.clone());
             let response = ui.add(crate::theme::multiline(&mut description));

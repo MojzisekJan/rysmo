@@ -43,7 +43,7 @@ pub fn button(ui: &mut egui::Ui, icon: Icon, selected: bool, size: f32) -> Respo
     let (rect, response) = ui.allocate_exact_size(egui::vec2(size + 14., size + 14.), Sense::click());
     response.widget_info(|| {
         egui::WidgetInfo::selected(
-            egui::WidgetType::Button,
+            egui::Role::Button,
             ui.is_enabled(),
             selected,
             match icon {
@@ -65,9 +65,7 @@ pub fn tab(ui: &mut egui::Ui, label: &str, selected: bool) -> Response {
     let font = egui::FontId::proportional(14.);
     let galley = ui.painter().layout_no_wrap(label.to_owned(), font, Color32::PLACEHOLDER);
     let (rect, response) = ui.allocate_exact_size(egui::vec2(galley.size().x + 16., 30.), Sense::click());
-    response.widget_info(|| {
-        egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, ui.is_enabled(), selected, label)
-    });
+    response.widget_info(|| egui::WidgetInfo::selected(egui::Role::Tab, ui.is_enabled(), selected, label));
     let hover_color = chrome(ui, &response, false);
     let color = if selected { Color32::from_rgb(105, 169, 255) } else { hover_color };
     ui.painter().galley(rect.center() - galley.size() * 0.5, galley, color);

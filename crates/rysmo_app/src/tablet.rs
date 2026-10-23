@@ -106,11 +106,11 @@ struct State {
 }
 
 fn state(ctx: &egui::Context) -> State {
-    ctx.data(|d| d.get_temp(egui::Id::new("tablet-layout"))).unwrap_or_default()
+    ctx.data(|d| d.get_temp(egui::Id::unique("tablet-layout"))).unwrap_or_default()
 }
 
 fn set_state(ctx: &egui::Context, state: State) {
-    ctx.data_mut(|d| d.insert_temp(egui::Id::new("tablet-layout"), state));
+    ctx.data_mut(|d| d.insert_temp(egui::Id::unique("tablet-layout"), state));
 }
 
 /// Lays out the tablet chrome around the canvas and records the rectangles it covers.
@@ -495,7 +495,7 @@ fn flyout(
     let top = (rail.top() + 8. + index as f32 * (ICON + 32.))
         .min(canvas.bottom() - category.slots.len() as f32 * row - 24.)
         .max(canvas.top() + 4.);
-    let area = egui::Area::new(egui::Id::new("tablet-flyout"))
+    let area = egui::Area::new(egui::Id::unique("tablet-flyout"))
         .order(egui::Order::Foreground)
         .fixed_pos(egui::pos2(rail.right() + 6., top))
         .show(ctx, |ui| {
@@ -572,7 +572,7 @@ fn keypad(ctx: &egui::Context, app: &mut App3d, st: &mut State, canvas: egui::Re
     let key = egui::vec2(56., 46.);
     let size = egui::vec2(key.x * 5. + 4. * 6. + 24., key.y * 5. + 4. * 6. + 64.);
     let pos = canvas.right_bottom() - size - egui::vec2(12., 12.);
-    let area = egui::Area::new(egui::Id::new("tablet-keypad"))
+    let area = egui::Area::new(egui::Id::unique("tablet-keypad"))
         .order(egui::Order::Foreground)
         .fixed_pos(pos.max(canvas.min))
         .show(ctx, |ui| {
@@ -654,7 +654,7 @@ fn selection_bar(ctx: &egui::Context, app: &mut App3d, canvas: egui::Rect, rects
     }
     slots.extend([Slot::Action(Action::HideGeometry), Slot::Action(Action::Erase)]);
     let count = app.editor.selection().len();
-    let area = egui::Area::new(egui::Id::new("tablet-selection"))
+    let area = egui::Area::new(egui::Id::unique("tablet-selection"))
         .order(egui::Order::Foreground)
         .pivot(egui::Align2::CENTER_BOTTOM)
         .fixed_pos(canvas.center_bottom() - egui::vec2(0., 12.))

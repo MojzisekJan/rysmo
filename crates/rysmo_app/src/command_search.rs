@@ -332,7 +332,7 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
             let opening = app.command_search.focus;
             let field = ui.add(
                 crate::theme::singleline(&mut app.command_search.query)
-                    .id(egui::Id::new("command-search-query"))
+                    .id(egui::Id::unique("command-search-query"))
                     .desired_width(f32::INFINITY)
                     .hint_text("Search tools, actions, windows or shortcuts"),
             );

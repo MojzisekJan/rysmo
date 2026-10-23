@@ -257,7 +257,7 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
     let mut cancel = false;
     crate::theme::window("New text").open(&mut open).default_width(320.).show(ctx, |ui| {
         let draft = app.text_creation.as_mut().unwrap();
-        let id = egui::Id::new("new-text-content");
+        let id = egui::Id::unique("new-text-content");
         // Enter keeps the selected suggestion: it moves to the end instead of replacing it,
         // so Enter twice accepts the suggested area or length while typing still replaces it.
         if ui.memory(|m| m.has_focus(id)) && ui.input(|i| !i.modifiers.ctrl && i.key_pressed(egui::Key::Enter)) {
@@ -396,7 +396,7 @@ mod tests {
         let mut output = ctx.run_ui(input(), |ui| panel(ui.ctx(), &mut app));
         output.textures_delta.clear();
         app.text_creation.as_mut().unwrap().text.content = "Nový popisek".into();
-        ctx.memory_mut(|memory| memory.request_focus(egui::Id::new("new-text-content")));
+        ctx.memory_mut(|memory| memory.request_focus(egui::Id::unique("new-text-content")));
         let modifiers = egui::Modifiers { ctrl: true, ..Default::default() };
         let mut pressed = input();
         pressed.events.push(egui::Event::ModifiersChanged(modifiers));

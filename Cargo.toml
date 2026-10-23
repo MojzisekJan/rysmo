@@ -69,3 +69,7 @@ opt-level = 1
 # A copy of bevy_pbr 0.20.0 with a smaller WebGL2 light array; see vendor/README.md.
 [patch.crates-io]
 bevy_pbr = { path = "vendor/bevy_pbr" }
+# egui 0.37, required by egui_native_look: bevy_egui's pending upgrade and a copy of
+# egui-phosphor 0.14 with its egui requirement raised. See vendor/README.md.
+bevy_egui = { path = "vendor/bevy_egui" }
+egui-phosphor = { path = "vendor/egui-phosphor" }

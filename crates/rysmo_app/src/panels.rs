@@ -918,7 +918,7 @@ pub fn entity_info_ui(ui: &mut egui::Ui, app: &mut App3d) {
             }
             let (_, _, draft) = app.text_edit.as_mut().unwrap();
             ui.label("Content");
-            let response = ui.add(crate::theme::multiline(draft).id(egui::Id::new(("annotation-text", id.0))));
+            let response = ui.add(crate::theme::multiline(draft).id(egui::Id::unique(("annotation-text", id.0))));
             ui.small("Enter adds a line. Ctrl+Enter applies the text.");
             let submit = response.has_focus() && ui.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::Enter));
             let mut text = original.clone();
@@ -1065,7 +1065,7 @@ pub fn entity_info_ui(ui: &mut egui::Ui, app: &mut App3d) {
             let mut dimension = original.clone();
             let (_, _, draft) = app.dimension_text_edit.as_mut().unwrap();
             ui.label("Text");
-            let text_id = egui::Id::new(("dimension-text", id.0));
+            let text_id = egui::Id::unique(("dimension-text", id.0));
             let response = ui.add(crate::theme::multiline(draft).id(text_id));
             ui.small(
                 "<> inserts the current measurement. Empty text uses the automatic value. Ctrl+Enter applies text.",
@@ -1503,7 +1503,7 @@ pub fn entity_info_ui(ui: &mut egui::Ui, app: &mut App3d) {
 pub fn resize_confirmation(ctx: &egui::Context, app: &mut App3d) {
     let Some(factor) = app.tools.pending_resize_factor() else { return };
     let mut answer = None;
-    egui::Modal::new(egui::Id::new("resize-confirmation")).frame(egui::Frame::window(&ctx.global_style())).show(
+    egui::Modal::new(egui::Id::unique("resize-confirmation")).frame(egui::Frame::window(&ctx.global_style())).show(
         ctx,
         |ui| {
             ui.heading("Resize model?");
@@ -1562,7 +1562,7 @@ mod dimension_entity_info_tests {
         let mut output = ctx.run_ui(input(), |ui| entity_info(ui.ctx(), &mut app));
         output.textures_delta.clear();
         assert!(app.editor.active().dimensions[&id].text.is_empty());
-        ctx.memory_mut(|memory| memory.request_focus(egui::Id::new(("dimension-text", id.0))));
+        ctx.memory_mut(|memory| memory.request_focus(egui::Id::unique(("dimension-text", id.0))));
         let mut pressed = input();
         let modifiers = egui::Modifiers { ctrl: true, ..Default::default() };
         pressed.events.push(egui::Event::ModifiersChanged(modifiers));
@@ -1606,7 +1606,7 @@ mod text_entity_info_tests {
         frame(&ctx, &mut app, input());
         assert_eq!(app.editor.active().texts[&id], original);
         assert!(app.editor.undo_label().is_none());
-        ctx.memory_mut(|memory| memory.request_focus(egui::Id::new(("annotation-text", id.0))));
+        ctx.memory_mut(|memory| memory.request_focus(egui::Id::unique(("annotation-text", id.0))));
         let modifiers = egui::Modifiers { ctrl: true, ..Default::default() };
         let mut pressed = input();
         pressed.events.push(egui::Event::ModifiersChanged(modifiers));

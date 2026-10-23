@@ -18,7 +18,7 @@ pub fn show(ctx: &egui::Context, app: &mut App3d) -> bool {
     let margin = if content.width() < 600. { 16 } else { 24 };
     // The macOS title bar is transparent; keep its strip clear for the traffic lights.
     let title = if cfg!(target_os = "macos") { 28 } else { 0 };
-    egui::Area::new("welcome-page".into())
+    egui::Area::new(egui::Id::unique("welcome-page"))
         .fixed_pos(content.min)
         .order(egui::Order::Background)
         // A fade-in can stall half way when the renderer goes idle, leaving the editor showing through.
@@ -38,7 +38,7 @@ pub fn show(ctx: &egui::Context, app: &mut App3d) -> bool {
                 ui.set_max_size(page);
                 egui::ScrollArea::vertical().id_salt("welcome-scroll").show(ui, |ui| {
                     // Centre the column vertically using the height measured in the previous frame.
-                    let height_id = egui::Id::new("welcome-height");
+                    let height_id = egui::Id::unique("welcome-height");
                     let last = ui.ctx().data(|d| d.get_temp::<f32>(height_id)).unwrap_or(page.y);
                     ui.add_space(((page.y - last) / 2.).max(0.));
                     let width = ui.available_width().min(COLUMN);
@@ -188,7 +188,7 @@ fn page_contents(ui: &mut egui::Ui, app: &mut App3d, width: f32) {
 /// the text's visual centre when both share a baseline.
 fn icon_button(ui: &mut egui::Ui, size: egui::Vec2, icon: &str, text: &str, align: egui::Align) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), text));
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, ui.is_enabled(), text));
     let style = ui.style().interact(&response);
     let painter = ui.painter();
     let flat = align == egui::Align::Min && !response.hovered() && !response.is_pointer_button_down_on();
@@ -242,7 +242,7 @@ fn ink(galley: &egui::Galley, body: bool) -> egui::Rect {
 fn paint_glow(ui: &egui::Ui, rect: egui::Rect) {
     const SCALE: f32 = 0.5;
     let size = [(rect.width() * SCALE).ceil().max(1.) as usize, (rect.height() * SCALE).ceil().max(1.) as usize];
-    let id = egui::Id::new("welcome-glow");
+    let id = egui::Id::unique("welcome-glow");
     let cached = ui.ctx().data(|d| d.get_temp::<([usize; 2], egui::TextureHandle)>(id));
     let texture = match cached {
         Some((cached, texture)) if cached == size => texture,

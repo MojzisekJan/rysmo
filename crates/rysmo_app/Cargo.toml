@@ -55,7 +55,7 @@ features = ["manage_clipboard"]
 
 # macOS: controls drawn in the AppKit manner, the system font and accent colour.
 [target.'cfg(target_os = "macos")'.dependencies]
-egui_native_look = { git = "https://github.com/MojzisekJan/egui_native_look" }
+egui_native_look = "0.2.0"
 
 [target.'cfg(target_os = "android")'.dependencies]
 bevy = { version = "0.20.0", default-features = false, features = ["multi_threaded", "android-native-activity", "default_app", "3d_bevy_render", "default_font"] }

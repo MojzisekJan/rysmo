@@ -112,10 +112,10 @@ fn write(text: &str) -> Result<(), String> {
 #[derive(Clone, Default)]
 pub struct Layout(pub BTreeMap<String, [f32; 4]>);
 pub fn layout(ctx: &egui::Context) -> Layout {
-    ctx.data_mut(|d| d.get_temp::<Layout>(egui::Id::new("saved-window-layout"))).unwrap_or_default()
+    ctx.data_mut(|d| d.get_temp::<Layout>(egui::Id::unique("saved-window-layout"))).unwrap_or_default()
 }
 pub fn set_layout(ctx: &egui::Context, value: Layout) {
-    ctx.data_mut(|d| d.insert_temp(egui::Id::new("saved-window-layout"), value));
+    ctx.data_mut(|d| d.insert_temp(egui::Id::unique("saved-window-layout"), value));
 }
 #[derive(Default)]
 pub struct Store {

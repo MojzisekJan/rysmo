@@ -13,7 +13,7 @@ pub fn image(ui: &mut egui::Ui, size: f32) -> egui::Response {
     // Downscale the 512 px logo to the displayed pixel size on the CPU: sampling it directly
     // without mipmaps aliases its curved edges.
     let pixels = (size * ui.ctx().pixels_per_point()).round().clamp(16., 512.) as u32;
-    let id = egui::Id::new(("rysmo-brand-texture", pixels));
+    let id = egui::Id::unique(("rysmo-brand-texture", pixels));
     let texture = ui.ctx().data_mut(|data| data.get_temp::<egui::TextureHandle>(id));
     let texture = texture.unwrap_or_else(|| {
         let (rgba, width, height) = decode(include_bytes!("../brand/logo.png"));

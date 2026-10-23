@@ -330,7 +330,7 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
     }
     let view = app.local_view();
     let painter =
-        ctx.layer_painter(egui::LayerId::new(egui::Order::Background, egui::Id::new("viewport-texture-pins")));
+        ctx.layer_painter(egui::LayerId::new(egui::Order::Background, egui::Id::unique("viewport-texture-pins")));
     let origin = app.canvas_origin();
     let size = app.canvas_size();
     let painter = painter.with_clip_rect(egui::Rect::from_min_size(

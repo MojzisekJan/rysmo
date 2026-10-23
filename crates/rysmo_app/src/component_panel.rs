@@ -544,7 +544,7 @@ pub fn rename_panel(ctx: &egui::Context, app: &mut App3d) {
     let mut open = true;
     // Typing goes to the name, not to the Measurements box: keep asking for focus until the
     // click that opened the window has been released.
-    let focused = egui::Id::new("rename-instance-focused");
+    let focused = egui::Id::unique("rename-instance-focused");
     let result = crate::theme::window("Rename instance").open(&mut open).show(ctx, |ui| {
         let field = ui.add(crate::theme::singleline(&mut name).desired_width(f32::INFINITY));
         if !ctx.data(|d| d.get_temp::<bool>(focused).unwrap_or(false)) {

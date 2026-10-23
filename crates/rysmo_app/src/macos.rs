@@ -120,9 +120,9 @@ pub fn plugin(app: &mut bevy::prelude::App) {
 /// Makes the empty part of `rect` behave like a title bar: dragging moves the window and
 /// a double click zooms it. Call it before the row's widgets so they keep their clicks.
 pub fn titlebar_area(ui: &mut egui::Ui, rect: egui::Rect) {
-    let response = ui.interact(rect, ui.id().with("macos-titlebar"), egui::Sense::click_and_drag());
+    let response = ui.interact(rect, ui.scope_id().with("macos-titlebar"), egui::Sense::click_and_drag());
     if response.drag_started() || response.double_clicked() {
-        let id = egui::Id::new("macos-titlebar");
+        let id = egui::Id::unique("macos-titlebar");
         ui.ctx().data_mut(|d| {
             let t: &mut Titlebar = d.get_temp_mut_or_default(id);
             t.drag |= response.drag_started();
@@ -137,7 +137,7 @@ fn apply_titlebar(
     mut zoomed: bevy::prelude::Local<bool>,
 ) -> bevy::prelude::Result {
     let ctx = contexts.ctx_mut()?;
-    let t: Titlebar = ctx.data_mut(|d| d.remove_temp(egui::Id::new("macos-titlebar"))).unwrap_or_default();
+    let t: Titlebar = ctx.data_mut(|d| d.remove_temp(egui::Id::unique("macos-titlebar"))).unwrap_or_default();
     if let Ok(mut window) = windows.single_mut() {
         if t.drag {
             window.start_drag_move();
