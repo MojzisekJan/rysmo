@@ -20,6 +20,10 @@ struct Paints {
     asphalt: MaterialId,
     marking: MaterialId,
     embers: MaterialId,
+    coping: MaterialId,
+    tile: MaterialId,
+    chrome: MaterialId,
+    taillight: MaterialId,
     firewood: MaterialId,
     bark: MaterialId,
     /// Autumn foliage, chosen per tree from its position.
@@ -424,8 +428,11 @@ fn chair(e: &mut Editor, at: DVec3, degrees: f64, p: &Paints) -> Result<()> {
     for (dx, dy) in [(-0.2, -0.2), (0.17, -0.2), (-0.2, 0.17), (0.17, 0.17)] {
         parts.push(cuboid(e, at + DVec3::new(dx, dy, 0.), at + DVec3::new(dx + 0.03, dy + 0.03, 0.45), p.steel)?);
     }
-    parts.push(cuboid(e, at + DVec3::new(-0.22, -0.22, 0.45), at + DVec3::new(0.22, 0.22, 0.5), p.oak)?);
-    parts.push(cuboid(e, at + DVec3::new(-0.22, 0.17, 0.5), at + DVec3::new(0.22, 0.22, 0.9), p.oak)?);
+    parts.push(rounded(e, at + DVec3::new(-0.22, -0.22, 0.45), at + DVec3::new(0.22, 0.22, 0.5), 0.05, p.oak)?);
+    parts.push(rounded(e, at + DVec3::new(-0.22, 0.17, 0.55), at + DVec3::new(0.22, 0.22, 0.9), 0.02, p.oak)?);
+    for x in [-0.2, 0.17] {
+        parts.push(cuboid(e, at + DVec3::new(x, 0.17, 0.5), at + DVec3::new(x + 0.03, 0.2, 0.55), p.steel)?);
+    }
     turn(e, &parts, at, degrees)
 }
 
@@ -453,14 +460,23 @@ fn raised(e: &mut Editor, dz: f64, build: impl FnOnce(&mut Editor) -> Result<()>
 }
 
 fn lounger(e: &mut Editor, at: DVec3, degrees: f64, p: &Paints) -> Result<()> {
-    let mut parts = vec![
-        cuboid(e, at + DVec3::new(-0.35, -0.95, 0.), at + DVec3::new(0.35, 0.95, 0.3), p.render)?,
-        rounded(e, at + DVec3::new(-0.32, -0.92, 0.3), at + DVec3::new(0.32, 0.4, 0.38), 0.08, p.cushion)?,
-    ];
-    let back = rounded(e, at + DVec3::new(-0.32, 0.4, 0.3), at + DVec3::new(0.32, 0.95, 0.38), 0.08, p.cushion)?;
+    let mut parts = Vec::new();
+    // Slim frame on four legs, with slats under the mattress.
+    for (x, y) in [(-0.33, -0.93), (0.29, -0.93), (-0.33, 0.89), (0.29, 0.89)] {
+        parts.push(cuboid(e, at + DVec3::new(x, y, 0.), at + DVec3::new(x + 0.04, y + 0.04, 0.26), p.steel)?);
+    }
+    for x in [-0.35, 0.31] {
+        parts.push(cuboid(e, at + DVec3::new(x, -0.95, 0.22), at + DVec3::new(x + 0.04, 0.95, 0.28), p.steel)?);
+    }
+    for i in 0..9 {
+        let y = -0.9 + i as f64 * 0.15;
+        parts.push(cuboid(e, at + DVec3::new(-0.31, y, 0.26), at + DVec3::new(0.31, y + 0.1, 0.28), p.oak)?);
+    }
+    parts.push(rounded(e, at + DVec3::new(-0.32, -0.92, 0.28), at + DVec3::new(0.32, 0.4, 0.36), 0.08, p.cushion)?);
+    let back = rounded(e, at + DVec3::new(-0.32, 0.4, 0.28), at + DVec3::new(0.32, 0.95, 0.36), 0.08, p.cushion)?;
     e.apply(Command::Rotate {
         elements: vec![Element::Instance(back)],
-        centre: at + DVec3::new(0., 0.4, 0.34),
+        centre: at + DVec3::new(0., 0.4, 0.32),
         axis: DVec3::X,
         angle: 50.,
         copies: 0,
@@ -556,7 +572,32 @@ fn car(e: &mut Editor, at: DVec3, p: &Paints) -> Result<()> {
     rounded(e, at + DVec3::new(-0.9, -2.3, 0.28), at + DVec3::new(0.9, 2.3, 0.95), 0.4, p.car)?;
     rounded(e, at + DVec3::new(-0.82, -1.2, 0.95), at + DVec3::new(0.82, 1.0, 1.42), 0.25, p.tinted)?;
     rounded(e, at + DVec3::new(-0.84, -1.1, 1.42), at + DVec3::new(0.84, 0.9, 1.48), 0.25, p.car)?;
+    // Lights, mirrors and bumpers.
+    for x in [-0.75, 0.45] {
+        rounded(e, at + DVec3::new(x, -2.32, 0.7), at + DVec3::new(x + 0.3, -2.28, 0.8), 0.03, p.cushion)?;
+        rounded(e, at + DVec3::new(x, 2.28, 0.72), at + DVec3::new(x + 0.3, 2.32, 0.82), 0.03, p.taillight)?;
+    }
+    for (x0, x1) in [(-1.0, -0.9), (0.9, 1.0)] {
+        rounded(e, at + DVec3::new(x0, -1.05, 0.95), at + DVec3::new(x1, -0.9, 1.05), 0.03, p.car)?;
+    }
+    rounded(e, at + DVec3::new(-0.86, -2.36, 0.3), at + DVec3::new(0.86, -2.28, 0.45), 0.06, p.dark)?;
+    rounded(e, at + DVec3::new(-0.86, 2.28, 0.3), at + DVec3::new(0.86, 2.36, 0.45), 0.06, p.dark)?;
     for (x, y) in [(-0.92, -1.45), (0.66, -1.45), (-0.92, 1.45), (0.66, 1.45)] {
+        // A chrome hub on the outer face of each wheel.
+        let outer = if x < 0. { x - 0.01 } else { x + 0.25 };
+        e.apply(Command::DrawPolygon {
+            centre: at + DVec3::new(outer, y, 0.34),
+            normal: DVec3::X,
+            radius: 0.18,
+            segments: 10,
+            start: None,
+        })?;
+        let mesh = e.mesh();
+        let face = mesh.faces().next().ok_or("no hub")?.0;
+        let sign = mesh.face_normal(face).ok_or("no normal")?.x.signum();
+        e.apply(Command::PushPull { face, distance: 0.02 * sign, keep_base: false })?;
+        let hub = group_loose(e)?;
+        paint(e, hub, p.chrome)?;
         e.apply(Command::DrawPolygon {
             centre: at + DVec3::new(x, y, 0.34),
             normal: DVec3::X,
@@ -575,7 +616,8 @@ fn car(e: &mut Editor, at: DVec3, p: &Paints) -> Result<()> {
 }
 
 fn parasol(e: &mut Editor, at: DVec3, p: &Paints) -> Result<()> {
-    column(e, at, 0.25, 0.08, 8, p.steel)?;
+    column(e, at, 0.25, 0.08, 16, p.steel)?;
+    column(e, at + DVec3::Z * 2.45, 0.04, 0.08, 8, p.steel)?;
     column(e, at, 0.03, 2.3, 6, p.steel)?;
     e.apply(Command::DrawPolygon {
         centre: at + DVec3::Z * 2.0,
@@ -617,6 +659,10 @@ fn main() -> Result<()> {
         marking: material(&mut e, "Yellow road marking", [0.95, 0.75, 0.12, 1.])?,
         embers: glowing(&mut e, "Embers", [1., 0.42, 0.12, 1.], 20000.)?,
         firewood: material(&mut e, "Firewood", [0.62, 0.45, 0.3, 1.])?,
+        coping: material(&mut e, "Coping stone", [0.82, 0.8, 0.75, 1.])?,
+        tile: material(&mut e, "Waterline tile", [0.12, 0.33, 0.5, 1.])?,
+        chrome: material(&mut e, "Chrome", [0.78, 0.8, 0.82, 1.])?,
+        taillight: material(&mut e, "Tail light", [0.7, 0.06, 0.05, 1.])?,
         bark: material(&mut e, "Bark", [0.35, 0.26, 0.18, 1.])?,
         autumn: [
             material(&mut e, "Orange leaves", [0.86, 0.45, 0.13, 1.])?,
@@ -663,6 +709,23 @@ fn main() -> Result<()> {
     let pad = [(-22., -18.), (20., -18.), (20., 8.6), (-22., 8.6)];
     let outline = pad.iter().map(|&(x, y)| DVec2::new(x, y) - origin.truncate()).collect();
     e.apply(Command::StampTerrainOutline { outline, offset: 5., height: 0. })?;
+    // A gentle bank around the south, east and west of the pool, so its stone surround sits
+    // slightly sunk into the lawn. The pool footprint, the house side and the deck stay flat.
+    let local = |x: f64, y: f64| DVec3::new(x, y, 0.) - origin;
+    let outside_pool = |q: DVec3| {
+        let q = q + origin;
+        let pool = (4.45..=18.55).contains(&q.x) && (-15.05..=-4.35).contains(&q.y);
+        let deck = (-14.2..=4.45).contains(&q.x) && (-10.8..=-4.).contains(&q.y);
+        !pool && !deck && q.y < -4.4
+    };
+    let vertices = e.mesh().vertices().filter(|(_, v)| outside_pool(v.pos)).map(|(id, _)| id).collect();
+    e.apply(Command::Smoove {
+        vertices,
+        centres: vec![local(4.5, -4.4), local(4.5, -15.), local(18.5, -15.), local(18.5, -4.4)],
+        radius: 4.5,
+        normal: DVec3::Z,
+        offset: DVec3::Z * 0.38,
+    })?;
     let edges = e.mesh().edges().map(|(edge, _)| edge).collect();
     e.apply(Command::SetEdges { edges, soft: Some(true), smooth: Some(true), hidden: None })?;
     let ground_points: Vec<DVec3> = e.mesh().vertices().map(|(_, v)| v.pos + origin).collect();
@@ -889,9 +952,37 @@ fn main() -> Result<()> {
     }
     paint(&mut e, pool_group, p.stone)?;
     e.apply(Command::Move { elements: vec![Element::Instance(pool_group)], offset: DVec3::Z * 0.02 })?;
+    // Entry steps with softened nosings.
     for (i, top) in [0.17, 0.34].into_iter().enumerate() {
-        let y = -12.5 + i as f64 * 0.0;
-        cuboid(&mut e, DVec3::new(6., y, 0.02), DVec3::new(7.6 - i as f64 * 0.5, y + 5., 0.02 + top), p.stone)?;
+        let x1 = 7.6 - i as f64 * 0.5;
+        rounded(&mut e, DVec3::new(6., -12.5, 0.02), DVec3::new(x1, -7.5, 0.02 + top), 0.04, p.coping)?;
+    }
+    // Coping: a slightly overhanging rim with rounded outer corners, in four pieces.
+    let (rim, lip, top) = (0.45, 0.04, 0.52);
+    for (a, b) in [
+        (DVec2::new(6. - rim, -12.5 - rim), DVec2::new(17. + rim, -12.5 + lip)),
+        (DVec2::new(6. - rim, -7.5 - lip), DVec2::new(17. + rim, -7.5 + rim)),
+        (DVec2::new(6. - rim, -12.5 + lip), DVec2::new(6. + lip, -7.5 - lip)),
+        (DVec2::new(17. - lip, -12.5 + lip), DVec2::new(17. + rim, -7.5 - lip)),
+    ] {
+        rounded(&mut e, a.extend(top), b.extend(top + 0.06), 0.03, p.coping)?;
+    }
+    // A band of waterline tiles on the inner walls, and a skimmer box at each end.
+    let band = (0.36, 0.5);
+    cuboid(&mut e, DVec3::new(6., -12.5, band.0), DVec3::new(17., -12.48, band.1), p.tile)?;
+    cuboid(&mut e, DVec3::new(6., -7.52, band.0), DVec3::new(17., -7.5, band.1), p.tile)?;
+    cuboid(&mut e, DVec3::new(16.98, -12.48, band.0), DVec3::new(17., -7.52, band.1), p.tile)?;
+    for x in [8.5, 14.5] {
+        rounded(&mut e, DVec3::new(x, -7.4, top + 0.06), DVec3::new(x + 0.3, -7.1, top + 0.065), 0.05, p.dark)?;
+    }
+    // A stainless ladder: two posts, curved over the coping as short segments, and rungs.
+    for x in [15.6, 16.1] {
+        column(&mut e, DVec3::new(x, -7.62, 0.1), 0.02, 0.62, 8, p.chrome)?;
+        cuboid(&mut e, DVec3::new(x - 0.02, -7.62, 0.7), DVec3::new(x + 0.02, -7.2, 0.74), p.chrome)?;
+        column(&mut e, DVec3::new(x, -7.2, top + 0.06), 0.02, 0.18, 8, p.chrome)?;
+    }
+    for z in [0.18, 0.34] {
+        rounded(&mut e, DVec3::new(15.6, -7.7, z), DVec3::new(16.1, -7.6, z + 0.03), 0.01, p.chrome)?;
     }
     for x in [9., 10.8, 12.6, 14.4] {
         lounger(&mut e, DVec3::new(x, -5.6, 0.52), 0., &p)?;
@@ -917,6 +1008,7 @@ fn main() -> Result<()> {
     }
     for i in 0..7 {
         let a = DVec3::new(-1.5 + i as f64 * 1.15, -11.4 - i as f64 * 0.9, 0.);
+        let a = DVec3::new(a.x, a.y, ground_at(a.x + 0.45, a.y + 0.3));
         rounded(&mut e, a, a + DVec3::new(0.9, 0.6, 0.06), 0.22, p.paving)?;
     }
     for (x, y, size) in
