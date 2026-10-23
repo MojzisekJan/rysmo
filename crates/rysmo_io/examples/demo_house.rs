@@ -3385,10 +3385,8 @@ fn main() -> Result<()> {
     doc.style.ambient_occlusion = true;
     doc.style.edges = false;
     doc.style.tone_mapping = rysmo_model::ToneMapping::AgX;
-    // The panorama lights the shade strongly, so the sun is turned up and the sky's fill
-    // down for shadows that read; the exposure then suits the sunlit model.
-    doc.style.sun_intensity = 4.;
-    doc.style.ambient_intensity = 0.25;
+    doc.style.sun_intensity = 1.;
+    doc.style.ambient_intensity = 1.;
     doc.style.exposure = std::env::var("DEMO_EXPOSURE").ok().and_then(|x| x.parse().ok()).unwrap_or(0.);
     doc.style.atmosphere = true;
     doc.style.ground = true;
