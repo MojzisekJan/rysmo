@@ -44,6 +44,24 @@ const SUN_EV100: f32 = 12.0;
 /// Whether this build can do ambient occlusion and temporal anti-aliasing.
 pub const ADVANCED: bool = !cfg!(target_arch = "wasm32");
 
+/// Whether the 3D camera renders in HDR: the atmosphere, or bloom around glowing materials.
+pub fn needs_hdr(app: &App3d) -> bool {
+    let style = &app.editor.doc().style;
+    let sun = style.lighting == Lighting::Sun;
+    let atmosphere = style.atmosphere && sun && ADVANCED && !app.features.photo.active;
+    let bloom = style.lighting != Lighting::Flat
+        && cfg!(not(target_arch = "wasm32"))
+        && app.editor.doc().materials.values().any(|m| m.glow > 0.0);
+    atmosphere || bloom
+}
+
+/// Whether the 3D view renders offscreen and egui composites it under the interface. An HDR
+/// camera cannot share the window with the egui camera: Bevy would give the overlay its own
+/// never-cleared intermediate texture, freezing the 3D view and leaving old tooltips behind.
+pub fn offscreen(app: &App3d) -> bool {
+    (app.editor.doc().style.render_scale - 1.).abs() > 0.001 || app.features.photo.active || needs_hdr(app)
+}
+
 pub fn plugin(app: &mut App) {
     app.add_systems(Startup, (setup, crate::studio::setup))
         .add_systems(PostUpdate, (apply_style.in_set(ApplyStyle), follow_camera).before(TransformSystems::Propagate));

@@ -149,11 +149,8 @@ fn sync_camera(
 ) {
     // Cameras compositing onto the same window must agree on multisampling.
     // Offscreen 3D targets are resolved before egui draws their image.
-    let samples = if (app.editor.doc().style.render_scale - 1.).abs() > 0.001 || app.features.photo.active {
-        Msaa::Off
-    } else {
-        main_samples.single().copied().unwrap_or(Msaa::Off)
-    };
+    let samples =
+        if crate::render::offscreen(&app) { Msaa::Off } else { main_samples.single().copied().unwrap_or(Msaa::Off) };
     for mut overlay in &mut overlays {
         if *overlay != samples {
             *overlay = samples;
@@ -173,7 +170,7 @@ fn sync_camera(
         let position =
             UVec2::new(origin.x.max(0.).round() as u32, origin.y.max(0.).round() as u32).min(target - UVec2::ONE);
         let size = UVec2::new(size.x.max(1.).round() as u32, size.y.max(1.).round() as u32).min(target - position);
-        if (app.editor.doc().style.render_scale - 1.).abs() > 0.001 || app.features.photo.active {
+        if crate::render::offscreen(&app) {
             let rendered = crate::render_view::target_size(size, app.editor.doc().style.render_scale);
             if images.get(&target_image.image).is_some_and(|i| {
                 i.texture_descriptor.size.width != rendered.x || i.texture_descriptor.size.height != rendered.y
@@ -468,7 +465,7 @@ fn sync_section_settings(
     cameras: Query<&Camera, With<MainCamera>>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
 ) {
-    let factor = if (app.editor.doc().style.render_scale - 1.).abs() > 0.001 || app.features.photo.active {
+    let factor = if crate::render::offscreen(&app) {
         let native = app.canvas_size().x as f32 * windows.single().map_or(1., |w| w.resolution.scale_factor());
         cameras
             .single()

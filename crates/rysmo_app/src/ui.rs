@@ -335,7 +335,7 @@ fn panels(
     let canvas = root.available_rect_before_wrap();
     crate::theme::set_model_area(ctx, canvas);
     crate::features::photo::canvas(ctx, &mut root, canvas, &mut app);
-    if (app.editor.doc().style.render_scale - 1.).abs() > 0.001 || app.features.photo.active {
+    if crate::render::offscreen(&app) {
         let texture = contexts.add_image(bevy_egui::EguiTextureHandle::Strong(render_view.image.clone()));
         root.painter().image(
             texture,
