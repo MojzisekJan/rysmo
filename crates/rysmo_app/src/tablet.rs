@@ -83,6 +83,16 @@ const TABS: &[(&str, &str)] = &[
     ("Sections", "Section Planes"),
 ];
 
+/// Icons for the side panel's tabs, in the order of `TABS`.
+const TAB_ICONS: [&str; 6] = [
+    crate::menu::glyph::SLIDERS_HORIZONTAL,
+    crate::menu::glyph::PALETTE,
+    crate::menu::glyph::TAG,
+    crate::menu::glyph::CUBE,
+    crate::menu::glyph::FILM_STRIP,
+    crate::menu::glyph::SCISSORS,
+];
+
 fn tab_flag(app: &mut App3d, index: usize) -> &mut bool {
     match index {
         0 => &mut app.show_entity_info,
@@ -188,26 +198,61 @@ pub fn desktop_sidebar(root: &mut egui::Ui, app: &mut App3d, rects: &mut Vec<egu
             .size_range(280_f32..=(free.width() * 0.5).max(300.))
             .resizable(true)
             .show(root, |ui| {
-                ui.horizontal(|ui| {
-                    // Tabs wrap onto a second row when the panel is narrow.
-                    let close = 28.;
-                    ui.allocate_ui(egui::vec2(ui.available_width() - close, 0.), |ui| {
-                        ui.horizontal_wrapped(|ui| {
-                            ui.spacing_mut().item_spacing = egui::vec2(2., 4.);
-                            for (i, (label, _)) in TABS.iter().enumerate() {
-                                if crate::icons::tab(ui, label, st.tab == i).clicked() {
-                                    *tab_flag(app, st.tab) = false;
-                                    st.tab = i;
-                                    *tab_flag(app, i) = true;
-                                }
-                            }
-                        });
-                    });
-                    let x = egui::Button::new(egui::RichText::new(crate::menu::glyph::X).size(14.)).frame(false);
-                    if ui.add_sized(egui::vec2(close - 4., 24.), x).on_hover_text("Close panel").clicked() {
+                // One row of equal icon tabs with the panel's close button, then the tab's title.
+                let row = egui::vec2(ui.available_width(), 34.);
+                let (strip, _) = ui.allocate_exact_size(row, egui::Sense::hover());
+                let close = egui::Rect::from_min_size(strip.right_top() - egui::vec2(30., 0.), egui::vec2(30., 34.));
+                let tabs = egui::Rect::from_min_max(strip.min, egui::pos2(close.left() - 6., strip.max.y));
+                ui.painter().rect_filled(tabs, 8., ui.visuals().extreme_bg_color);
+                let cell = tabs.width() / TABS.len() as f32;
+                for (i, (label, _)) in TABS.iter().enumerate() {
+                    let r =
+                        egui::Rect::from_min_size(tabs.min + egui::vec2(cell * i as f32, 0.), egui::vec2(cell, 34.))
+                            .shrink(3.);
+                    let response = ui
+                        .interact(r, ui.scope_id().with(("sidebar-tab", i)), egui::Sense::click())
+                        .on_hover_text(*label);
+                    let selected = st.tab == i;
+                    let fill = if selected {
+                        ui.visuals().widgets.active.bg_fill
+                    } else if response.hovered() {
+                        ui.visuals().widgets.hovered.weak_bg_fill
+                    } else {
+                        egui::Color32::TRANSPARENT
+                    };
+                    ui.painter().rect_filled(r, 6., fill);
+                    let color = if selected { egui::Color32::WHITE } else { ui.visuals().text_color() };
+                    ui.painter().text(
+                        r.center(),
+                        egui::Align2::CENTER_CENTER,
+                        TAB_ICONS[i],
+                        egui::FontId::proportional(17.),
+                        color,
+                    );
+                    if response.clicked() {
                         *tab_flag(app, st.tab) = false;
+                        st.tab = i;
+                        *tab_flag(app, i) = true;
                     }
-                });
+                }
+                let x = ui
+                    .interact(close, ui.scope_id().with("sidebar-close"), egui::Sense::click())
+                    .on_hover_text("Close panel");
+                if x.hovered() {
+                    ui.painter().rect_filled(close.shrink(3.), 6., ui.visuals().widgets.hovered.weak_bg_fill);
+                }
+                ui.painter().text(
+                    close.center(),
+                    egui::Align2::CENTER_CENTER,
+                    crate::menu::glyph::X,
+                    egui::FontId::proportional(15.),
+                    ui.visuals().text_color(),
+                );
+                if x.clicked() {
+                    *tab_flag(app, st.tab) = false;
+                }
+                ui.add_space(8.);
+                ui.label(egui::RichText::new(TABS[st.tab].0).size(15.).strong());
                 ui.add_space(6.);
                 let rect = ui.available_rect_before_wrap();
                 crate::theme::dock(ui.ctx(), TABS[st.tab].1, rect);

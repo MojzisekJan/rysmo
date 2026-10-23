@@ -119,7 +119,14 @@ impl<'a> Window<'a> {
     ) -> Option<egui::InnerResponse<Option<R>>> {
         if let Some(dock) = docked(ctx, &self.key) {
             // A tablet sidebar tab: fill the sidebar and keep the floating layout untouched.
-            let window = self.inner.fixed_rect(dock).title_bar(false).resizable(false).movable(false);
+            // Docked content sits directly on the panel, without a second window frame.
+            let window = self
+                .inner
+                .fixed_rect(dock)
+                .title_bar(false)
+                .resizable(false)
+                .movable(false)
+                .frame(egui::Frame::new().inner_margin(egui::Margin::symmetric(2, 4)));
             return window.constrain_to(dock).show(ctx, contents);
         }
         // Keep floating windows clear of the toolbars and status bar unless the model area is too small.

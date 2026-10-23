@@ -156,6 +156,9 @@ pub(crate) fn slot_button(ui: &mut egui::Ui, app: &mut App3d, slot: &Slot, icon_
     }
 }
 
+/// Inner height of toolbar trays: a 20-point icon button.
+const TRAY_HEIGHT: f32 = 34.;
+
 /// A rounded tray grouping related tool buttons.
 fn tool_tray(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
     egui::Frame::new()
@@ -164,7 +167,9 @@ fn tool_tray(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
         .inner_margin(egui::Margin::symmetric(4, 3))
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing = egui::vec2(2., 2.);
-            ui.horizontal(add);
+            // A fixed inner height keeps every tray, and what sits in it, on one centre line.
+            ui.set_height(TRAY_HEIGHT);
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), add);
         });
 }
 
@@ -262,18 +267,27 @@ fn panels(
                         });
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let panel_open = crate::tablet::sidebar_open(&mut app);
-                        let text = if panel_open { "Hide panel" } else { "Show panel" };
-                        let panels = egui::Button::new(menu::label(menu::glyph::SIDEBAR_SIMPLE, text))
-                            .min_size(egui::vec2(0., 28.));
-                        if ui.add(panels).on_hover_text("Show or hide the side panel").clicked() {
-                            crate::tablet::toggle_sidebar(&mut app, ui.ctx());
-                        }
-                        let search = egui::Button::new(menu::label(menu::glyph::MAGNIFYING_GLASS, "Search commands"))
-                            .min_size(egui::vec2(0., 28.));
-                        if ui.add(search).on_hover_text("Shift+S").clicked() {
-                            crate::command_search::open(&mut app);
-                        }
+                        tool_tray(ui, |ui| {
+                            let search =
+                                egui::Button::new(menu::label(menu::glyph::MAGNIFYING_GLASS, "Search commands"))
+                                    .frame(false)
+                                    .min_size(egui::vec2(0., TRAY_HEIGHT));
+                            if ui.add(search).on_hover_text("Shift+S").clicked() {
+                                crate::command_search::open(&mut app);
+                            }
+                            ui.add_space(6.);
+                            ui.separator();
+                            ui.add_space(6.);
+                            let panel_open = crate::tablet::sidebar_open(&mut app);
+                            let text = if panel_open { "Hide panel" } else { "Show panel" };
+                            let panels = egui::Button::new(menu::label(menu::glyph::SIDEBAR_SIMPLE, text))
+                                .frame(false)
+                                .min_size(egui::vec2(0., TRAY_HEIGHT));
+                            if ui.add(panels).on_hover_text("Show or hide the side panel").clicked() {
+                                crate::tablet::toggle_sidebar(&mut app, ui.ctx());
+                            }
+                            ui.add_space(4.);
+                        });
                     });
                 });
             });
@@ -287,77 +301,87 @@ fn panels(
             let options = egui::Panel::top("tool-options").show(&mut root, |ui| crate::tool_panel::panel(ui, &mut app));
             rects.push(options.response.rect);
         }
-        let bottom = egui::Panel::bottom("status").show(&mut root, |ui| {
-            if touch {
-                ui.horizontal(|ui| {
-                    for (label, which) in [("Shift", 0), ("Ctrl", 1), ("Alt", 2)] {
-                        let on = [app.touch.shift, app.touch.ctrl, app.touch.alt][which];
-                        let b = egui::Button::new(egui::RichText::new(label).size(16.0))
-                            .selected(on)
-                            .min_size(egui::vec2(56.0, 32.0));
-                        if ui.add(b).clicked() {
-                            match which {
-                                0 => {
-                                    app.touch.shift = !on;
-                                    tool_key(&mut app, Key::Shift(!on));
+        let bottom = egui::Panel::bottom("status")
+            .frame(egui::Frame::new().fill(root.visuals().panel_fill).inner_margin(egui::Margin::symmetric(10, 5)))
+            .show(&mut root, |ui| {
+                if touch {
+                    ui.horizontal(|ui| {
+                        for (label, which) in [("Shift", 0), ("Ctrl", 1), ("Alt", 2)] {
+                            let on = [app.touch.shift, app.touch.ctrl, app.touch.alt][which];
+                            let b = egui::Button::new(egui::RichText::new(label).size(16.0))
+                                .selected(on)
+                                .min_size(egui::vec2(56.0, 32.0));
+                            if ui.add(b).clicked() {
+                                match which {
+                                    0 => {
+                                        app.touch.shift = !on;
+                                        tool_key(&mut app, Key::Shift(!on));
+                                    }
+                                    1 => app.touch.ctrl = !on,
+                                    _ => app.touch.alt = !on,
                                 }
-                                1 => app.touch.ctrl = !on,
-                                _ => app.touch.alt = !on,
                             }
                         }
-                    }
-                });
-            }
-            ui.horizontal(|ui| {
-                let status = app.status();
-                let (vcb_label, hint) = measurement_label(&app);
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let field_width: f32 =
-                        if matches!(app.tools.active(), ToolKind::Rectangle | ToolKind::RotatedRectangle) {
-                            270.
-                        } else {
-                            170.
-                        };
-                    let edit = crate::theme::singleline(&mut app.vcb)
-                        .hint_text(hint)
-                        .desired_width(field_width.min((ui.available_width() * 0.4).max(90.)))
-                        .font(egui::TextStyle::Monospace);
-                    let r = ui.add(edit);
-                    if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                        apply_vcb(&mut app);
-                    }
-                    ui.label(vcb_label);
-                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                        if ui
-                            .add(egui::Button::new(app.tools.active().name()).frame(false))
-                            .on_hover_text("Help for the active tool")
-                            .clicked()
-                        {
-                            crate::help::open_current(&mut app);
+                    });
+                }
+                // One row, everything centred on the same line; the field keeps a visible edge.
+                ui.horizontal_centered(|ui| {
+                    ui.set_min_height(30.);
+                    let status = app.status();
+                    let (vcb_label, hint) = measurement_label(&app);
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let field_width: f32 =
+                            if matches!(app.tools.active(), ToolKind::Rectangle | ToolKind::RotatedRectangle) {
+                                270.
+                            } else {
+                                170.
+                            };
+                        let edit = crate::theme::singleline(&mut app.vcb)
+                            .background_color(ui.visuals().extreme_bg_color)
+                            .hint_text(hint)
+                            .desired_width(field_width.min((ui.available_width() * 0.4).max(90.)))
+                            .font(egui::TextStyle::Monospace);
+                        let r = ui.add(edit);
+                        if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                            apply_vcb(&mut app);
                         }
-                        if ui.available_width() > 420. {
-                            let selected = app.editor.selection().len();
-                            if ui.small_button(format!("{selected} selected")).clicked() {
-                                app.show_entity_info = true;
-                                app.inspector_tab = 1;
+                        ui.label(vcb_label);
+                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                            if ui
+                                .add(egui::Button::new(app.tools.active().name()).frame(false))
+                                .on_hover_text("Help for the active tool")
+                                .clicked()
+                            {
+                                crate::help::open_current(&mut app);
                             }
-                            if ui.small_button(app.editor.doc().units.suffix()).on_hover_text("Model units").clicked() {
-                                app.show_settings = true;
-                                app.settings_tab = 1;
+                            if ui.available_width() > 420. {
+                                let selected = app.editor.selection().len();
+                                if ui.small_button(format!("{selected} selected")).clicked() {
+                                    app.show_entity_info = true;
+                                    app.inspector_tab = 1;
+                                }
+                                if ui
+                                    .small_button(app.editor.doc().units.suffix())
+                                    .on_hover_text("Model units")
+                                    .clicked()
+                                {
+                                    app.show_settings = true;
+                                    app.settings_tab = 1;
+                                }
                             }
-                        }
-                        if app.editor.is_dirty() {
-                            ui.label(egui::RichText::new("●").color(crate::theme::ACCENT))
-                                .on_hover_text("Unsaved changes");
-                        }
-                        if app.message.is_some() && ui.small_button("×").on_hover_text("Dismiss message").clicked() {
-                            app.message = None;
-                        }
-                        ui.add(egui::Label::new(&status).truncate()).on_hover_text(&status);
+                            if app.editor.is_dirty() {
+                                ui.label(egui::RichText::new("●").color(crate::theme::ACCENT))
+                                    .on_hover_text("Unsaved changes");
+                            }
+                            if app.message.is_some() && ui.small_button("×").on_hover_text("Dismiss message").clicked()
+                            {
+                                app.message = None;
+                            }
+                            ui.add(egui::Label::new(&status).truncate()).on_hover_text(&status);
+                        });
                     });
                 });
             });
-        });
         rects.push(bottom.response.rect);
         let columns = if root.available_rect_before_wrap().height() < if touch { 410. } else { 370. } { 4 } else { 2 };
         let palette_width = columns as f32 * (if touch { 40. } else { 36. }) + (columns - 1) as f32 * 3. + 16.;
