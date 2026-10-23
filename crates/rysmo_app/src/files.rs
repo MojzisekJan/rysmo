@@ -119,7 +119,7 @@ fn stem(app: &App3d) -> String {
         .as_ref()
         .and_then(|p| p.file_stem())
         .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| "model".into())
+        .unwrap_or_else(|| "Untitled".into())
 }
 
 pub(crate) fn document_text(app: &mut App3d) -> String {
