@@ -78,6 +78,10 @@ impl Setup {
             DVec3::new(p.x / focal, -p.y / focal, -1.)
         };
         let eye = inverse * (-ray(self.origin));
+        // Mirrored direction choices solve the same image from underneath the ground plane.
+        if eye.z <= 0. {
+            return Err("These directions place the camera below the ground. Toggle Reverse X or Reverse Y.".into());
+        }
         let direction = inverse * ray(self.reference);
         if direction.z.abs() < 1e-8 {
             return Err("Reference segment is on the horizon; choose a visible ground-plane length.".into());
@@ -134,11 +138,16 @@ mod tests {
         setup.reference_length = 2.;
         // Resolve the sign ambiguity of vanishing points using the image's axis directions.
         let mut solved = None;
+        let mut rejected = 0;
         for x in [false, true] {
             for y in [false, true] {
                 setup.flip_x = x;
                 setup.flip_y = y;
-                let camera = setup.camera().unwrap();
+                let Ok(camera) = setup.camera() else {
+                    rejected += 1;
+                    continue;
+                };
+                assert!(camera.eye().z > 0.);
                 let p = camera.view(size).project(DVec3::X).unwrap() / size;
                 if p.distance(project(DVec3::X)) < 1e-8 && camera.eye().distance(source.eye()) < 1e-7 {
                     solved = Some(camera);
@@ -146,6 +155,8 @@ mod tests {
             }
         }
         let solved = solved.expect("one orientation recovers the source camera");
+        // The two mirrored orientations would put the camera underground.
+        assert_eq!(rejected, 2);
         for point in [DVec3::ZERO, DVec3::X, DVec3::Y, DVec3::Z, DVec3::new(1., 2., 3.)] {
             assert!((solved.view(size).project(point).unwrap() - view.project(point).unwrap()).length() < 1e-6);
         }

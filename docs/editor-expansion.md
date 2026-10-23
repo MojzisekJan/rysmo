@@ -66,7 +66,8 @@ Camera → Photo matching loads a photograph with two red and two green perspect
 lines, an orange origin marker and a blue reference endpoint. Match the line pairs
 to two perpendicular ground-plane directions. Set the measured distance between
 origin and reference in metres; Reverse X/Y resolves direction ambiguity. Apply
-calibrates the camera and composites the model over the photograph. Orbit, pan or
+calibrates the camera and composites the model over the photograph. Direction choices
+that would place the camera below the ground are rejected; toggle Reverse X or Y. Orbit, pan or
 zoom detaches the photo; Apply restores its matched view. Guides and the original
 image are saved in the project and participate in Undo.
 

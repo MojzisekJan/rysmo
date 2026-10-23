@@ -38,7 +38,7 @@ static TOPICS: &[Topic] = &[
         title: "Photo matching",
         category: "Navigation",
         icon: None,
-        body: "Camera > Photo matching loads a PNG/JPEG photograph. Align two red lines with parallel X edges and two green lines with perpendicular Y edges. Orange sets the model origin; blue sets the other endpoint of a known ground-plane distance. Set that length in metres and use Reverse X/Y to resolve direction. Apply calibrates the camera and displays geometry over the photo. Orbit, pan or zoom detaches the background; Apply restores it. Original photo and guides are saved. Calibration assumes image-centred principal point, square pixels and negligible distortion. Cropped or nearly orthographic photos can fail.",
+        body: "Camera > Photo matching loads a PNG/JPEG photograph. Align two red lines with parallel X edges and two green lines with perpendicular Y edges. Orange sets the model origin; blue sets the other endpoint of a known ground-plane distance. Set that length in metres and use Reverse X/Y to resolve direction; Apply rejects directions that would put the camera below the ground. Apply calibrates the camera and displays geometry over the photo. Orbit, pan or zoom detaches the background; Apply restores it. Original photo and guides are saved. Calibration assumes image-centred principal point, square pixels and negligible distortion. Cropped or nearly orthographic photos can fail.",
     },
     Topic {
         title: "Material surface response",
