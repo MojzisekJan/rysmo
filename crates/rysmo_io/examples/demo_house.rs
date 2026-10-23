@@ -193,6 +193,11 @@ fn crown(e: &mut Editor, centre: DVec3, radius: f64, up: f64, down: f64, sides: 
         taper(e, -1., 0.3)?;
     }
     let group = group_loose(e)?;
+    // Smooth shading turns the faceted prism into a soft, organic mass.
+    e.enter(group)?;
+    let edges = e.mesh().edges().map(|(edge, _)| edge).collect();
+    e.apply(Command::SetEdges { edges, soft: Some(true), smooth: Some(true), hidden: None })?;
+    e.exit();
     paint(e, group, colour)?;
     Ok(())
 }
@@ -220,8 +225,14 @@ fn pick(at: DVec3, count: usize) -> usize {
 
 fn tree(e: &mut Editor, foot: DVec3, size: f64, p: &Paints) -> Result<()> {
     column(e, foot, 0.12 * size, 2.4 * size, 6, p.bark)?;
-    let leaves = p.autumn[pick(foot, p.autumn.len())];
-    crown(e, foot + DVec3::Z * 3.4 * size, 1.6 * size, 2.2 * size, 1.4 * size, 8, leaves)?;
+    // A main crown with two smaller clusters, in neighbouring autumn colours.
+    let first = pick(foot, p.autumn.len());
+    crown(e, foot + DVec3::Z * 3.4 * size, 1.6 * size, 2.2 * size, 1.4 * size, 14, p.autumn[first])?;
+    for (k, (dx, dy, dz, r)) in [(0.9, 0.5, 2.9, 0.95), (-0.8, -0.6, 3.6, 0.85)].into_iter().enumerate() {
+        let colour = p.autumn[(first + k + 1) % p.autumn.len()];
+        let at = foot + DVec3::new(dx, dy, dz) * size;
+        crown(e, at, r * size, 1.3 * size, 0.8 * size, 12, colour)?;
+    }
     // Fallen leaves scattered under the crown, denser near the trunk.
     let mut random = Random((foot.x * 1000.) as i64 as u64 ^ ((foot.y * 1000.) as i64 as u64).rotate_left(32));
     for _ in 0..18 {
@@ -246,7 +257,7 @@ fn leaf(e: &mut Editor, at: DVec3, random: &mut Random, colour: MaterialId) -> R
 
 /// A pumpkin: a ribbed, flattened low-poly crown with a stalk.
 fn pumpkin(e: &mut Editor, foot: DVec3, size: f64, p: &Paints) -> Result<()> {
-    crown(e, foot + DVec3::Z * 0.12 * size, 0.24 * size, 0.18 * size, 0.12 * size, 10, p.pumpkin)?;
+    crown(e, foot + DVec3::Z * 0.12 * size, 0.24 * size, 0.18 * size, 0.12 * size, 16, p.pumpkin)?;
     column(e, foot + DVec3::Z * 0.28 * size, 0.025 * size, 0.07 * size, 5, p.bark)?;
     Ok(())
 }
@@ -258,7 +269,7 @@ fn conifer(e: &mut Editor, foot: DVec3, size: f64, p: &Paints) -> Result<()> {
             centre: foot + DVec3::Z * level * size,
             normal: DVec3::Z,
             radius: radius * size,
-            segments: 8,
+            segments: 14,
             start: None,
         })?;
         let face = cap(e, 1.).or_else(|_| cap(e, -1.))?;
@@ -266,6 +277,10 @@ fn conifer(e: &mut Editor, foot: DVec3, size: f64, p: &Paints) -> Result<()> {
         e.apply(Command::PushPull { face, distance: 1.6 * size * sign, keep_base: false })?;
         taper(e, 1., 0.08)?;
         let group = group_loose(e)?;
+        e.enter(group)?;
+        let edges = e.mesh().edges().map(|(edge, _)| edge).collect();
+        e.apply(Command::SetEdges { edges, soft: Some(true), smooth: Some(true), hidden: None })?;
+        e.exit();
         paint(e, group, p.conifer)?;
     }
     Ok(())
@@ -274,7 +289,7 @@ fn conifer(e: &mut Editor, foot: DVec3, size: f64, p: &Paints) -> Result<()> {
 fn bush(e: &mut Editor, foot: DVec3, size: f64, p: &Paints) -> Result<()> {
     // Some shrubs turn red in autumn, the rest stay olive.
     let colour = if pick(foot, 3) == 0 { p.autumn[1] } else { p.hedge };
-    crown(e, foot + DVec3::Z * 0.25 * size, 0.7 * size, 0.6 * size, 0.2 * size, 7, colour)
+    crown(e, foot + DVec3::Z * 0.25 * size, 0.7 * size, 0.6 * size, 0.2 * size, 12, colour)
 }
 
 /// Boards laid side by side across a rectangle, running along X or Y.
@@ -1144,7 +1159,7 @@ fn main() -> Result<()> {
     cybertruck(&mut e, DVec3::new(-17.5, -1.5, 0.05), &p)?;
     for i in 0..9 {
         let y = -28. + i as f64 * 3.2;
-        cuboid(&mut e, DVec3::new(-21.4, y, 0.), DVec3::new(-20.4, y + 2.9, 1.3), p.hedge)?;
+        rounded(&mut e, DVec3::new(-21.4, y, 0.), DVec3::new(-20.4, y + 2.9, 1.3), 0.35, p.hedge)?;
         cuboid(&mut e, DVec3::new(-14.8, y + 1.4, 0.), DVec3::new(-14.65, y + 1.55, 0.6), p.dark)?;
         cuboid(&mut e, DVec3::new(-14.8, y + 1.4, 0.6), DVec3::new(-14.65, y + 1.55, 0.7), p.lamp)?;
     }
