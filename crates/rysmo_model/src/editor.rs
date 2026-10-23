@@ -12,6 +12,9 @@ use crate::{command, dimensions, text};
 struct Step {
     label: String,
     before: Document,
+    /// Whether the command itself moved the camera. Otherwise Undo/Redo keep the current
+    /// view, which saves record in the document without adding history.
+    camera: bool,
 }
 
 /// A document being edited: history, selection, the editing context, and a revision
@@ -467,7 +470,8 @@ impl Editor {
                 if outcome.changed {
                     self.doc.refresh_dimensions();
                     self.doc.refresh_texts();
-                    self.undo.push(Step { label, before });
+                    let camera = before.camera != self.doc.camera;
+                    self.undo.push(Step { label, before, camera });
                     if self.undo.len() > UNDO_LIMIT {
                         self.undo.remove(0);
                     }
@@ -536,19 +540,27 @@ impl Editor {
     }
 
     pub fn undo(&mut self) -> bool {
-        let Some(step) = self.undo.pop() else { return false };
-        let after = std::mem::replace(&mut self.doc, step.before);
-        self.redo.push(Step { label: step.label, before: after });
+        let Some(Step { label, before, camera }) = self.undo.pop() else { return false };
+        let after = self.restore(before, camera);
+        self.redo.push(Step { label, before: after, camera });
         self.after_history_move();
         true
     }
 
     pub fn redo(&mut self) -> bool {
-        let Some(step) = self.redo.pop() else { return false };
-        let before = std::mem::replace(&mut self.doc, step.before);
-        self.undo.push(Step { label: step.label, before });
+        let Some(Step { label, before: after, camera }) = self.redo.pop() else { return false };
+        let before = self.restore(after, camera);
+        self.undo.push(Step { label, before, camera });
         self.after_history_move();
         true
+    }
+
+    /// Installs a history snapshot and returns the replaced document.
+    fn restore(&mut self, mut snapshot: Document, camera: bool) -> Document {
+        if !camera {
+            snapshot.camera = self.doc.camera;
+        }
+        std::mem::replace(&mut self.doc, snapshot)
     }
 
     fn after_history_move(&mut self) {

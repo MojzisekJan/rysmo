@@ -122,3 +122,27 @@ fn commands_are_json() {
     let erase: Command = serde_json::from_str(r#"{"op":"erase","elements":[{"kind":"edge","id":3}]}"#).unwrap();
     assert_eq!(erase, Command::Erase { elements: vec![Element::Edge(EdgeId(3))] });
 }
+
+#[test]
+fn undo_keeps_the_current_view_unless_the_command_moved_the_camera() {
+    let mut e = Editor::new();
+    let start = rysmo_math::OrbitCamera { distance: 10.0, ..Default::default() };
+    e.set_camera(start);
+    rect(&mut e);
+    // A save records a later view in the document without adding history.
+    let later = rysmo_math::OrbitCamera { distance: 3.0, ..Default::default() };
+    e.set_camera(later);
+    assert!(e.undo());
+    assert_eq!(e.doc().camera, Some(later));
+    assert!(e.redo());
+    assert_eq!(e.doc().camera, Some(later));
+
+    // Resizing the whole model scales the camera with it, so Undo restores that camera.
+    e.apply(Command::ResizeContext { factor: 2.0 }).unwrap();
+    let scaled = e.doc().camera;
+    assert_ne!(scaled, Some(later));
+    assert!(e.undo());
+    assert_eq!(e.doc().camera, Some(later));
+    assert!(e.redo());
+    assert_eq!(e.doc().camera, scaled);
+}
