@@ -289,6 +289,7 @@ fn assemble(polygons: Vec<Polygon>, shift: DVec3, styles: &[(DVec3, DVec3, Edge)
         })
         .collect::<Vec<_>>();
     mesh.set_edge_flags(&soft, Some(true), Some(false), None);
+    let seams: std::collections::BTreeSet<_> = soft.into_iter().collect();
     let mut style_budget = 16_000_000usize;
     let mut matched = Vec::new();
     for (id, _) in mesh.edges() {
@@ -304,7 +305,10 @@ fn assemble(polygons: Vec<Polygon>, shift: DVec3, styles: &[(DVec3, DVec3, Edge)
         }
     }
     for (id, style) in matched {
-        mesh.set_edge_flags(&[id], Some(style.soft), Some(style.smooth), Some(style.hidden));
+        // A source edge that now lies inside one plane is a seam; keep it soft.
+        if !seams.contains(&id) {
+            mesh.set_edge_flags(&[id], Some(style.soft), Some(style.smooth), Some(style.hidden));
+        }
         mesh.paint_edge(id, style.material).map_err(CommandError::from)?;
     }
     Ok(mesh)
@@ -499,6 +503,23 @@ mod tests {
     fn volume(e: &Editor, id: InstanceId) -> f64 {
         let instance = &e.active().instances[&id];
         crate::solid_validation::validate(&e.doc().definitions[&instance.definition].mesh, false).unwrap()
+    }
+    #[test]
+    fn union_of_aligned_boxes_keeps_former_source_edges_soft_inside_merged_faces() {
+        let mut e = Editor::new();
+        let a = cube(&mut e, DVec3::ZERO, DVec3::splat(2.));
+        let b = cube(&mut e, DVec3::X, DVec3::splat(2.));
+        let out = e
+            .apply(Command::SolidBoolean { left: a, right: b, operation: BooleanOp::Union, keep_inputs: false })
+            .unwrap();
+        let Element::Instance(result) = out.created[0] else { panic!() };
+        let mesh = &e.doc().definitions[&e.active().instances[&result].definition].mesh;
+        for (id, edge) in mesh.edges() {
+            let faces = mesh.faces_of_edge(id);
+            let coplanar = faces.len() == 2
+                && mesh.face_normal(faces[0]).unwrap().dot(mesh.face_normal(faces[1]).unwrap()) > 1. - 1e-8;
+            assert_eq!(edge.soft, coplanar, "{:?}", mesh.edge_points(id));
+        }
     }
     #[test]
     fn overlapping_boxes_boolean_volumes_and_undo() {
