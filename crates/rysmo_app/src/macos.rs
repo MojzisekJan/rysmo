@@ -10,7 +10,6 @@ pub const BORDER: Color32 = Color32::from_rgb(0x4a, 0x4a, 0x4d);
 pub const TEXT: Color32 = Color32::from_rgb(0xe8, 0xe8, 0xea);
 
 /// The size of a menu's text and icons.
-pub const MENU_TEXT: f32 = 13.;
 pub const MENU_ICON: f32 = 15.;
 
 /// Width of the traffic-light buttons the transparent title bar draws over the menu row.

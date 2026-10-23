@@ -18,37 +18,43 @@ pub fn show(ctx: &egui::Context, app: &mut App3d) -> bool {
     let margin = if content.width() < 600. { 16 } else { 24 };
     // The macOS title bar is transparent; keep its strip clear for the traffic lights.
     let title = if cfg!(target_os = "macos") { 28 } else { 0 };
-    egui::Area::new("welcome-page".into()).fixed_pos(content.min).order(egui::Order::Background).show(ctx, |ui| {
-        #[cfg(target_os = "macos")]
-        crate::macos::titlebar_area(ui, egui::Rect::from_min_size(content.min, egui::vec2(content.width(), 28.)));
-        paint_glow(ui, content);
-        let frame = egui::Frame::new().inner_margin(egui::Margin { top: margin + title, ..egui::Margin::same(margin) });
-        frame.show(ui, |ui| {
-            ui.style_mut().interaction.selectable_labels = false;
-            // An Area does not limit its width, so wrapping needs the page size set here.
-            let inset = egui::vec2(2. * margin as f32, 2. * margin as f32 + title as f32);
-            let page = (content.size() - inset).max(egui::vec2(240., 240.));
-            ui.set_min_size(page);
-            ui.set_max_size(page);
-            egui::ScrollArea::vertical().id_salt("welcome-scroll").show(ui, |ui| {
-                // Centre the column vertically using the height measured in the previous frame.
-                let height_id = egui::Id::new("welcome-height");
-                let last = ui.ctx().data(|d| d.get_temp::<f32>(height_id)).unwrap_or(page.y);
-                ui.add_space(((page.y - last) / 2.).max(0.));
-                let width = ui.available_width().min(COLUMN);
-                let top = ui.cursor().top();
-                ui.horizontal(|ui| {
-                    ui.add_space(((ui.available_width() - width) / 2.).max(0.));
-                    ui.vertical(|ui| {
-                        ui.set_width(width);
-                        page_contents(ui, app, width);
+    egui::Area::new("welcome-page".into())
+        .fixed_pos(content.min)
+        .order(egui::Order::Background)
+        // A fade-in can stall half way when the renderer goes idle, leaving the editor showing through.
+        .fade_in(false)
+        .show(ctx, |ui| {
+            #[cfg(target_os = "macos")]
+            crate::macos::titlebar_area(ui, egui::Rect::from_min_size(content.min, egui::vec2(content.width(), 28.)));
+            paint_glow(ui, content);
+            let frame =
+                egui::Frame::new().inner_margin(egui::Margin { top: margin + title, ..egui::Margin::same(margin) });
+            frame.show(ui, |ui| {
+                ui.style_mut().interaction.selectable_labels = false;
+                // An Area does not limit its width, so wrapping needs the page size set here.
+                let inset = egui::vec2(2. * margin as f32, 2. * margin as f32 + title as f32);
+                let page = (content.size() - inset).max(egui::vec2(240., 240.));
+                ui.set_min_size(page);
+                ui.set_max_size(page);
+                egui::ScrollArea::vertical().id_salt("welcome-scroll").show(ui, |ui| {
+                    // Centre the column vertically using the height measured in the previous frame.
+                    let height_id = egui::Id::new("welcome-height");
+                    let last = ui.ctx().data(|d| d.get_temp::<f32>(height_id)).unwrap_or(page.y);
+                    ui.add_space(((page.y - last) / 2.).max(0.));
+                    let width = ui.available_width().min(COLUMN);
+                    let top = ui.cursor().top();
+                    ui.horizontal(|ui| {
+                        ui.add_space(((ui.available_width() - width) / 2.).max(0.));
+                        ui.vertical(|ui| {
+                            ui.set_width(width);
+                            page_contents(ui, app, width);
+                        });
                     });
+                    let height = ui.cursor().top() - top;
+                    ui.ctx().data_mut(|d| d.insert_temp(height_id, height));
                 });
-                let height = ui.cursor().top() - top;
-                ui.ctx().data_mut(|d| d.insert_temp(height_id, height));
             });
         });
-    });
     crate::panels::settings(ctx, app);
     crate::help::panel(ctx, app);
     crate::portable_files::panel(ctx, app);
@@ -59,23 +65,39 @@ pub fn show(ctx: &egui::Context, app: &mut App3d) -> bool {
 }
 
 fn page_contents(ui: &mut egui::Ui, app: &mut App3d, width: f32) {
-    ui.vertical_centered(|ui| {
-        crate::brand::image(ui, 72.);
-        ui.add_space(6.);
-        ui.label(egui::RichText::new("Rysmo").size(30.).strong());
-        ui.weak(egui::RichText::new("A simple 3D modeller.").size(15.));
+    // Logo beside the name and tagline, the pair centred in the column.
+    let logo = 128.;
+    let name = ui.painter().layout_no_wrap("Rysmo".into(), egui::FontId::proportional(48.), egui::Color32::PLACEHOLDER);
+    let tagline = ui.painter().layout_no_wrap(
+        "A simple 3D modeller.".into(),
+        egui::FontId::proportional(20.),
+        egui::Color32::PLACEHOLDER,
+    );
+    let gap = 24.;
+    let block = egui::vec2(logo + gap + name.size().x.max(tagline.size().x), logo);
+    ui.horizontal(|ui| {
+        ui.add_space(((width - block.x) / 2.).max(0.));
+        crate::brand::image(ui, logo);
+        ui.add_space(gap - ui.spacing().item_spacing.x);
+        ui.vertical(|ui| {
+            let text = name.size().y + 4. + tagline.size().y;
+            ui.add_space(((logo - text) / 2.).max(0.));
+            ui.spacing_mut().item_spacing.y = 4.;
+            ui.label(egui::RichText::new("Rysmo").size(48.).strong());
+            ui.weak(egui::RichText::new("A simple 3D modeller.").size(20.));
+        });
     });
     ui.add_space(28.);
     section(ui, "New model");
     let units = [
-        (glyph::RULER, "Millimetres", "Products, furniture and details", rysmo_model::Units::Millimetres),
+        (glyph::RULER, "Millimetres", "Products and furniture", rysmo_model::Units::Millimetres),
         (glyph::BUILDINGS, "Metres", "Buildings, rooms and sites", rysmo_model::Units::Metres),
         (glyph::HOUSE_LINE, "Feet & inches", "Imperial building projects", rysmo_model::Units::Architectural),
     ];
     let columns = if width >= 540. { 3 } else { 1 };
     let gap = ui.spacing().item_spacing.x;
     // Narrow pages stack compact cards with the icon beside the text.
-    let card = egui::vec2((width - gap * (columns - 1) as f32) / columns as f32, if columns == 1 { 60. } else { 92. });
+    let card = egui::vec2((width - gap * (columns - 1) as f32) / columns as f32, if columns == 1 { 64. } else { 84. });
     for row in units.chunks(columns) {
         ui.horizontal(|ui| {
             for (icon, label, detail, units) in row {
@@ -189,16 +211,30 @@ fn icon_button(ui: &mut egui::Ui, size: egui::Vec2, icon: &str, text: &str, alig
         egui::Align::Center => rect.center().x - width / 2.,
         _ => rect.left() + 12.,
     };
-    // Align the icon with the middle of lower-case text rather than with its line box.
+    // Centre the visible ink of the icon and of the text (without descenders) on the row.
     let centre = rect.center().y;
-    painter.galley(egui::pos2(left, centre - icon.size().y / 2. + ICON_DROP), icon, color);
-    painter.galley(egui::pos2(left + width - label.size().x, centre - label.size().y / 2. - TEXT_LIFT), label, color);
+    let icon_top = centre - ink(&icon, false).center().y;
+    let label_top = centre - ink(&label, true).center().y;
+    painter.galley(egui::pos2(left, icon_top), icon, color);
+    painter.galley(egui::pos2(left + width - label.size().x, label_top), label, color);
     response.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
-/// Optical offsets for 18 px Phosphor icons beside 15 px text.
-const ICON_DROP: f32 = 0.5;
-const TEXT_LIFT: f32 = 0.5;
+/// The painted bounds of a galley's glyphs, relative to its origin. With `body` set,
+/// descenders are ignored so text centres on its letter bodies.
+fn ink(galley: &egui::Galley, body: bool) -> egui::Rect {
+    let mut bounds = egui::Rect::NOTHING;
+    for row in &galley.rows {
+        for glyph in &row.row.glyphs {
+            if glyph.uv_rect.size.y <= 0. || (body && "gjpqy,;".contains(glyph.chr)) {
+                continue;
+            }
+            let min = row.pos + glyph.pos.to_vec2() + glyph.uv_rect.offset;
+            bounds = bounds.union(egui::Rect::from_min_size(min, glyph.uv_rect.size));
+        }
+    }
+    if bounds.is_positive() { bounds } else { egui::Rect::from_min_size(egui::Pos2::ZERO, galley.size()) }
+}
 
 /// Soft, low-contrast colour glows behind the page, in the logo and accent hues. The
 /// background is rendered once per page size into an opaque, dithered image, so the
@@ -262,7 +298,7 @@ fn section(ui: &mut egui::Ui, title: &str) {
 }
 
 /// A clickable card; hover changes only colours, so the layout never shifts.
-fn unit_card(ui: &mut egui::Ui, size: egui::Vec2, icon: &str, title: &str, detail: &str) -> egui::Response {
+fn unit_card(ui: &mut egui::Ui, size: egui::Vec2, icon: &str, label: &str, detail: &str) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
     let visuals = ui.visuals();
     let (fill, stroke) = if response.is_pointer_button_down_on() {
@@ -274,30 +310,38 @@ fn unit_card(ui: &mut egui::Ui, size: egui::Vec2, icon: &str, title: &str, detai
     };
     let painter = ui.painter();
     painter.rect(rect, 8., fill, egui::Stroke::new(1., stroke.color), egui::StrokeKind::Inside);
-    let compact = rect.height() < 80.;
-    let (icon_at, text_at) = if compact {
-        (egui::pos2(rect.left() + 16., rect.center().y - 12.), egui::pos2(rect.left() + 56., rect.top() + 10.))
-    } else {
-        (rect.left_top() + egui::vec2(16., 14.), rect.left_top() + egui::vec2(16., 46.))
-    };
-    painter.text(
-        icon_at,
-        egui::Align2::LEFT_TOP,
-        icon,
-        egui::FontId::new(24., egui::FontFamily::Name("phosphor".into())),
-        crate::theme::ACCENT,
+    // Large icon on the left, title and description centred vertically beside it.
+    let icon_size = if rect.height() < 80. { 28. } else { 34. };
+    let icon = painter.layout_no_wrap(
+        icon.to_owned(),
+        egui::FontId::new(icon_size, egui::FontFamily::Name("phosphor".into())),
+        visuals.strong_text_color(),
     );
-    painter.text(text_at, egui::Align2::LEFT_TOP, title, egui::FontId::proportional(16.), visuals.strong_text_color());
+    let left = rect.left() + 18.;
+    let icon_top = rect.center().y - ink(&icon, false).center().y;
+    painter.galley(egui::pos2(left, icon_top), icon.clone(), visuals.strong_text_color());
+    let text_left = left + icon.size().x + 14.;
+    let title = painter.layout_no_wrap(label.to_owned(), egui::FontId::proportional(17.), egui::Color32::PLACEHOLDER);
     let detail = painter.layout(
         detail.to_owned(),
         egui::FontId::proportional(13.),
         visuals.weak_text_color(),
-        rect.right() - text_at.x - 16.,
+        (rect.right() - text_left - 14.).max(10.),
     );
-    painter.galley(text_at + egui::vec2(0., 22.), detail, visuals.weak_text_color());
+    let height = title.size().y + 2. + detail.size().y;
+    let top = rect.center().y - height / 2.;
+    // The web build has no bold face. A second, fainter copy one physical pixel to the right
+    // thickens the strokes evenly; sub-pixel offsets would round away for some titles.
+    let pixel = 1. / ui.ctx().pixels_per_point();
+    let text_left = (text_left / pixel).round() * pixel;
+    let strong = visuals.strong_text_color();
+    painter.galley(egui::pos2(text_left + pixel, top), title.clone(), strong.gamma_multiply(0.6));
+    let below = top + title.size().y + 2.;
+    painter.galley(egui::pos2(text_left, top), title, strong);
+    painter.galley(egui::pos2(text_left, below), detail, visuals.weak_text_color());
     response
         .on_hover_cursor(egui::CursorIcon::PointingHand)
-        .on_hover_text(format!("New model in {}", title.to_lowercase()))
+        .on_hover_text(format!("New model in {}", label.to_lowercase()))
 }
 
 #[cfg(test)]

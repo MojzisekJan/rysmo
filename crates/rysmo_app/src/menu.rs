@@ -1,11 +1,13 @@
 //! Phosphor command icons with consistent menu rows and shortcut columns.
 #[cfg(not(target_os = "macos"))]
+use bevy_egui::egui::Color32;
+#[cfg(not(target_os = "macos"))]
 use bevy_egui::egui::RichText;
-use bevy_egui::egui::{self, Color32, FontId};
+use bevy_egui::egui::{self, FontId};
 pub use egui_phosphor::regular as glyph;
 
 #[cfg(target_os = "macos")]
-use crate::macos::{MENU_ICON, MENU_TEXT};
+use crate::macos::MENU_ICON;
 #[cfg(not(target_os = "macos"))]
 const MENU_ROW: f32 = 32.;
 #[cfg(not(target_os = "macos"))]
@@ -21,7 +23,8 @@ pub fn style(style: &mut egui::Style) {
 
 /// An icon and text label. Both are centred on the row, because the icon font is larger
 /// and would otherwise sit on the text baseline, above the text's visual centre.
-pub fn label(icon: &str, text: &str) -> egui::text::LayoutJob {
+#[cfg(not(target_os = "macos"))]
+fn label(icon: &str, text: &str) -> egui::text::LayoutJob {
     let mut job = egui::text::LayoutJob::default();
     job.append(
         icon,
