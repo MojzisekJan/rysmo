@@ -304,7 +304,10 @@ impl Cache {
         let key = std::sync::Arc::as_ptr(bytes) as usize;
         if self.key != Some(key) {
             self.key = Some(key);
-            self.maps = build(bytes).map(|[background, diffuse, specular]| Maps {
+            let start = bevy::platform::time::Instant::now();
+            let built = build(bytes);
+            info!("Environment panorama filtered in {:.0} ms", start.elapsed().as_secs_f64() * 1000.);
+            self.maps = built.map(|[background, diffuse, specular]| Maps {
                 background: images.add(background),
                 diffuse: images.add(diffuse),
                 specular: images.add(specular),
