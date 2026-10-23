@@ -27,6 +27,8 @@ pub struct App3d {
     pub canvas: Option<(DVec2, DVec2)>,
     /// The cursor over the 3D view, in logical pixels.
     pub cursor: Option<DVec2>,
+    /// Where the model hover was last computed, to refresh it after menus close in place.
+    pub hover_at: Option<DVec2>,
     pub drape: Option<crate::drape_tool::Draft>,
     pub stamp: Option<crate::stamp_tool::Draft>,
     pub detail: Option<crate::detail_tool::Draft>,
@@ -157,6 +159,7 @@ impl App3d {
             canvas: None,
             viewport: DVec2::new(1280.0, 800.0),
             cursor: None,
+            hover_at: None,
             drape: None,
             stamp: None,
             detail: None,

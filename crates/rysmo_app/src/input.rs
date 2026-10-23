@@ -41,6 +41,9 @@ fn track_window(mut app: ResMut<App3d>, windows: Query<&Window, With<PrimaryWind
 
 /// Sends a pointer event to the active tool.
 pub fn tool_pointer(app: &mut App3d, at: DVec2, ev: Pointer) {
+    if matches!(ev, Pointer::Move) {
+        app.hover_at = Some(at);
+    }
     if app.mirror.is_some() {
         crate::mirror::pointer(app, at, ev);
         return;
@@ -549,14 +552,10 @@ fn keyboard(
         app.vcb.clear();
         app.message = None;
     }
-    if keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::NumpadEnter) {
-        if app.paste_place.is_some() {
-            crate::object_clipboard::finish(&mut app);
-        } else if app.texture_session.is_some() {
-            crate::texture_view::finish(&mut app, false);
-        } else {
-            apply_vcb(&mut app);
-        }
+    // Enter is applied in order with typed characters: "2,1" and Enter can share a frame.
+    let typed_enter = events.iter().any(|ev| ev.state == ButtonState::Pressed && ev.logical_key == LogicalKey::Enter);
+    if !typed_enter && (keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::NumpadEnter)) {
+        enter(&mut app);
     }
     // Each press counts, in order with the typed characters; several can arrive in one frame.
     if events.is_empty() && keys.just_pressed(KeyCode::Backspace) {
@@ -574,6 +573,10 @@ fn keyboard(
             LogicalKey::Space => " ".to_string(),
             LogicalKey::Backspace => {
                 app.vcb.pop();
+                continue;
+            }
+            LogicalKey::Enter => {
+                enter(&mut app);
                 continue;
             }
             _ => continue,
@@ -600,6 +603,16 @@ fn keyboard(
                 app.vcb.push(c);
             }
         }
+    }
+}
+
+fn enter(app: &mut App3d) {
+    if app.paste_place.is_some() {
+        crate::object_clipboard::finish(app);
+    } else if app.texture_session.is_some() {
+        crate::texture_view::finish(app, false);
+    } else {
+        apply_vcb(app);
     }
 }
 
@@ -832,6 +845,15 @@ fn mouse(
             _ => {}
         }
     }
+    // A menu or dialog can close over the model without a pointer move; refresh the hover
+    // so the snap marker is not drawn at a stale position.
+    if let Some(p) = app.cursor
+        && app.hover_at != Some(p)
+        && app.camera_drag.is_none()
+        && !(ui_busy || app.over_panel(p))
+    {
+        tool_pointer(&mut app, p, Pointer::Move);
+    }
 }
 
 fn touch(
@@ -1054,6 +1076,7 @@ mod queued_keyboard_tests {
                 KeyCode::ShiftLeft | KeyCode::ShiftRight => LogicalKey::Shift,
                 KeyCode::SuperLeft | KeyCode::SuperRight => LogicalKey::Super,
                 KeyCode::Backspace => LogicalKey::Backspace,
+                KeyCode::Enter => LogicalKey::Enter,
                 _ => LogicalKey::Character(
                     match code {
                         KeyCode::Digit1 => "1",
@@ -1100,6 +1123,16 @@ mod queued_keyboard_tests {
         }
         events(&mut app, &sequence);
         assert_eq!(app.world().resource::<App3d>().vcb, "14");
+    }
+    #[test]
+    fn enter_in_one_frame_applies_only_the_characters_typed_before_it() {
+        let mut app = rig();
+        let mut sequence = Vec::new();
+        for code in [KeyCode::Digit2, KeyCode::Enter, KeyCode::Digit3] {
+            sequence.extend([(code, true), (code, false)]);
+        }
+        events(&mut app, &sequence);
+        assert_eq!(app.world().resource::<App3d>().vcb, "3");
     }
     #[test]
     fn complete_copy_and_duplicate_chords_in_one_frame_do_not_activate_tools() {
