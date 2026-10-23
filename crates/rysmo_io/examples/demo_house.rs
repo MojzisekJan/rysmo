@@ -1034,6 +1034,57 @@ fn grouped(e: &mut Editor, build: impl FnOnce(&mut Editor) -> Result<()>) -> Res
     Ok(())
 }
 
+/// Moves and turns what `build` makes by a small random amount, as loose objects stand.
+fn loose(
+    e: &mut Editor,
+    centre: DVec3,
+    random: &mut Random,
+    degrees: f64,
+    offset: f64,
+    build: impl FnOnce(&mut Editor) -> Result<()>,
+) -> Result<()> {
+    let parts = built(e, build)?;
+    let d = DVec3::new(random.range(-offset, offset), random.range(-offset, offset), 0.);
+    e.apply(Command::Move { elements: parts.iter().map(|i| Element::Instance(*i)).collect(), offset: d })?;
+    turn(e, &parts, centre + d, random.range(-degrees, degrees))
+}
+
+/// A chair at a table, facing it from `at` and turned `degrees`: nudged and turned a little,
+/// and now and then pulled out from the table.
+fn seat(e: &mut Editor, at: DVec3, degrees: f64, wood: MaterialId, random: &mut Random, p: &Paints) -> Result<()> {
+    let back = DVec3::new(-(degrees.to_radians()).sin(), degrees.to_radians().cos(), 0.);
+    let pull = if random.next() < 0.35 { random.range(0.08, 0.2) } else { 0. };
+    let nudge = DVec3::new(random.range(-0.04, 0.04), random.range(-0.04, 0.04), 0.);
+    chair(e, at + back * pull + nudge, degrees + random.range(-7., 7.), wood, p)
+}
+
+/// A paving slab or stepping stone `w` by `d` at `c` turned `degrees`, let into the ground:
+/// its foot below the lowest ground under it and its top just above the highest.
+fn ground_slab(
+    e: &mut Editor,
+    c: DVec2,
+    w: f64,
+    d: f64,
+    degrees: f64,
+    ground: &dyn Fn(f64, f64) -> f64,
+    colour: MaterialId,
+) -> Result<()> {
+    let (s, k) = degrees.to_radians().sin_cos();
+    let heights: Vec<f64> = [(0., 0.), (-1., -1.), (1., -1.), (1., 1.), (-1., 1.)]
+        .iter()
+        .map(|&(a, b)| {
+            let (x, y) = (a * w / 2., b * d / 2.);
+            ground(c.x + x * k - y * s, c.y + x * s + y * k)
+        })
+        .collect();
+    let low = heights.iter().copied().fold(f64::MAX, f64::min);
+    let high = heights.iter().copied().fold(f64::MIN, f64::max);
+    let at = c.extend(low - 0.03);
+    let top = at + DVec3::new(w / 2., d / 2., high - low + 0.07);
+    let slab = rounded(e, at - DVec3::new(w / 2., d / 2., 0.), top, 0.1, colour)?;
+    turn(e, &[slab], at, degrees)
+}
+
 /// Lifts everything made by `build` by `dz`.
 fn raised(e: &mut Editor, dz: f64, build: impl FnOnce(&mut Editor) -> Result<()>) -> Result<()> {
     let new: Vec<Element> = built(e, build)?.into_iter().map(Element::Instance).collect();
@@ -1147,6 +1198,14 @@ fn sofa(
                 centre: at(x, hd - 0.36, 0.44),
                 axis: DVec3::X,
                 angle: 12.,
+                copies: 0,
+            })?;
+            // Dropped casually rather than squared up.
+            e.apply(Command::Rotate {
+                elements: vec![Element::Instance(c)],
+                centre: at(x + 0.22, hd - 0.36, 0.44),
+                axis: DVec3::Z,
+                angle: ((centre.x * 7.3 + x * 3.1).sin() * 9.).round(),
                 copies: 0,
             })?;
             parts.push(c);
@@ -1636,22 +1695,41 @@ fn road(e: &mut Editor, route: &[DVec2], width: f64, ground: &dyn Fn(f64, f64) -
         let d = (centre[(i + 1).min(steps)] - centre[i.saturating_sub(1)]).normalize();
         DVec2::new(-d.y, d.x)
     };
-    let lift = |q: DVec2, z: f64| q.extend(ground(q.x, q.y) + z);
     let half = width / 2.;
+    // Level across, at each station just above the highest ground across it and its
+    // neighbours, so the terrain never shows through; the sides reach down into the ground.
+    let raw: Vec<f64> = (0..=steps)
+        .map(|i| {
+            [-1., -0.5, 0., 0.5, 1.]
+                .iter()
+                .map(|t| {
+                    let q = centre[i] + side(i) * t * (half + 0.25);
+                    ground(q.x, q.y)
+                })
+                .fold(f64::MIN, f64::max)
+        })
+        .collect();
+    let level: Vec<f64> =
+        (0..=steps).map(|i| raw[i.saturating_sub(1)].max(raw[i]).max(raw[(i + 1).min(steps)]) + 0.04).collect();
+    let lift = |q: DVec2, i: usize, z: f64| q.extend(level[i] + z);
     for i in 0..steps {
         let (a, b, sa, sb) = (centre[i], centre[i + 1], side(i), side(i + 1));
         let quad = [
-            lift(a - sa * half, 0.04),
-            lift(b - sb * half, 0.04),
-            lift(b + sb * half, 0.04),
-            lift(a + sa * half, 0.04),
+            lift(a - sa * half, i, 0.),
+            lift(b - sb * half, i + 1, 0.),
+            lift(b + sb * half, i + 1, 0.),
+            lift(a + sa * half, i, 0.),
         ];
-        prism(e, quad, -DVec3::Z * 0.25, p.asphalt)?;
+        prism(e, quad, -DVec3::Z * 0.6, p.asphalt)?;
         for s in [-1., 1.] {
             let (o, w) = (half, 0.25);
-            let strip =
-                [a + sa * s * o, b + sb * s * o, b + sb * s * (o + w), a + sa * s * (o + w)].map(|q| lift(q, 0.045));
-            prism(e, strip, -DVec3::Z * 0.25, p.concrete)?;
+            let strip = [
+                lift(a + sa * s * o, i, 0.005),
+                lift(b + sb * s * o, i + 1, 0.005),
+                lift(b + sb * s * (o + w), i + 1, 0.005),
+                lift(a + sa * s * (o + w), i, 0.005),
+            ];
+            prism(e, strip, -DVec3::Z * 0.6, p.concrete)?;
         }
     }
     Ok(())
@@ -1673,6 +1751,29 @@ fn batch(e: &mut Editor, base: &rysmo_model::Document, build: impl FnOnce(&mut E
         reuse_definitions: false,
     })?;
     Ok(())
+}
+
+/// The sky panorama: "Autumn Field (Pure Sky)" from Poly Haven, CC0; see `assets/sky/LICENSE.txt`.
+const SKY: &[u8] = include_bytes!("assets/sky/autumn_field_puresky_2k.hdr");
+
+/// The bearing of a panorama's sun (its brightest point in the upper half) about the
+/// vertical, as the viewport maps it before any rotation, and its elevation, in degrees.
+fn panorama_sun(bytes: &[u8]) -> Result<(f64, f64)> {
+    let image = image::load_from_memory_with_format(bytes, image::ImageFormat::Hdr)?.to_rgb32f();
+    let (w, h) = image.dimensions();
+    let mut best = (0, 0, f32::MIN);
+    for y in 0..h / 2 {
+        for x in 0..w {
+            let c = image.get_pixel(x, y);
+            let luminance = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+            if luminance > best.2 {
+                best = (x, y, luminance);
+            }
+        }
+    }
+    let theta = (best.1 as f64 + 0.5) / h as f64 * std::f64::consts::PI;
+    let phi = ((best.0 as f64 + 0.5) / w as f64 - 0.5) * std::f64::consts::TAU;
+    Ok((phi.to_degrees(), 90. - theta.to_degrees()))
 }
 
 /// The time of day; `DEMO_HOUR` overrides it.
@@ -1763,6 +1864,8 @@ fn main() -> Result<()> {
     };
 
     let base = e.doc().clone();
+    // Loose furniture stands a little out of line, the same way each run.
+    let mut jit = Random(4711);
 
     // Terrain 180 x 130 m: a gently rolling site rising slowly to the north, with long, low
     // swells rather than mounds, flat pads for the houses and a flat street strip.
@@ -2026,9 +2129,13 @@ fn main() -> Result<()> {
             rounded(e, DVec3::new(-7.6, -2.6, 0.), DVec3::new(-3.4, 1.2, 0.015), 0.05, p.rug)?;
             sofa(e, DVec2::new(-7.4, 0.3), DVec2::new(-3.8, 1.2), DVec2::Y, false, p.fabric, p.accent, &p)?;
             sofa(e, DVec2::new(-8.3, -2.2), DVec2::new(-7.4, 1.2), -DVec2::X, false, p.fabric, p.linen, &p)?;
-            table(e, DVec2::new(-6.3, -1.4), DVec2::new(-4.6, -0.6), 0.4, p.oak, &p)?;
+            loose(e, DVec3::new(-5.45, -1.0, 0.), &mut jit, 4., 0.04, |e| {
+                table(e, DVec2::new(-6.3, -1.4), DVec2::new(-4.6, -0.6), 0.4, p.oak, &p)
+            })?;
             bookcase(e, DVec2::new(-8.3, 5.3), DVec2::new(-5.8, 5.7), -DVec2::Y, &p)?;
-            potted(e, DVec3::new(-3.2, -2.9, 0.), 0.24, 0.5, p.terracotta, &p)?;
+            loose(e, DVec3::new(-3.2, -2.9, 0.), &mut jit, 20., 0.05, |e| {
+                potted(e, DVec3::new(-3.2, -2.9, 0.), 0.24, 0.5, p.terracotta, &p)
+            })?;
             // Kitchen along the north wall and an island, and the dining table.
             rounded(e, DVec3::new(-0.4, 5.12, 0.1), DVec3::new(3.6, 5.7, 0.86), 0.005, p.lacquer)?;
             cuboid(e, DVec3::new(-0.36, 5.18, 0.), DVec3::new(3.56, 5.7, 0.1), p.dark)?;
@@ -2047,9 +2154,10 @@ fn main() -> Result<()> {
             cuboid(e, DVec3::new(0.26, 2.5, 0.), DVec3::new(2.94, 3.3, 0.1), p.dark)?;
             rounded(e, DVec3::new(0.15, 2.4, 0.86), DVec3::new(3.05, 3.45, 0.9), 0.01, p.worktop)?;
             for x in [0.8, 1.6, 2.4] {
+                let (x, y) = (x + jit.range(-0.06, 0.06), 2.05 + jit.range(-0.08, 0.05));
                 lathe(
                     e,
-                    DVec3::new(x, 2.05, 0.),
+                    DVec3::new(x, y, 0.),
                     &[(0., 0.), (0.2, 0.), (0.2, 0.015), (0.03, 0.03), (0.025, 0.62), (0., 0.62)],
                     32,
                     p.dark,
@@ -2064,7 +2172,7 @@ fn main() -> Result<()> {
             }
             table(e, DVec2::new(-0.2, -1.6), DVec2::new(2.4, -0.6), 0.75, p.oak, &p)?;
             for (x, y, turn) in [(0.4, -2.0, 180.), (1.6, -2.0, 180.), (0.4, -0.2, 0.), (1.6, -0.2, 0.)] {
-                chair(e, DVec3::new(x, y, 0.), turn, p.oak, &p)?;
+                seat(e, DVec3::new(x, y, 0.), turn, p.oak, &mut jit, &p)?;
             }
             let room = CEILING - FLOOR;
             for x in [0.3, 1.1, 1.9] {
@@ -2232,15 +2340,17 @@ fn main() -> Result<()> {
             // A print on the partition.
             cuboid(e, DVec3::new(4.27, 1.8, 1.2), DVec3::new(4.3, 3.0, 2.0), p.dark)?;
             cuboid(e, DVec3::new(4.265, 1.85, 1.25), DVec3::new(4.27, 2.95, 1.95), p.accent)?;
-            chair(e, DVec3::new(9.8, -1.6, 0.), 220., p.oak, &p)?;
+            seat(e, DVec3::new(9.8, -1.6, 0.), 220., p.oak, &mut jit, &p)?;
             // Study and lounge.
             table(e, DVec2::new(-4.6, -2.75), DVec2::new(-2.4, -2.05), 0.75, p.oak, &p)?;
-            chair(e, DVec3::new(-3.5, -1.6, 0.), 180., p.oak, &p)?;
+            seat(e, DVec3::new(-3.5, -1.6, 0.), 180., p.oak, &mut jit, &p)?;
             bookcase(e, DVec2::new(3.92, -2.7), DVec2::new(4.3, 0.2), -DVec2::X, &p)?;
             rounded(e, DVec3::new(-1.5, -0.6, 0.), DVec3::new(2.6, 2.4, 0.015), 0.05, p.rug)?;
             sofa(e, DVec2::new(-1.2, 1.4), DVec2::new(2.3, 2.3), DVec2::Y, true, p.linen, p.accent, &p)?;
             sofa(e, DVec2::new(1.6, -0.6), DVec2::new(2.5, 0.8), DVec2::X, false, p.linen, p.fabric, &p)?;
-            table(e, DVec2::new(-0.4, 0.0), DVec2::new(1.0, 0.8), 0.4, p.oak, &p)?;
+            loose(e, DVec3::new(0.3, 0.4, 0.), &mut jit, 4., 0.04, |e| {
+                table(e, DVec2::new(-0.4, 0.0), DVec2::new(1.0, 0.8), 0.4, p.oak, &p)
+            })?;
             // A floor lamp and a desk lamp.
             lathe(
                 e,
@@ -2261,7 +2371,9 @@ fn main() -> Result<()> {
             for (x, y) in [(7.7, 0.), (0.5, 0.7), (-3.5, -1.5)] {
                 downlight(e, x, y, TOP - LEVEL, &p)?;
             }
-            potted(e, DVec3::new(-5.25, 2.9, 0.), 0.25, 0.5, p.terracotta, &p)?;
+            loose(e, DVec3::new(-5.25, 2.9, 0.), &mut jit, 20., 0.05, |e| {
+                potted(e, DVec3::new(-5.25, 2.9, 0.), 0.25, 0.5, p.terracotta, &p)
+            })?;
             Ok(())
         })?;
         // Timber fins over the cantilever, standing on its slab edge and fixed to the roof.
@@ -2370,8 +2482,10 @@ fn main() -> Result<()> {
         balustrade(e, DVec3::new(-6.0, -4.37, LEVEL), DVec3::new(-6.0, -3.2, LEVEL), &p)?;
         balustrade(e, DVec3::new(-6.0, 4.8, LEVEL), DVec3::new(-6.0, 6.27, LEVEL), &p)?;
         raised(e, LEVEL + 0.04, |e| {
-            lounger(e, DVec3::new(-12.6, -1.0, 0.), 0., &p)?;
-            lounger(e, DVec3::new(-11.2, -1.0, 0.), 0., &p)?;
+            for x in [-12.6, -11.2] {
+                let nudge = DVec3::new(jit.range(-0.06, 0.06), jit.range(-0.1, 0.1), 0.);
+                lounger(e, DVec3::new(x, -1.0, 0.) + nudge, jit.range(-5., 5.), &p)?;
+            }
             lathe(
                 e,
                 DVec3::new(-11.9, -2.4, 0.),
@@ -2403,17 +2517,25 @@ fn main() -> Result<()> {
         cuboid(e, DVec3::new(-13.95, -10.55, 0.), DVec3::new(3.95, -10., 0.08), p.dark)?;
         boards(e, DVec3::new(-14., -10.6, 0.08), DVec3::new(4., -10., 0.12), true, 0.145, p.deck)?;
         raised(e, 0.25, |e| {
-            table(e, DVec2::new(-11.5, -8.6), DVec2::new(-8.5, -7.6), 0.75, p.teak, &p)?;
-            for x in [-11.0, -10.0, -9.0] {
-                chair(e, DVec3::new(x, -9.0, 0.), 180., p.teak, &p)?;
-                chair(e, DVec3::new(x, -7.2, 0.), 0., p.teak, &p)?;
-            }
-            parasol(e, DVec3::new(-10., -8.1, 0.), [p.parasol[2], p.parasol[2]], &p)?;
+            // The dining set stands a few degrees off the line of the house.
+            let set = built(e, |e| {
+                table(e, DVec2::new(-11.5, -8.6), DVec2::new(-8.5, -7.6), 0.75, p.teak, &p)?;
+                for x in [-11.0, -10.0, -9.0] {
+                    seat(e, DVec3::new(x, -9.0, 0.), 180., p.teak, &mut jit, &p)?;
+                    seat(e, DVec3::new(x, -7.2, 0.), 0., p.teak, &mut jit, &p)?;
+                }
+                parasol(e, DVec3::new(-10., -8.1, 0.), [p.parasol[2], p.parasol[2]], &p)
+            })?;
+            turn(e, &set, DVec3::new(-10., -8.1, 0.), 3.5)?;
             sofa(e, DVec2::new(-5.5, -9.6), DVec2::new(-2.0, -8.7), -DVec2::Y, false, p.outdoor, p.accent, &p)?;
             sofa(e, DVec2::new(-6.4, -9.6), DVec2::new(-5.5, -6.8), -DVec2::X, false, p.outdoor, p.linen, &p)?;
-            table(e, DVec2::new(-4.6, -7.9), DVec2::new(-3.0, -7.0), 0.35, p.concrete, &p)?;
+            loose(e, DVec3::new(-3.8, -7.45, 0.), &mut jit, 5., 0.05, |e| {
+                table(e, DVec2::new(-4.6, -7.9), DVec2::new(-3.0, -7.0), 0.35, p.concrete, &p)
+            })?;
             for x in [-13.4, -12.6, 2.6, 3.4] {
-                potted(e, DVec3::new(x, -5.0, 0.), 0.3, 0.6, p.concrete, &p)?;
+                loose(e, DVec3::new(x, -5.0, 0.), &mut jit, 30., 0.06, |e| {
+                    potted(e, DVec3::new(x, -5.0, 0.), 0.3, 0.6, p.concrete, &p)
+                })?;
             }
             Ok(())
         })?;
@@ -2510,7 +2632,8 @@ fn main() -> Result<()> {
             rounded(e, DVec3::new(15.6, -7.7, z), DVec3::new(16.1, -7.56, z + 0.03), 0.01, p.chrome)?;
         }
         for x in [9., 10.8, 12.6, 14.4] {
-            lounger(e, DVec3::new(x, -5.6, top), 0., &p)?;
+            let nudge = DVec3::new(jit.range(-0.08, 0.08), jit.range(-0.15, 0.1), 0.);
+            lounger(e, DVec3::new(x, -5.6, top) + nudge, jit.range(-6., 6.), &p)?;
         }
         parasol(e, DVec3::new(16.6, -5.4, top), [p.parasol[0], p.parasol[1]], &p)?;
         // Steps down from the raised surround: one to the deck and two to the covered terrace.
@@ -2798,17 +2921,9 @@ fn main() -> Result<()> {
                 } else {
                     (slabs.range(0.55, 0.8), slabs.range(0.42, 0.58))
                 };
-                let at = c.extend(ground_at(c.x, c.y) - 0.03);
-                let slab = rounded(
-                    e,
-                    at - DVec3::new(sw / 2., sd / 2., 0.),
-                    at + DVec3::new(sw / 2., sd / 2., 0.07),
-                    0.1,
-                    p.paving,
-                )?;
                 let heading = dir.y.atan2(dir.x).to_degrees() + 90.;
                 let wobble = if narrow { 5. } else { 14. };
-                turn(e, &[slab], at, heading + slabs.range(-wobble, wobble))?;
+                ground_slab(e, c, sw, sd, heading + slabs.range(-wobble, wobble), &ground_at, p.paving)?;
                 along += sd + slabs.range(0.12, 0.22);
             }
             along -= length;
@@ -3022,8 +3137,12 @@ fn main() -> Result<()> {
             for (h0, h1) in [(x - 6., x - 3.6), (x + 0.2, door - 0.2), (door + 1.3, x + w + 2.)] {
                 rounded(e, DVec3::new(h0, 27.1, level - 0.1), DVec3::new(h1, 27.9, level + 1.1), 0.3, p.hedge)?;
             }
-            cuboid(e, DVec3::new(door, 26.9, level - 0.1), DVec3::new(door + 1.1, 29.0, level + 0.03), p.paving)?;
-            cuboid(e, DVec3::new(x - 3.4, 26.9, level - 0.1), DVec3::new(x, 29.8, level + 0.04), p.paving)?;
+            // The path and the drive ramp from the lane's edge up or down to the pad.
+            for (x0, x1, y1) in [(door, door + 1.1, 29.0), (x - 3.4, x, 29.8)] {
+                let foot = |x: f64| DVec3::new(x, 26.95, ground_at(x, 26.6).max(ground_at(x, 27.2)) + 0.05);
+                let quad = [foot(x0), foot(x1), DVec3::new(x1, y1, level + 0.04), DVec3::new(x0, y1, level + 0.04)];
+                prism(e, quad, -DVec3::Z * 0.6, p.paving)?;
+            }
             Ok(())
         })?;
     }
@@ -3036,10 +3155,7 @@ fn main() -> Result<()> {
             let c =
                 DVec2::new(-1.1 + t * 1.05 + stones.range(-0.18, 0.18), -11.2 - t * 0.85 + stones.range(-0.15, 0.15));
             let (w, d) = (stones.range(0.62, 0.95), stones.range(0.42, 0.62));
-            let at = c.extend(ground_at(c.x, c.y) - 0.03);
-            let stone =
-                rounded(e, at - DVec3::new(w / 2., d / 2., 0.), at + DVec3::new(w / 2., d / 2., 0.07), 0.2, p.paving)?;
-            turn(e, &[stone], at, stones.range(-35., 35.))?;
+            ground_slab(e, c, w, d, stones.range(-35., 35.), &ground_at, p.paving)?;
         }
         for (x, y, size) in
             [(-12., -12.5, 1.), (-9., -13.5, 0.8), (1., -15.5, 0.9), (19., -2., 1.1), (-3., 7.2, 0.9), (3., 7.3, 1.)]
@@ -3055,8 +3171,11 @@ fn main() -> Result<()> {
             let steps = (length / 0.5).ceil() as usize;
             for k in 0..steps {
                 let (s0, s1) = (a.lerp(b, k as f64 / steps as f64), a.lerp(b, (k + 1) as f64 / steps as f64));
-                let lift = |q: DVec2| q.extend(ground_at(q.x, q.y) + 0.015);
-                prism(e, [lift(s0), lift(s1), lift(s1 + across), lift(s0 + across)], -DVec3::Z * 0.12, p.gravel)?;
+                // Level across the strip, just above the higher ground at each end.
+                let top = |q: DVec2| ground_at(q.x, q.y).max(ground_at(q.x + across.x, q.y + across.y)) + 0.02;
+                let (z0, z1) = (top(s0), top(s1));
+                let quad = [s0.extend(z0), s1.extend(z1), (s1 + across).extend(z1), (s0 + across).extend(z0)];
+                prism(e, quad, -DVec3::Z * 0.3, p.gravel)?;
             }
             Ok(())
         };
@@ -3146,8 +3265,10 @@ fn main() -> Result<()> {
 
         // A fire pit with two benches on the lawn and a swept leaf pile.
         fire_pit(e, DVec3::new(-7., -15., ground_at(-7., -15.)), &p)?;
-        bench(e, DVec3::new(-7., -16.9, ground_at(-7., -16.9)), 180., &p)?;
-        bench(e, DVec3::new(-8.9, -15., ground_at(-8.9, -15.)), 90., &p)?;
+        for (x, y, facing) in [(-7., -16.9, 180.), (-8.9, -15., 90.)] {
+            let (x, y) = (x + jit.range(-0.1, 0.1), y + jit.range(-0.1, 0.1));
+            bench(e, DVec3::new(x, y, ground_at(x, y)), facing + jit.range(-8., 8.), &p)?;
+        }
         leaf_pile(e, DVec3::new(-5.5, -20.5, ground_at(-5.5, -20.5)), &p)?;
         Ok(())
     })?;
@@ -3251,20 +3372,41 @@ fn main() -> Result<()> {
         planted += 1;
     }
 
+    // A CC0 autumn sky panorama as the background and the light of the sky.
+    e.apply(Command::SetEnvironment {
+        name: "autumn_field_puresky_2k.hdr".into(),
+        mime: "image/vnd.radiance".into(),
+        data: SKY.to_vec(),
+    })?;
     let mut doc = e.doc().clone();
     doc.style.lighting = rysmo_model::Lighting::Sun;
+    doc.style.environment_background = true;
     doc.style.shadows = true;
     doc.style.ambient_occlusion = true;
     doc.style.edges = false;
     doc.style.tone_mapping = rysmo_model::ToneMapping::AgX;
-    doc.style.exposure = std::env::var("DEMO_EXPOSURE").ok().and_then(|x| x.parse().ok()).unwrap_or(3.);
+    // The panorama lights the shade strongly, so the sun is turned up and the sky's fill
+    // down for shadows that read; the exposure then suits the sunlit model.
+    doc.style.sun_intensity = 4.;
+    doc.style.ambient_intensity = 0.25;
+    doc.style.exposure = std::env::var("DEMO_EXPOSURE").ok().and_then(|x| x.parse().ok()).unwrap_or(0.);
     doc.style.atmosphere = true;
     doc.style.ground = true;
     doc.style.ground_color = [0.3, 0.31, 0.17];
-    // A low autumn afternoon sun with the lamps already on, north turned to light the front.
+    // A low autumn afternoon sun with the lamps already on.
     doc.style.sun.day = 290;
     doc.style.sun.hour = std::env::var("DEMO_HOUR").ok().and_then(|h| h.parse().ok()).unwrap_or(HOUR);
-    doc.style.sun.north = 65.;
+    // North turned so the afternoon sun comes from behind the hero camera's left and rakes
+    // across the garden front.
+    let (azimuth, _) = doc.style.sun.position();
+    doc.style.sun.north = (azimuth + 120.5).rem_euclid(360.);
+    // Turn the panorama so its sun stands at that bearing, then put the sun where the
+    // panorama shows it, so the shadows agree with the sky.
+    let (bearing, elevation) = panorama_sun(SKY)?;
+    doc.style.studio_rotation = (bearing + doc.style.sun.north - azimuth + 180.).rem_euclid(360.) as f32 - 180.;
+    doc.style.sun.from_time = false;
+    doc.style.sun.azimuth = azimuth;
+    doc.style.sun.elevation = elevation;
     doc.camera = Some(OrbitCamera {
         target: DVec3::new(-1., -2., 3.),
         distance: 38.,
