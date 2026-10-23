@@ -39,6 +39,12 @@ fn fbm(x: f32, y: f32, base: i64, octaves: u32, seed: u64) -> f32 {
     sum / total
 }
 
+/// An sRGB colour as linear values; alpha stays as it is.
+pub fn linear(c: [f32; 4]) -> [f32; 4] {
+    let f = |v: f32| if v <= 0.04045 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) };
+    [f(c[0]), f(c[1]), f(c[2]), c[3]]
+}
+
 fn mix(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
     let t = t.clamp(0., 1.);
     [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
@@ -130,17 +136,23 @@ fn add(
     Ok(material)
 }
 
-/// Autumn lawn: olive and straw-coloured blades with darker, damp patches.
-pub fn grass(e: &mut Editor) -> Result<MaterialId> {
+/// Autumn lawn: olive and straw-coloured blades with darker, damp patches. Variants differ
+/// in their noise, so neighbouring terrain faces painted with different variants hide the
+/// tile repeat.
+pub fn grass(e: &mut Editor, variant: u64) -> Result<MaterialId> {
+    let seed = variant * 100;
     let s = surface(|x, y| {
-        let patch = fbm(x, y, 4, 4, 1);
-        let blades = noise(x * 0.9, y * 0.25, (N as f32 * 0.9) as i64, 2) * 0.6 + hash(x as i64, y as i64, 3) * 0.4;
-        let dry = fbm(x, y, 16, 3, 4);
-        let base = mix([0.30, 0.36, 0.16], [0.58, 0.54, 0.28], dry * 1.3 - 0.2);
-        let c = shade(mix(base, [0.36, 0.30, 0.18], (patch - 0.6) * 3.), 0.72 + 0.5 * blades);
-        (c, blades * 0.6 + patch * 0.4)
+        let patch = fbm(x, y, 3, 5, seed + 1);
+        let blades = noise(x * 0.9, y * 0.25, (N as f32 * 0.9) as i64, seed + 2) * 0.6
+            + hash(x as i64, y as i64, seed + 3) * 0.4;
+        let dry = fbm(x, y, 8, 4, seed + 4);
+        let base = mix([0.33, 0.37, 0.17], [0.52, 0.5, 0.27], dry * 1.2 - 0.1);
+        let c = shade(mix(base, [0.38, 0.33, 0.2], (patch - 0.55) * 2.), 0.78 + 0.4 * blades);
+        (c, blades * 0.7 + patch * 0.3)
     });
-    add(e, "Lawn", s, [1.2, 1.2], 0.95, 0., 3., None)
+    // Different tile sizes keep the variants' repeats from lining up.
+    let size = [2.6, 3.3, 4.1][variant as usize % 3];
+    add(e, &format!("Lawn {}", variant + 1), s, [size, size], 0.95, 0., 3., None)
 }
 
 /// Asphalt: fine dark aggregate with lighter stones and slight wear.
@@ -192,16 +204,18 @@ pub fn larch(e: &mut Editor) -> Result<MaterialId> {
     add(e, "Larch cladding", s, [1., 1.], 0.78, 0., 4., None)
 }
 
-/// Decking boards' wood grain, running along the image width.
+/// Decking boards' wood grain: long, nearly straight lines along the image width with
+/// fine streaks and a soft change of tone.
 pub fn decking(e: &mut Editor) -> Result<MaterialId> {
     let s = surface(|x, y| {
-        let warp = fbm(x, y, 4, 3, 51) * 8.;
-        let rings = ((y / N as f32 * 14. + warp) * std::f32::consts::TAU).sin() * 0.5 + 0.5;
-        let fine = noise(x * 0.05, y * 1.2, (N as f32 * 0.05) as i64, 52);
-        let c = mix([0.6, 0.42, 0.27], [0.42, 0.28, 0.17], rings.powf(2.) * 0.7 + fine * 0.3);
-        (c, rings * 0.6 + fine * 0.4)
+        let warp = fbm(x, y, 2, 3, 51) * 1.5;
+        let lines = ((y / N as f32 * 26. + warp) * std::f32::consts::TAU).sin() * 0.5 + 0.5;
+        let streak = noise(x * 8. / N as f32, y * 0.5, 8, 52);
+        let tone = fbm(x, y, 3, 2, 53);
+        let c = mix([0.56, 0.4, 0.26], [0.38, 0.25, 0.15], lines.powf(4.) * 0.45 + streak * 0.35 + tone * 0.35);
+        (c, lines * 0.3 + streak * 0.7)
     });
-    add(e, "Decking", s, [1.2, 1.2], 0.72, 0., 2., None)
+    add(e, "Decking", s, [1.2, 1.2], 0.72, 0., 1.5, None)
 }
 
 /// Random ashlar stone: blocks of varied length in courses, with recessed mortar.
