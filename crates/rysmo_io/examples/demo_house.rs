@@ -18,7 +18,9 @@ struct Paints {
     water: MaterialId,
     paving: MaterialId,
     bark: MaterialId,
-    leaves: MaterialId,
+    /// Autumn foliage, chosen per tree from its position.
+    autumn: [MaterialId; 4],
+    pumpkin: MaterialId,
     conifer: MaterialId,
     hedge: MaterialId,
     fabric: MaterialId,
@@ -28,10 +30,6 @@ struct Paints {
     solar: MaterialId,
     car: MaterialId,
     tyre: MaterialId,
-    skin: MaterialId,
-    shirt: MaterialId,
-    shirt2: MaterialId,
-    trousers: MaterialId,
     parasol: MaterialId,
     lamp: MaterialId,
 }
@@ -100,6 +98,30 @@ fn cuboid(e: &mut Editor, a: DVec3, b: DVec3, colour: MaterialId) -> Result<Inst
     extrude(e, size.z, colour)
 }
 
+/// A box whose vertical edges are rounded with `radius`, as its own group.
+fn rounded(e: &mut Editor, a: DVec3, b: DVec3, radius: f64, colour: MaterialId) -> Result<InstanceId> {
+    let (min, max) = (a.min(b), a.max(b));
+    let size = max - min;
+    let radius = radius.min(size.x.min(size.y) * 0.45);
+    e.apply(Command::DrawRectangle { corner: min, u: DVec3::X * size.x, v: DVec3::Y * size.y, facing: None })?;
+    // Fillet each square corner; the arcs meet the remaining sides at shallow angles.
+    for _ in 0..4 {
+        let mesh = e.mesh();
+        let corner = mesh.vertices().find_map(|(v, _)| {
+            let edges = mesh.edges_of_vertex(v);
+            let [first, second] = edges.as_slice() else { return None };
+            let direction = |edge| {
+                let (p, q) = mesh.edge_points(edge);
+                (q - p).normalize()
+            };
+            (direction(*first).dot(direction(*second)).abs() < 1e-6).then_some([*first, *second])
+        });
+        let Some(edges) = corner else { break };
+        e.apply(Command::FilletEdges { edges, radius, segments: 4 })?;
+    }
+    extrude(e, size.z, colour)
+}
+
 /// A vertical regular prism (posts, pots, stools).
 fn column(e: &mut Editor, foot: DVec3, radius: f64, height: f64, sides: u32, colour: MaterialId) -> Result<InstanceId> {
     e.apply(Command::DrawPolygon { centre: foot, normal: DVec3::Z, radius, segments: sides, start: None })?;
@@ -156,9 +178,38 @@ fn crown(e: &mut Editor, centre: DVec3, radius: f64, up: f64, down: f64, sides: 
     Ok(())
 }
 
+/// A repeatable pick among `count` variants from a position, so the scene is the same each run.
+fn pick(at: DVec3, count: usize) -> usize {
+    ((at.x * 7.31 + at.y * 3.17).abs() * 13.) as usize % count
+}
+
 fn tree(e: &mut Editor, foot: DVec3, size: f64, p: &Paints) -> Result<()> {
     column(e, foot, 0.12 * size, 2.4 * size, 6, p.bark)?;
-    crown(e, foot + DVec3::Z * 3.4 * size, 1.6 * size, 2.2 * size, 1.4 * size, 8, p.leaves)
+    let leaves = p.autumn[pick(foot, p.autumn.len())];
+    crown(e, foot + DVec3::Z * 3.4 * size, 1.6 * size, 2.2 * size, 1.4 * size, 8, leaves)?;
+    // Fallen leaves around the trunk.
+    for i in 0..14 {
+        let angle = i as f64 * 2.4 + foot.x;
+        let reach = (0.6 + (i % 5) as f64 * 0.45) * size;
+        let at = foot + DVec3::new(angle.cos() * reach, angle.sin() * reach, 0.12);
+        leaf(e, at, p.autumn[(i + pick(foot, 4)) % p.autumn.len()])?;
+    }
+    Ok(())
+}
+
+/// A fallen leaf: a small flat hexagon.
+fn leaf(e: &mut Editor, at: DVec3, colour: MaterialId) -> Result<()> {
+    let start = Some(DVec3::new(at.x.sin(), at.y.cos(), 0.).try_normalize().unwrap_or(DVec3::X));
+    e.apply(Command::DrawPolygon { centre: at, normal: DVec3::Z, radius: 0.1, segments: 6, start })?;
+    extrude(e, 0.01, colour)?;
+    Ok(())
+}
+
+/// A pumpkin: a ribbed, flattened low-poly crown with a stalk.
+fn pumpkin(e: &mut Editor, foot: DVec3, size: f64, p: &Paints) -> Result<()> {
+    crown(e, foot + DVec3::Z * 0.12 * size, 0.24 * size, 0.18 * size, 0.12 * size, 10, p.pumpkin)?;
+    column(e, foot + DVec3::Z * 0.28 * size, 0.025 * size, 0.07 * size, 5, p.bark)?;
+    Ok(())
 }
 
 fn conifer(e: &mut Editor, foot: DVec3, size: f64, p: &Paints) -> Result<()> {
@@ -182,7 +233,9 @@ fn conifer(e: &mut Editor, foot: DVec3, size: f64, p: &Paints) -> Result<()> {
 }
 
 fn bush(e: &mut Editor, foot: DVec3, size: f64, p: &Paints) -> Result<()> {
-    crown(e, foot + DVec3::Z * 0.25 * size, 0.7 * size, 0.6 * size, 0.2 * size, 7, p.hedge)
+    // Some shrubs turn red in autumn, the rest stay olive.
+    let colour = if pick(foot, 3) == 0 { p.autumn[1] } else { p.hedge };
+    crown(e, foot + DVec3::Z * 0.25 * size, 0.7 * size, 0.6 * size, 0.2 * size, 7, colour)
 }
 
 /// Boards laid side by side across a rectangle, running along X or Y.
@@ -333,10 +386,10 @@ fn wall(
 
 fn bed(e: &mut Editor, min: DVec2, max: DVec2, p: &Paints) -> Result<()> {
     cuboid(e, min.extend(0.), max.extend(0.3), p.oak)?;
-    cuboid(e, (min + DVec2::splat(0.05)).extend(0.3), (max - DVec2::splat(0.05)).extend(0.52), p.cushion)?;
+    rounded(e, (min + DVec2::splat(0.05)).extend(0.3), (max - DVec2::splat(0.05)).extend(0.52), 0.08, p.cushion)?;
     cuboid(e, DVec3::new(min.x + 0.05, min.y + 0.05, 0.52), DVec3::new(max.x - 0.05, min.y + 1.2, 0.56), p.rug)?;
     for x in [min.x + 0.2, (min.x + max.x) / 2. + 0.05] {
-        cuboid(e, DVec3::new(x, max.y - 0.6, 0.52), DVec3::new(x + 0.65, max.y - 0.15, 0.66), p.cushion)?;
+        rounded(e, DVec3::new(x, max.y - 0.6, 0.52), DVec3::new(x + 0.65, max.y - 0.15, 0.66), 0.1, p.cushion)?;
     }
     cuboid(e, DVec3::new(min.x - 0.2, max.y, 0.), DVec3::new(max.x + 0.2, max.y + 0.1, 1.1), p.fabric)?;
     Ok(())
@@ -361,7 +414,7 @@ fn table(e: &mut Editor, min: DVec2, max: DVec2, height: f64, top: MaterialId, p
     ] {
         cuboid(e, DVec3::new(x, y, 0.), DVec3::new(x + 0.06, y + 0.06, height - 0.04), p.steel)?;
     }
-    cuboid(e, min.extend(height - 0.04), max.extend(height), top)?;
+    rounded(e, min.extend(height - 0.04), max.extend(height), 0.06, top)?;
     Ok(())
 }
 
@@ -378,9 +431,9 @@ fn raised(e: &mut Editor, dz: f64, build: impl FnOnce(&mut Editor) -> Result<()>
 fn lounger(e: &mut Editor, at: DVec3, degrees: f64, p: &Paints) -> Result<()> {
     let mut parts = vec![
         cuboid(e, at + DVec3::new(-0.35, -0.95, 0.), at + DVec3::new(0.35, 0.95, 0.3), p.render)?,
-        cuboid(e, at + DVec3::new(-0.32, -0.92, 0.3), at + DVec3::new(0.32, 0.4, 0.38), p.cushion)?,
+        rounded(e, at + DVec3::new(-0.32, -0.92, 0.3), at + DVec3::new(0.32, 0.4, 0.38), 0.08, p.cushion)?,
     ];
-    let back = cuboid(e, at + DVec3::new(-0.32, 0.4, 0.3), at + DVec3::new(0.32, 0.95, 0.38), p.cushion)?;
+    let back = rounded(e, at + DVec3::new(-0.32, 0.4, 0.3), at + DVec3::new(0.32, 0.95, 0.38), 0.08, p.cushion)?;
     e.apply(Command::Rotate {
         elements: vec![Element::Instance(back)],
         centre: at + DVec3::new(0., 0.4, 0.34),
@@ -393,7 +446,7 @@ fn lounger(e: &mut Editor, at: DVec3, degrees: f64, p: &Paints) -> Result<()> {
 }
 
 fn sofa(e: &mut Editor, min: DVec2, max: DVec2, back_side: DVec2, p: &Paints) -> Result<()> {
-    cuboid(e, min.extend(0.), max.extend(0.42), p.fabric)?;
+    rounded(e, min.extend(0.), max.extend(0.42), 0.1, p.fabric)?;
     let (b0, b1) = if back_side.y > 0. {
         (DVec2::new(min.x, max.y - 0.2), max)
     } else if back_side.y < 0. {
@@ -403,28 +456,14 @@ fn sofa(e: &mut Editor, min: DVec2, max: DVec2, back_side: DVec2, p: &Paints) ->
     } else {
         (min, DVec2::new(min.x + 0.2, max.y))
     };
-    cuboid(e, b0.extend(0.42), b1.extend(0.8), p.fabric)?;
+    rounded(e, b0.extend(0.42), b1.extend(0.8), 0.08, p.fabric)?;
     Ok(())
 }
 
-fn person(e: &mut Editor, at: DVec3, degrees: f64, shirt: MaterialId, p: &Paints) -> Result<()> {
-    let mut parts = vec![
-        cuboid(e, at + DVec3::new(-0.17, -0.08, 0.), at + DVec3::new(-0.02, 0.08, 0.85), p.trousers)?,
-        cuboid(e, at + DVec3::new(0.02, -0.08, 0.), at + DVec3::new(0.17, 0.08, 0.85), p.trousers)?,
-        cuboid(e, at + DVec3::new(-0.2, -0.11, 0.85), at + DVec3::new(0.2, 0.11, 1.45), shirt)?,
-        cuboid(e, at + DVec3::new(-0.29, -0.06, 0.82), at + DVec3::new(-0.2, 0.06, 1.42), shirt)?,
-        cuboid(e, at + DVec3::new(0.2, -0.06, 0.82), at + DVec3::new(0.29, 0.06, 1.42), shirt)?,
-        column(e, at + DVec3::new(0., 0., 1.45), 0.05, 0.08, 6, p.skin)?,
-        column(e, at + DVec3::new(0., 0., 1.53), 0.1, 0.22, 8, p.skin)?,
-    ];
-    parts.dedup();
-    turn(e, &parts, at, degrees)
-}
-
 fn car(e: &mut Editor, at: DVec3, p: &Paints) -> Result<()> {
-    cuboid(e, at + DVec3::new(-0.9, -2.3, 0.28), at + DVec3::new(0.9, 2.3, 0.95), p.car)?;
-    cuboid(e, at + DVec3::new(-0.82, -1.2, 0.95), at + DVec3::new(0.82, 1.0, 1.42), p.tinted)?;
-    cuboid(e, at + DVec3::new(-0.84, -1.1, 1.42), at + DVec3::new(0.84, 0.9, 1.48), p.car)?;
+    rounded(e, at + DVec3::new(-0.9, -2.3, 0.28), at + DVec3::new(0.9, 2.3, 0.95), 0.4, p.car)?;
+    rounded(e, at + DVec3::new(-0.82, -1.2, 0.95), at + DVec3::new(0.82, 1.0, 1.42), 0.25, p.tinted)?;
+    rounded(e, at + DVec3::new(-0.84, -1.1, 1.42), at + DVec3::new(0.84, 0.9, 1.48), 0.25, p.car)?;
     for (x, y) in [(-0.92, -1.45), (0.66, -1.45), (-0.92, 1.45), (0.66, 1.45)] {
         e.apply(Command::DrawPolygon {
             centre: at + DVec3::new(x, y, 0.34),
@@ -463,12 +502,12 @@ fn parasol(e: &mut Editor, at: DVec3, p: &Paints) -> Result<()> {
 }
 
 /// The time of day; `DEMO_HOUR` overrides it.
-const HOUR: f64 = 20.3;
+const HOUR: f64 = 16.4;
 
 fn main() -> Result<()> {
     let path = std::env::args().nth(1).ok_or("Usage: demo_house output.rysmo")?;
     let mut e = Editor::new();
-    let grass = material(&mut e, "Grass", [0.42, 0.58, 0.3, 1.])?;
+    let grass = material(&mut e, "Autumn grass", [0.5, 0.52, 0.28, 1.])?;
     let p = Paints {
         render: material(&mut e, "White render", [0.94, 0.93, 0.9, 1.])?,
         concrete: material(&mut e, "Concrete", [0.74, 0.73, 0.7, 1.])?,
@@ -483,9 +522,15 @@ fn main() -> Result<()> {
         water: material(&mut e, "Water", [0.25, 0.62, 0.8, 0.9])?,
         paving: material(&mut e, "Paving", [0.52, 0.52, 0.5, 1.])?,
         bark: material(&mut e, "Bark", [0.35, 0.26, 0.18, 1.])?,
-        leaves: material(&mut e, "Leaves", [0.3, 0.48, 0.22, 1.])?,
+        autumn: [
+            material(&mut e, "Orange leaves", [0.86, 0.45, 0.13, 1.])?,
+            material(&mut e, "Red leaves", [0.66, 0.17, 0.1, 1.])?,
+            material(&mut e, "Golden leaves", [0.9, 0.68, 0.2, 1.])?,
+            material(&mut e, "Rust leaves", [0.55, 0.28, 0.12, 1.])?,
+        ],
+        pumpkin: material(&mut e, "Pumpkin", [0.92, 0.48, 0.1, 1.])?,
         conifer: material(&mut e, "Spruce", [0.18, 0.34, 0.2, 1.])?,
-        hedge: material(&mut e, "Hedge", [0.24, 0.42, 0.2, 1.])?,
+        hedge: material(&mut e, "Hedge", [0.38, 0.4, 0.18, 1.])?,
         fabric: material(&mut e, "Sofa fabric", [0.55, 0.56, 0.58, 1.])?,
         cushion: material(&mut e, "Cushion", [0.9, 0.88, 0.82, 1.])?,
         oak: material(&mut e, "Oak", [0.72, 0.56, 0.38, 1.])?,
@@ -493,10 +538,6 @@ fn main() -> Result<()> {
         solar: material(&mut e, "Solar panel", [0.12, 0.17, 0.3, 1.])?,
         car: material(&mut e, "Car paint", [0.62, 0.1, 0.1, 1.])?,
         tyre: material(&mut e, "Tyre", [0.08, 0.08, 0.08, 1.])?,
-        skin: material(&mut e, "Skin", [0.85, 0.66, 0.52, 1.])?,
-        shirt: material(&mut e, "Shirt", [0.2, 0.4, 0.7, 1.])?,
-        shirt2: material(&mut e, "Dress", [0.85, 0.55, 0.2, 1.])?,
-        trousers: material(&mut e, "Trousers", [0.22, 0.24, 0.3, 1.])?,
         parasol: material(&mut e, "Parasol", [0.95, 0.94, 0.9, 1.])?,
         lamp: glowing(&mut e, "Warm lamp", [1., 0.8, 0.55, 1.], 30000.)?,
     };
@@ -568,12 +609,11 @@ fn main() -> Result<()> {
         cuboid(e, DVec3::new(-1.5, 5.0, 0.9), DVec3::new(3.6, 5.7, 0.94), p.dark)?;
         cuboid(e, DVec3::new(-1.5, 5.35, 1.5), DVec3::new(3.6, 5.7, 2.3), p.render)?;
         cuboid(e, DVec3::new(-0.5, 2.6, 0.), DVec3::new(2.6, 3.6, 0.9), p.render)?;
-        cuboid(e, DVec3::new(-0.55, 2.55, 0.9), DVec3::new(2.65, 3.65, 0.95), p.dark)?;
+        rounded(e, DVec3::new(-0.55, 2.55, 0.9), DVec3::new(2.65, 3.65, 0.95), 0.08, p.dark)?;
         table(e, DVec2::new(-0.2, -1.6), DVec2::new(2.4, -0.6), 0.76, p.oak, &p)?;
         for (x, y, turn) in [(0.4, -2.0, 180.), (1.6, -2.0, 180.), (0.4, -0.2, 0.), (1.6, -0.2, 0.)] {
             chair(e, DVec3::new(x, y, 0.), turn, &p)?;
         }
-        person(e, DVec3::new(-2.0, 1.8, 0.), 200., p.shirt2, &p)?;
         let room = ceiling - floor;
         for x in [0.3, 1.1, 1.9] {
             pendant(e, DVec3::new(x, -1.1, 1.9), room, &p)?;
@@ -666,7 +706,6 @@ fn main() -> Result<()> {
         }
         column(e, DVec3::new(3.6, -2.4, 0.), 0.25, 0.5, 8, p.render)?;
         crown(e, DVec3::new(3.6, -2.4, 0.85), 0.5, 0.9, 0.3, 7, p.hedge)?;
-        person(e, DVec3::new(0.2, -1.4, 0.), 30., p.shirt, &p)?;
         Ok(())
     })?;
     // Timber fins over the cantilever.
@@ -701,10 +740,9 @@ fn main() -> Result<()> {
     raised(&mut e, 3.56, |e| {
         lounger(e, DVec3::new(-12.6, -1.0, 0.), 0., &p)?;
         lounger(e, DVec3::new(-11.2, -1.0, 0.), 0., &p)?;
-        cuboid(e, DVec3::new(-13.8, 3.5, 0.), DVec3::new(-13.0, 5.8, 0.5), p.concrete)?;
+        rounded(e, DVec3::new(-13.8, 3.5, 0.), DVec3::new(-13.0, 5.8, 0.5), 0.12, p.concrete)?;
         bush(e, DVec3::new(-13.4, 4.1, 0.5), 0.8, &p)?;
         bush(e, DVec3::new(-13.4, 5.2, 0.5), 0.7, &p)?;
-        person(e, DVec3::new(-9.0, 1.0, 0.), 150., p.shirt, &p)?;
         Ok(())
     })?;
 
@@ -773,15 +811,25 @@ fn main() -> Result<()> {
         cuboid(&mut e, DVec3::new(-14.8, y + 1.4, 0.), DVec3::new(-14.65, y + 1.55, 0.6), p.dark)?;
         cuboid(&mut e, DVec3::new(-14.8, y + 1.4, 0.6), DVec3::new(-14.65, y + 1.55, 0.7), p.lamp)?;
     }
-    person(&mut e, DVec3::new(-15.8, -4.8, 0.05), 250., p.shirt, &p)?;
     for i in 0..7 {
         let a = DVec3::new(-1.5 + i as f64 * 1.15, -11.4 - i as f64 * 0.9, 0.);
-        cuboid(&mut e, a, a + DVec3::new(0.9, 0.6, 0.06), p.paving)?;
+        rounded(&mut e, a, a + DVec3::new(0.9, 0.6, 0.06), 0.22, p.paving)?;
     }
     for (x, y, size) in
         [(-12., -12.5, 1.), (-9., -13.5, 0.8), (1., -15.5, 0.9), (19., -2., 1.1), (-3., 7.2, 0.9), (3., 7.3, 1.)]
     {
         bush(&mut e, DVec3::new(x, y, ground_at(x, y)), size, &p)?;
+    }
+
+    // Leaves blown across the lawn and the terrace, and pumpkins by the steps.
+    for i in 0..90 {
+        let t = i as f64;
+        let (x, y) = (-12. + (t * 7.13) % 30., -24. + (t * 3.71) % 13.);
+        let z = if (-14.0..4.0).contains(&x) && (-10.0..-4.4).contains(&y) { 0.26 } else { ground_at(x, y) + 0.12 };
+        leaf(&mut e, DVec3::new(x, y, z), p.autumn[i % p.autumn.len()])?;
+    }
+    for (x, y, size) in [(4.6, -4.9, 1.), (4.9, -5.5, 0.8), (-14.6, -5.2, 0.9), (-15.0, -4.6, 0.7)] {
+        pumpkin(&mut e, DVec3::new(x, y, 0.25), size, &p)?;
     }
 
     // Trees around the garden and on the hills.
@@ -813,9 +861,9 @@ fn main() -> Result<()> {
     doc.style.exposure = std::env::var("DEMO_EXPOSURE").ok().and_then(|x| x.parse().ok()).unwrap_or(3.);
     doc.style.atmosphere = true;
     doc.style.ground = true;
-    doc.style.ground_color = [0.42, 0.58, 0.3];
-    // A summer dusk with the lamps on, north turned so the last sun lights the front.
-    doc.style.sun.day = 170;
+    doc.style.ground_color = [0.5, 0.52, 0.28];
+    // A low autumn afternoon sun with the lamps already on, north turned to light the front.
+    doc.style.sun.day = 290;
     doc.style.sun.hour = std::env::var("DEMO_HOUR").ok().and_then(|h| h.parse().ok()).unwrap_or(HOUR);
     doc.style.sun.north = 65.;
     doc.camera = Some(OrbitCamera {
