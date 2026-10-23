@@ -426,7 +426,15 @@ fn limb(e: &mut Editor, from: DVec3, to: DVec3, r0: f64, r1: f64, colour: Materi
     let axis = (to - from).normalize();
     let side = axis.any_orthonormal_vector();
     let other = axis.cross(side);
-    let sides = if r0.max(r1) > 0.06 { 24 } else { 12 };
+    // Enough sides to look round at its size.
+    let r = r0.max(r1);
+    let sides = if r > 0.06 {
+        24
+    } else if r >= 0.02 {
+        12
+    } else {
+        6
+    };
     let ring = |c: DVec3, r: f64| -> Vec<DVec3> {
         (0..sides)
             .map(|k| {
@@ -488,55 +496,60 @@ fn built(e: &mut Editor, build: impl FnOnce(&mut Editor) -> Result<()>) -> Resul
 }
 
 /// A broadleaf tree in autumn: a tapering trunk forking into limbs, each ending in a cluster of
-/// leaf clumps, so every clump hangs on wood.
-fn tree(e: &mut Editor, foot: DVec3, size: f64, p: &Paints) -> Result<()> {
-    let mut random = Random((foot.x * 1000.) as i64 as u64 ^ ((foot.y * 1000.) as i64 as u64).rotate_left(32));
-    let fork = foot + DVec3::Z * 2.4 * size;
-    limb(e, foot - DVec3::Z * 0.1, fork + DVec3::Z * 0.3 * size, 0.18 * size, 0.11 * size, p.bark)?;
-    // Root flare where the trunk meets the ground.
-    lathe(
-        e,
-        foot - DVec3::Z * 0.05,
-        &[(0., 0.), (0.32 * size, 0.), (0.2 * size, 0.12 * size), (0.15 * size, 0.35 * size), (0., 0.35 * size)],
-        16,
-        p.bark,
-    )?;
-    let hue = pick(foot, p.autumn.len());
-    let limbs = 6;
-    for k in 0..limbs {
-        let a = k as f64 * std::f64::consts::TAU / limbs as f64 + random.range(-0.3, 0.3);
-        let reach = random.range(1.0, 1.6) * size;
-        let start = foot + DVec3::Z * random.range(2.1, 2.6) * size;
-        let end = start + DVec3::new(a.cos() * reach, a.sin() * reach, random.range(1.0, 1.8) * size);
-        limb(e, start, end, 0.08 * size, 0.035 * size, p.bark)?;
-        // A twig on up from the elbow and leaf clumps round the limb's end.
-        let tip = end + DVec3::new(a.cos() * 0.3, a.sin() * 0.3, 0.6) * size;
-        limb(e, end, tip, 0.035 * size, 0.015 * size, p.bark)?;
-        for j in 0..4 {
-            let b = random.range(0., std::f64::consts::TAU);
-            let spread = if j == 0 { 0. } else { random.range(0.35, 0.65) * size };
-            let at = if j == 0 { tip } else { end }
-                + DVec3::new(b.cos() * spread, b.sin() * spread, random.range(-0.2, 0.5) * size);
-            let r = random.range(0.42, 0.62) * size;
-            let radii = DVec3::new(r, r * random.range(0.85, 1.15), r * random.range(0.7, 0.9));
-            // Mostly one hue per tree, with a neighbouring colour mixed in.
-            let colour = if random.next() < 0.75 { p.autumn[hue] } else { p.autumn[(hue + 1) % p.autumn.len()] };
-            clump(e, at, radii, &mut random, colour)?;
+/// leaf clumps on twigs, so every clump hangs on wood; fallen leaves lie on `ground`.
+fn tree(e: &mut Editor, foot: DVec3, size: f64, ground: &dyn Fn(f64, f64) -> f64, p: &Paints) -> Result<()> {
+    grouped(e, |e| {
+        let mut random = Random((foot.x * 1000.) as i64 as u64 ^ ((foot.y * 1000.) as i64 as u64).rotate_left(32));
+        let fork = foot + DVec3::Z * 2.4 * size;
+        limb(e, foot - DVec3::Z * 0.1, fork + DVec3::Z * 0.3 * size, 0.18 * size, 0.11 * size, p.bark)?;
+        // Root flare where the trunk meets the ground.
+        lathe(
+            e,
+            foot - DVec3::Z * 0.05,
+            &[(0., 0.), (0.32 * size, 0.), (0.2 * size, 0.12 * size), (0.15 * size, 0.35 * size), (0., 0.35 * size)],
+            16,
+            p.bark,
+        )?;
+        let hue = pick(foot, p.autumn.len());
+        let limbs = 6;
+        for k in 0..limbs {
+            let a = k as f64 * std::f64::consts::TAU / limbs as f64 + random.range(-0.3, 0.3);
+            let reach = random.range(1.0, 1.6) * size;
+            let start = foot + DVec3::Z * random.range(2.1, 2.6) * size;
+            let end = start + DVec3::new(a.cos() * reach, a.sin() * reach, random.range(1.0, 1.8) * size);
+            limb(e, start, end, 0.08 * size, 0.035 * size, p.bark)?;
+            // A twig on up from the elbow and leaf clumps round the limb's end.
+            let tip = end + DVec3::new(a.cos() * 0.3, a.sin() * 0.3, 0.6) * size;
+            limb(e, end, tip, 0.035 * size, 0.015 * size, p.bark)?;
+            for j in 0..4 {
+                let b = random.range(0., std::f64::consts::TAU);
+                let r = random.range(0.42, 0.62) * size;
+                let spread = if j == 0 { 0. } else { random.range(0.4, 0.75) * r };
+                let at = if j == 0 { tip } else { end }
+                    + DVec3::new(b.cos() * spread, b.sin() * spread, random.range(-0.2, 0.4) * r);
+                if j > 0 {
+                    limb(e, end, at, 0.018 * size, 0.01 * size, p.bark)?;
+                }
+                let radii = DVec3::new(r, r * random.range(0.85, 1.15), r * random.range(0.7, 0.9));
+                // Mostly one hue per tree, with a neighbouring colour mixed in.
+                let colour = if random.next() < 0.75 { p.autumn[hue] } else { p.autumn[(hue + 1) % p.autumn.len()] };
+                clump(e, at, radii, &mut random, colour)?;
+            }
         }
-    }
-    // A clump over the fork closes the crown.
-    let crown = fork + DVec3::Z * 1.6 * size;
-    limb(e, fork, crown, 0.08 * size, 0.03 * size, p.bark)?;
-    clump(e, crown, DVec3::new(0.8, 0.8, 0.65) * size, &mut random, p.autumn[hue])?;
-    // Fallen leaves scattered under the crown, denser near the trunk.
-    for _ in 0..22 {
-        let angle = random.range(0., std::f64::consts::TAU);
-        let reach = random.next().sqrt() * 2.6 * size + 0.4;
-        let at = foot.truncate() + DVec2::new(angle.cos(), angle.sin()) * reach;
-        let colour = p.autumn[(random.next() * p.autumn.len() as f64) as usize];
-        leaf(e, at.extend(foot.z + 0.1), &mut random, colour)?;
-    }
-    Ok(())
+        // A clump over the fork closes the crown.
+        let crown = fork + DVec3::Z * 1.6 * size;
+        limb(e, fork, crown, 0.08 * size, 0.03 * size, p.bark)?;
+        clump(e, crown, DVec3::new(0.8, 0.8, 0.65) * size, &mut random, p.autumn[hue])?;
+        // Fallen leaves scattered under the crown, denser near the trunk.
+        for _ in 0..22 {
+            let angle = random.range(0., std::f64::consts::TAU);
+            let reach = random.next().sqrt() * 2.6 * size + 0.4;
+            let at = foot.truncate() + DVec2::new(angle.cos(), angle.sin()) * reach;
+            let colour = p.autumn[(random.next() * p.autumn.len() as f64) as usize];
+            leaf(e, at.extend(ground(at.x, at.y) + 0.002), &mut random, colour)?;
+        }
+        Ok(())
+    })
 }
 
 /// A fallen leaf: a small flat hexagon with a random size and turn.
@@ -551,85 +564,93 @@ fn leaf(e: &mut Editor, at: DVec3, random: &mut Random, colour: MaterialId) -> R
 
 /// A pumpkin: a ribbed, flattened sphere with a stalk.
 fn pumpkin(e: &mut Editor, foot: DVec3, size: f64, p: &Paints) -> Result<()> {
-    let (r, h) = (0.2 * size, 0.26 * size);
-    let profile: Vec<(f64, f64)> = (0..=12)
-        .map(|k| {
-            let t = -std::f64::consts::FRAC_PI_2 + k as f64 / 12. * std::f64::consts::PI;
-            // A dimple at the top and bottom.
-            (r * t.cos(), h / 2. * (1. + t.sin()))
-        })
-        .collect();
-    lathe_with(e, foot, &profile, 40, |a| 1. - 0.06 * (1. - (10. * a).cos()) / 2., p.pumpkin)?;
-    lathe(
-        e,
-        foot + DVec3::Z * (h - 0.01),
-        &[(0., 0.), (0.02 * size, 0.), (0.014 * size, 0.07 * size), (0., 0.07 * size)],
-        7,
-        p.bark,
-    )?;
-    Ok(())
+    grouped(e, |e| {
+        let (r, h) = (0.2 * size, 0.26 * size);
+        let profile: Vec<(f64, f64)> = (0..=12)
+            .map(|k| {
+                let t = -std::f64::consts::FRAC_PI_2 + k as f64 / 12. * std::f64::consts::PI;
+                // A dimple at the top and bottom.
+                (r * t.cos(), h / 2. * (1. + t.sin()))
+            })
+            .collect();
+        lathe_with(e, foot, &profile, 40, |a| 1. - 0.06 * (1. - (10. * a).cos()) / 2., p.pumpkin)?;
+        lathe(
+            e,
+            foot + DVec3::Z * (h - 0.01),
+            &[(0., 0.), (0.02 * size, 0.), (0.014 * size, 0.07 * size), (0., 0.07 * size)],
+            7,
+            p.bark,
+        )?;
+        Ok(())
+    })
 }
 
 /// A spruce: a straight trunk to the tip and drooping, slightly ragged tiers of branches.
 fn conifer(e: &mut Editor, foot: DVec3, size: f64, p: &Paints) -> Result<()> {
-    let height = 5.2 * size;
-    limb(e, foot - DVec3::Z * 0.1, foot + DVec3::Z * height * 0.92, 0.14 * size, 0.03 * size, p.bark)?;
-    let seed = foot.x * 1.7 + foot.y;
-    let tiers = 6;
-    for k in 0..tiers {
-        let t = k as f64 / tiers as f64;
-        let z = (0.6 + t * 3.9) * size;
-        let r = (1.6 - t * 1.3) * size;
-        let h = 1.3 * size * (1. - t * 0.35);
-        let phase = seed + k as f64 * 2.1;
-        lathe_with(
-            e,
-            foot + DVec3::Z * z,
-            &[(0., 0.35 * h), (r, 0.), (r * 0.94, 0.06 * h), (r * 0.5, 0.45 * h), (0., h)],
-            28,
-            move |a| 1. + 0.08 * (7. * a + phase).sin() + 0.05 * (13. * a - phase).cos(),
-            p.conifer,
-        )?;
-    }
-    Ok(())
+    grouped(e, |e| {
+        let height = 5.2 * size;
+        limb(e, foot - DVec3::Z * 0.1, foot + DVec3::Z * height * 0.92, 0.14 * size, 0.03 * size, p.bark)?;
+        let seed = foot.x * 1.7 + foot.y;
+        let tiers = 6;
+        for k in 0..tiers {
+            let t = k as f64 / tiers as f64;
+            let z = (0.6 + t * 3.9) * size;
+            let r = (1.6 - t * 1.3) * size;
+            let h = 1.3 * size * (1. - t * 0.35);
+            let phase = seed + k as f64 * 2.1;
+            lathe_with(
+                e,
+                foot + DVec3::Z * z,
+                &[(0., 0.35 * h), (r, 0.), (r * 0.94, 0.06 * h), (r * 0.5, 0.45 * h), (0., h)],
+                28,
+                move |a| 1. + 0.08 * (7. * a + phase).sin() + 0.05 * (13. * a - phase).cos(),
+                p.conifer,
+            )?;
+        }
+        Ok(())
+    })
 }
 
 /// A shrub: a few lumpy clumps resting on the ground.
 fn bush(e: &mut Editor, foot: DVec3, size: f64, p: &Paints) -> Result<()> {
-    // Some shrubs turn red in autumn, the rest stay olive.
-    let colour = if pick(foot, 3) == 0 { p.autumn[1] } else { p.hedge };
-    let mut random = Random((foot.x * 977.) as i64 as u64 ^ ((foot.y * 613.) as i64 as u64).rotate_left(21));
-    for k in 0..4 {
-        let a = k as f64 * 2.1 + random.range(0., 0.8);
-        let reach = if k == 0 { 0. } else { 0.35 * size };
-        let r = random.range(0.38, 0.5) * size;
-        let at = foot + DVec3::new(a.cos() * reach, a.sin() * reach, r * 0.75);
-        clump(e, at, DVec3::new(r, r, r * 0.85), &mut random, colour)?;
-    }
-    Ok(())
+    grouped(e, |e| {
+        // Some shrubs turn red in autumn, the rest stay olive.
+        let colour = if pick(foot, 3) == 0 { p.autumn[1] } else { p.hedge };
+        let mut random = Random((foot.x * 977.) as i64 as u64 ^ ((foot.y * 613.) as i64 as u64).rotate_left(21));
+        for k in 0..4 {
+            let a = k as f64 * 2.1 + random.range(0., 0.8);
+            let reach = if k == 0 { 0. } else { 0.35 * size };
+            let r = random.range(0.38, 0.5) * size;
+            let at = foot + DVec3::new(a.cos() * reach, a.sin() * reach, r * 0.75);
+            clump(e, at, DVec3::new(r, r, r * 0.85), &mut random, colour)?;
+        }
+        Ok(())
+    })
 }
 
 /// A pot with a rolled lip and a shrub in it.
 fn potted(e: &mut Editor, foot: DVec3, radius: f64, height: f64, colour: MaterialId, p: &Paints) -> Result<()> {
-    let r = radius;
-    lathe(
-        e,
-        foot,
-        &[
-            (0., 0.),
-            (r * 0.78, 0.),
-            (r * 0.8, 0.02),
-            (r, height - 0.05),
-            (r * 1.06, height - 0.04),
-            (r * 1.06, height),
-            (r * 0.94, height),
-            (r * 0.94, height - 0.06),
-            (0., height - 0.06),
-        ],
-        40,
-        colour,
-    )?;
-    bush(e, foot + DVec3::Z * (height - 0.06), r * 1.5, p)
+    grouped(e, |e| {
+        let r = radius;
+        lathe(
+            e,
+            foot,
+            &[
+                (0., 0.),
+                (r * 0.78, 0.),
+                (r * 0.8, 0.02),
+                (r, height - 0.05),
+                (r * 1.06, height - 0.04),
+                (r * 1.06, height),
+                (r * 0.94, height),
+                (r * 0.94, height - 0.06),
+                (0., height - 0.06),
+            ],
+            40,
+            colour,
+        )?;
+        bush(e, foot + DVec3::Z * (height - 0.06), r * 1.5, p)
+    })
 }
 
 /// Boards laid side by side across a rectangle, running along X or Y, with rounded edges.
@@ -800,48 +821,58 @@ fn door(
     pull: bool,
     p: &Paints,
 ) -> Result<()> {
-    let along = (b - a).normalize();
-    let width = (b - a).length();
-    let at = |s: f64, d: f64, z: f64| (a + along * s + out * d).extend(z);
-    let f = 0.07;
-    cuboid(e, at(0., -0.06, z0), at(f, 0.06, z0 + height), p.dark)?;
-    cuboid(e, at(width - f, -0.06, z0), at(width, 0.06, z0 + height), p.dark)?;
-    cuboid(e, at(0., -0.06, z0 + height - f), at(width, 0.06, z0 + height), p.dark)?;
-    rounded(e, at(f, -0.06, z0), at(width - f, 0.06, z0 + 0.02), 0.004, p.steel)?;
-    rounded(e, at(f + 0.004, -0.025, z0 + 0.02), at(width - f - 0.004, 0.025, z0 + height - f - 0.004), 0.004, leaf)?;
-    for z in [0.25, height / 2. + 0.1, height - 0.3] {
-        cuboid(e, at(f - 0.004, 0.025, z0 + z), at(f + 0.016, 0.03, z0 + z + 0.1), p.steel)?;
-    }
-    let s = width - f - 0.1;
-    for side in [1., -1.] {
-        let face = 0.025 * side;
-        if pull {
-            // A long stainless pull bar on stand-offs.
-            let bar = |z: f64| at(s, face + 0.065 * side, z0 + z);
-            limb(e, bar(0.75), bar(1.75), 0.016, 0.016, p.chrome)?;
-            for z in [0.85, 1.65] {
-                limb(e, at(s, face, z0 + z), bar(z), 0.01, 0.01, p.chrome)?;
-            }
-        } else {
-            let rose = at(s, face, z0 + 1.02);
-            limb(e, rose, rose + (out * 0.012 * side).extend(0.), 0.028, 0.028, p.chrome)?;
-            let knuckle = rose + (out * 0.055 * side).extend(0.);
-            limb(e, rose, knuckle, 0.009, 0.009, p.chrome)?;
-            limb(e, knuckle, knuckle - (along * 0.13).extend(0.), 0.01, 0.01, p.chrome)?;
+    grouped(e, |e| {
+        let along = (b - a).normalize();
+        let width = (b - a).length();
+        let at = |s: f64, d: f64, z: f64| (a + along * s + out * d).extend(z);
+        let f = 0.07;
+        cuboid(e, at(0., -0.06, z0), at(f, 0.06, z0 + height), p.dark)?;
+        cuboid(e, at(width - f, -0.06, z0), at(width, 0.06, z0 + height), p.dark)?;
+        cuboid(e, at(0., -0.06, z0 + height - f), at(width, 0.06, z0 + height), p.dark)?;
+        rounded(e, at(f, -0.06, z0), at(width - f, 0.06, z0 + 0.02), 0.004, p.steel)?;
+        rounded(
+            e,
+            at(f + 0.004, -0.025, z0 + 0.02),
+            at(width - f - 0.004, 0.025, z0 + height - f - 0.004),
+            0.004,
+            leaf,
+        )?;
+        for z in [0.25, height / 2. + 0.1, height - 0.3] {
+            cuboid(e, at(f - 0.004, 0.025, z0 + z), at(f + 0.016, 0.03, z0 + z + 0.1), p.steel)?;
         }
-    }
-    Ok(())
+        let s = width - f - 0.1;
+        for side in [1., -1.] {
+            let face = 0.025 * side;
+            if pull {
+                // A long stainless pull bar on stand-offs.
+                let bar = |z: f64| at(s, face + 0.065 * side, z0 + z);
+                limb(e, bar(0.75), bar(1.75), 0.016, 0.016, p.chrome)?;
+                for z in [0.85, 1.65] {
+                    limb(e, at(s, face, z0 + z), bar(z), 0.01, 0.01, p.chrome)?;
+                }
+            } else {
+                let rose = at(s, face, z0 + 1.02);
+                limb(e, rose, rose + (out * 0.012 * side).extend(0.), 0.028, 0.028, p.chrome)?;
+                let knuckle = rose + (out * 0.055 * side).extend(0.);
+                limb(e, rose, knuckle, 0.009, 0.009, p.chrome)?;
+                limb(e, knuckle, knuckle - (along * 0.13).extend(0.), 0.01, 0.01, p.chrome)?;
+            }
+        }
+        Ok(())
+    })
 }
 
 /// A frameless glass balustrade from `a` to `b` standing on their height: a steel base shoe,
 /// toughened glass and a round handrail on top.
 fn balustrade(e: &mut Editor, a: DVec3, b: DVec3, p: &Paints) -> Result<()> {
-    let along = (b - a).normalize();
-    let across = DVec3::new(-along.y, along.x, 0.);
-    rounded(e, a - across * 0.03, b + across * 0.03 + DVec3::Z * 0.1, 0.006, p.dark)?;
-    cuboid(e, a - across * 0.008 + DVec3::Z * 0.1, b + across * 0.008 + DVec3::Z * 1.0, p.railing)?;
-    limb(e, a + DVec3::Z * 1.02, b + DVec3::Z * 1.02, 0.022, 0.022, p.chrome)?;
-    Ok(())
+    grouped(e, |e| {
+        let along = (b - a).normalize();
+        let across = DVec3::new(-along.y, along.x, 0.);
+        rounded(e, a - across * 0.03, b + across * 0.03 + DVec3::Z * 0.1, 0.006, p.dark)?;
+        cuboid(e, a - across * 0.008 + DVec3::Z * 0.1, b + across * 0.008 + DVec3::Z * 1.0, p.railing)?;
+        limb(e, a + DVec3::Z * 1.02, b + DVec3::Z * 1.02, 0.022, 0.022, p.chrome)?;
+        Ok(())
+    })
 }
 
 /// A rectangular window on a plain wall face: a frame proud of the face, a glazing bar,
@@ -857,116 +888,138 @@ fn facade_window(
     frame: MaterialId,
     p: &Paints,
 ) -> Result<()> {
-    let at = |s: f64, z: f64, d: f64| corner + along * s + DVec3::Z * z + out * d;
-    let f = 0.07;
-    cuboid(e, at(0., f, -0.01), at(width, height - f, 0.02), p.tinted)?;
-    cuboid(e, at(0., 0., 0.), at(width, f, 0.06), frame)?;
-    cuboid(e, at(0., height - f, 0.), at(width, height, 0.06), frame)?;
-    for s in [0., width / 2. - f / 2., width - f] {
-        cuboid(e, at(s, f, 0.), at(s + f, height - f, 0.06), frame)?;
-    }
-    cuboid(e, at(f, height * 0.62, 0.), at(width - f, height * 0.62 + 0.05, 0.05), frame)?;
-    rounded(e, at(-0.05, -0.05, 0.), at(width + 0.05, 0., 0.1), 0.01, p.coping)?;
-    Ok(())
+    grouped(e, |e| {
+        let at = |s: f64, z: f64, d: f64| corner + along * s + DVec3::Z * z + out * d;
+        let f = 0.07;
+        cuboid(e, at(0., f, -0.01), at(width, height - f, 0.02), p.tinted)?;
+        cuboid(e, at(0., 0., 0.), at(width, f, 0.06), frame)?;
+        cuboid(e, at(0., height - f, 0.), at(width, height, 0.06), frame)?;
+        for s in [0., width / 2. - f / 2., width - f] {
+            cuboid(e, at(s, f, 0.), at(s + f, height - f, 0.06), frame)?;
+        }
+        cuboid(e, at(f, height * 0.62, 0.), at(width - f, height * 0.62 + 0.05, 0.05), frame)?;
+        rounded(e, at(-0.05, -0.05, 0.), at(width + 0.05, 0., 0.1), 0.01, p.coping)?;
+        Ok(())
+    })
 }
 
 /// An open bookcase from `min` to `max` in plan, open towards `front`: a carcass with a back,
 /// sides and shelves, filled with books of varied sizes and colours.
 fn bookcase(e: &mut Editor, min: DVec2, max: DVec2, front: DVec2, p: &Paints) -> Result<()> {
-    let size = max - min;
-    let (o, u, v, w, d) = if front.y < 0. {
-        (min, DVec2::X, DVec2::Y, size.x, size.y)
-    } else if front.y > 0. {
-        (max, -DVec2::X, -DVec2::Y, size.x, size.y)
-    } else if front.x < 0. {
-        (DVec2::new(min.x, max.y), -DVec2::Y, DVec2::X, size.y, size.x)
-    } else {
-        (DVec2::new(max.x, min.y), DVec2::Y, -DVec2::X, size.y, size.x)
-    };
-    let q = |s: f64, t: f64, z: f64| (o + u * s + v * t).extend(z);
-    let (h, t) = (2.2, 0.025);
-    cuboid(e, q(0., d - 0.01, 0.), q(w, d, h), p.oak)?;
-    for s in [0., w - t] {
-        cuboid(e, q(s, 0., 0.), q(s + t, d - 0.01, h), p.oak)?;
-    }
-    let shelves = 6;
-    let books = [p.accent, p.fabric, p.linen, p.cars[1], p.terracotta, p.coir, p.worktop];
-    let mut random = Random((min.x * 100.) as i64 as u64 + 7);
-    for k in 0..shelves {
-        let z = k as f64 * (h - t) / (shelves - 1) as f64;
-        cuboid(e, q(t, 0., z), q(w - t, d - 0.01, z + t), p.oak)?;
-        if k + 1 == shelves {
-            break;
+    grouped(e, |e| {
+        let size = max - min;
+        let (o, u, v, w, d) = if front.y < 0. {
+            (min, DVec2::X, DVec2::Y, size.x, size.y)
+        } else if front.y > 0. {
+            (max, -DVec2::X, -DVec2::Y, size.x, size.y)
+        } else if front.x < 0. {
+            (DVec2::new(min.x, max.y), -DVec2::Y, DVec2::X, size.y, size.x)
+        } else {
+            (DVec2::new(max.x, min.y), DVec2::Y, -DVec2::X, size.y, size.x)
+        };
+        let q = |s: f64, t: f64, z: f64| (o + u * s + v * t).extend(z);
+        let (h, t) = (2.2, 0.025);
+        cuboid(e, q(0., d - 0.01, 0.), q(w, d, h), p.oak)?;
+        for s in [0., w - t] {
+            cuboid(e, q(s, 0., 0.), q(s + t, d - 0.01, h), p.oak)?;
         }
-        let mut s = t + random.range(0.0, 0.15);
-        while s < w - t - 0.06 {
-            let width = random.range(0.025, 0.055);
-            let height = random.range(0.2, 0.3);
-            let depth = random.range(0.15, 0.22).min(d - 0.03);
-            if random.next() < 0.85 {
-                let colour = books[(random.next() * books.len() as f64) as usize];
-                cuboid(e, q(s, d - 0.01 - depth, z + t), q(s + width, d - 0.01, z + t + height), colour)?;
+        let shelves = 6;
+        let books = [p.accent, p.fabric, p.linen, p.cars[1], p.terracotta, p.coir, p.worktop];
+        let mut random = Random((min.x * 100.) as i64 as u64 + 7);
+        for k in 0..shelves {
+            let z = k as f64 * (h - t) / (shelves - 1) as f64;
+            cuboid(e, q(t, 0., z), q(w - t, d - 0.01, z + t), p.oak)?;
+            if k + 1 == shelves {
+                break;
             }
-            s += width + 0.002;
-            if random.next() < 0.06 {
-                s += random.range(0.1, 0.25);
+            let mut s = t + random.range(0.0, 0.15);
+            while s < w - t - 0.06 {
+                let width = random.range(0.025, 0.055);
+                let height = random.range(0.2, 0.3);
+                let depth = random.range(0.15, 0.22).min(d - 0.03);
+                if random.next() < 0.85 {
+                    let colour = books[(random.next() * books.len() as f64) as usize];
+                    cuboid(e, q(s, d - 0.01 - depth, z + t), q(s + width, d - 0.01, z + t + height), colour)?;
+                }
+                s += width + 0.002;
+                if random.next() < 0.06 {
+                    s += random.range(0.1, 0.25);
+                }
             }
         }
-    }
-    Ok(())
+        Ok(())
+    })
 }
 
 fn bed(e: &mut Editor, min: DVec2, max: DVec2, p: &Paints) -> Result<()> {
-    // An upholstered base on short legs, a mattress, a throw, pillows and a headboard.
-    for (x, y) in
-        [(min.x + 0.1, min.y + 0.1), (max.x - 0.1, min.y + 0.1), (min.x + 0.1, max.y - 0.2), (max.x - 0.1, max.y - 0.2)]
-    {
-        column(e, DVec3::new(x, y, 0.), 0.025, 0.1, 16, p.dark)?;
-    }
-    rounded(e, min.extend(0.1), DVec2::new(max.x, max.y - 0.1).extend(0.32), 0.04, p.fabric)?;
-    rounded(
-        e,
-        (min + DVec2::splat(0.04)).extend(0.32),
-        DVec2::new(max.x - 0.04, max.y - 0.14).extend(0.54),
-        0.08,
-        p.linen,
-    )?;
-    rounded(
-        e,
-        DVec3::new(min.x + 0.02, min.y + 0.02, 0.54),
-        DVec3::new(max.x - 0.02, min.y + 0.75, 0.57),
-        0.03,
-        p.accent,
-    )?;
-    for x in [min.x + 0.15, (min.x + max.x) / 2. + 0.05] {
-        rounded(e, DVec3::new(x, max.y - 0.65, 0.54), DVec3::new(x + 0.75, max.y - 0.2, 0.68), 0.1, p.linen)?;
-    }
-    rounded(e, DVec3::new(min.x - 0.15, max.y - 0.1, 0.), DVec3::new(max.x + 0.15, max.y, 1.15), 0.04, p.fabric)?;
-    Ok(())
+    grouped(e, |e| {
+        // An upholstered base on short legs, a mattress, a throw, pillows and a headboard.
+        for (x, y) in [
+            (min.x + 0.1, min.y + 0.1),
+            (max.x - 0.1, min.y + 0.1),
+            (min.x + 0.1, max.y - 0.2),
+            (max.x - 0.1, max.y - 0.2),
+        ] {
+            column(e, DVec3::new(x, y, 0.), 0.025, 0.1, 16, p.dark)?;
+        }
+        rounded(e, min.extend(0.1), DVec2::new(max.x, max.y - 0.1).extend(0.32), 0.04, p.fabric)?;
+        rounded(
+            e,
+            (min + DVec2::splat(0.04)).extend(0.32),
+            DVec2::new(max.x - 0.04, max.y - 0.14).extend(0.54),
+            0.08,
+            p.linen,
+        )?;
+        rounded(
+            e,
+            DVec3::new(min.x + 0.02, min.y + 0.02, 0.54),
+            DVec3::new(max.x - 0.02, min.y + 0.75, 0.57),
+            0.03,
+            p.accent,
+        )?;
+        for x in [min.x + 0.15, (min.x + max.x) / 2. + 0.05] {
+            rounded(e, DVec3::new(x, max.y - 0.65, 0.54), DVec3::new(x + 0.75, max.y - 0.2, 0.68), 0.1, p.linen)?;
+        }
+        rounded(e, DVec3::new(min.x - 0.15, max.y - 0.1, 0.), DVec3::new(max.x + 0.15, max.y, 1.15), 0.04, p.fabric)?;
+        Ok(())
+    })
 }
 
 /// A dining chair: round steel legs, the back pair rising to carry the back rest, and a
 /// timber seat and back.
 fn chair(e: &mut Editor, at: DVec3, degrees: f64, wood: MaterialId, p: &Paints) -> Result<()> {
-    let mut parts = Vec::new();
-    for (dx, dy, h) in [(-0.19, -0.19, 0.43), (0.19, -0.19, 0.43), (-0.19, 0.19, 0.86), (0.19, 0.19, 0.86)] {
-        parts.push(column(e, at + DVec3::new(dx, dy, 0.), 0.014, h, 16, p.dark)?);
-    }
-    parts.push(rounded(e, at + DVec3::new(-0.22, -0.22, 0.43), at + DVec3::new(0.22, 0.21, 0.46), 0.04, wood)?);
-    parts.push(rounded(e, at + DVec3::new(-0.21, 0.205, 0.58), at + DVec3::new(0.21, 0.225, 0.84), 0.03, wood)?);
-    turn(e, &parts, at, degrees)
+    grouped(e, |e| {
+        let mut parts = Vec::new();
+        for (dx, dy, h) in [(-0.19, -0.19, 0.43), (0.19, -0.19, 0.43), (-0.19, 0.19, 0.86), (0.19, 0.19, 0.86)] {
+            parts.push(column(e, at + DVec3::new(dx, dy, 0.), 0.014, h, 16, p.dark)?);
+        }
+        parts.push(rounded(e, at + DVec3::new(-0.22, -0.22, 0.43), at + DVec3::new(0.22, 0.21, 0.46), 0.04, wood)?);
+        parts.push(rounded(e, at + DVec3::new(-0.21, 0.205, 0.58), at + DVec3::new(0.21, 0.225, 0.84), 0.03, wood)?);
+        turn(e, &parts, at, degrees)
+    })
 }
 
 fn table(e: &mut Editor, min: DVec2, max: DVec2, height: f64, top: MaterialId, p: &Paints) -> Result<()> {
-    for (x, y) in [
-        (min.x + 0.12, min.y + 0.12),
-        (max.x - 0.12, min.y + 0.12),
-        (min.x + 0.12, max.y - 0.12),
-        (max.x - 0.12, max.y - 0.12),
-    ] {
-        column(e, DVec3::new(x, y, 0.), 0.03, height - 0.04, 24, p.dark)?;
+    grouped(e, |e| {
+        for (x, y) in [
+            (min.x + 0.12, min.y + 0.12),
+            (max.x - 0.12, min.y + 0.12),
+            (min.x + 0.12, max.y - 0.12),
+            (max.x - 0.12, max.y - 0.12),
+        ] {
+            column(e, DVec3::new(x, y, 0.), 0.03, height - 0.04, 24, p.dark)?;
+        }
+        rounded(e, min.extend(height - 0.04), max.extend(height), 0.03, top)?;
+        Ok(())
+    })
+}
+
+/// Makes everything `build` creates into one group, as one object.
+fn grouped(e: &mut Editor, build: impl FnOnce(&mut Editor) -> Result<()>) -> Result<()> {
+    let parts = built(e, build)?;
+    if parts.len() > 1 {
+        e.apply(Command::MakeGroup { elements: parts.into_iter().map(Element::Instance).collect() })?;
     }
-    rounded(e, min.extend(height - 0.04), max.extend(height), 0.03, top)?;
     Ok(())
 }
 
@@ -978,31 +1031,45 @@ fn raised(e: &mut Editor, dz: f64, build: impl FnOnce(&mut Editor) -> Result<()>
 }
 
 fn lounger(e: &mut Editor, at: DVec3, degrees: f64, p: &Paints) -> Result<()> {
-    let mut parts = Vec::new();
-    // A slim teak frame on four legs, slats under a mattress and a raised back.
-    for (x, y) in [(-0.31, -0.91), (0.31, -0.91), (-0.31, 0.87), (0.31, 0.87)] {
-        parts.push(column(e, at + DVec3::new(x, y, 0.), 0.025, 0.24, 16, p.teak)?);
-    }
-    for x in [-0.35, 0.31] {
-        parts.push(rounded(e, at + DVec3::new(x, -0.95, 0.2), at + DVec3::new(x + 0.04, 0.95, 0.28), 0.01, p.teak)?);
-    }
-    for i in 0..9 {
-        let y = -0.9 + i as f64 * 0.15;
-        parts.push(rounded(e, at + DVec3::new(-0.31, y, 0.24), at + DVec3::new(0.31, y + 0.1, 0.26), 0.01, p.teak)?);
-    }
-    parts.push(rounded(e, at + DVec3::new(-0.31, -0.92, 0.26), at + DVec3::new(0.31, 0.4, 0.34), 0.06, p.linen)?);
-    let back = rounded(e, at + DVec3::new(-0.31, 0.4, 0.26), at + DVec3::new(0.31, 0.95, 0.34), 0.06, p.linen)?;
-    e.apply(Command::Rotate {
-        elements: vec![Element::Instance(back)],
-        centre: at + DVec3::new(0., 0.4, 0.3),
-        axis: DVec3::X,
-        angle: 50.,
-        copies: 0,
-    })?;
-    parts.push(back);
-    // A prop under the raised back.
-    parts.push(limb(e, at + DVec3::new(0., 0.4, 0.27), at + DVec3::new(0., 0.62, 0.52), 0.012, 0.012, p.steel)?);
-    turn(e, &parts, at, degrees)
+    grouped(e, |e| {
+        let mut parts = Vec::new();
+        // A slim teak frame on four legs, slats under a mattress and a raised back.
+        for (x, y) in [(-0.31, -0.91), (0.31, -0.91), (-0.31, 0.87), (0.31, 0.87)] {
+            parts.push(column(e, at + DVec3::new(x, y, 0.), 0.025, 0.24, 16, p.teak)?);
+        }
+        for x in [-0.35, 0.31] {
+            parts.push(rounded(
+                e,
+                at + DVec3::new(x, -0.95, 0.2),
+                at + DVec3::new(x + 0.04, 0.95, 0.28),
+                0.01,
+                p.teak,
+            )?);
+        }
+        for i in 0..9 {
+            let y = -0.9 + i as f64 * 0.15;
+            parts.push(rounded(
+                e,
+                at + DVec3::new(-0.31, y, 0.24),
+                at + DVec3::new(0.31, y + 0.1, 0.26),
+                0.01,
+                p.teak,
+            )?);
+        }
+        parts.push(rounded(e, at + DVec3::new(-0.31, -0.92, 0.26), at + DVec3::new(0.31, 0.4, 0.34), 0.06, p.linen)?);
+        let back = rounded(e, at + DVec3::new(-0.31, 0.4, 0.26), at + DVec3::new(0.31, 0.95, 0.34), 0.06, p.linen)?;
+        e.apply(Command::Rotate {
+            elements: vec![Element::Instance(back)],
+            centre: at + DVec3::new(0., 0.4, 0.3),
+            axis: DVec3::X,
+            angle: 50.,
+            copies: 0,
+        })?;
+        parts.push(back);
+        // A prop under the raised back.
+        parts.push(limb(e, at + DVec3::new(0., 0.4, 0.27), at + DVec3::new(0., 0.62, 0.52), 0.012, 0.012, p.steel)?);
+        turn(e, &parts, at, degrees)
+    })
 }
 
 /// A sofa with its back towards `back_side`: a plinth on short legs, seat and back cushions
@@ -1018,53 +1085,63 @@ fn sofa(
     cushions: MaterialId,
     p: &Paints,
 ) -> Result<()> {
-    let centre = ((min + max) / 2.).extend(0.);
-    let size = max - min;
-    let (w, d) = if back_side.x != 0. { (size.y, size.x) } else { (size.x, size.y) };
-    let degrees = if back_side.y > 0. {
-        0.
-    } else if back_side.y < 0. {
-        180.
-    } else if back_side.x > 0. {
-        -90.
-    } else {
-        90.
-    };
-    let at = |x: f64, y: f64, z: f64| centre + DVec3::new(x, y, z);
-    let (hw, hd) = (w / 2., d / 2.);
-    let mut parts = Vec::new();
-    for (x, y) in [(-hw + 0.08, -hd + 0.08), (hw - 0.08, -hd + 0.08), (-hw + 0.08, hd - 0.08), (hw - 0.08, hd - 0.08)] {
-        parts.push(column(e, at(x, y, 0.), 0.02, 0.08, 16, p.dark)?);
-    }
-    parts.push(rounded(e, at(-hw, -hd, 0.08), at(hw, hd, 0.28), 0.03, cover)?);
-    parts.push(rounded(e, at(-hw, hd - 0.18, 0.28), at(hw, hd, 0.72), 0.05, cover)?);
-    let arm = if arms { 0.16 } else { 0. };
-    if arms {
-        for x in [-hw, hw - arm] {
-            parts.push(rounded(e, at(x, -hd, 0.28), at(x + arm, hd - 0.18, 0.6), 0.05, cover)?);
+    grouped(e, |e| {
+        let centre = ((min + max) / 2.).extend(0.);
+        let size = max - min;
+        let (w, d) = if back_side.x != 0. { (size.y, size.x) } else { (size.x, size.y) };
+        let degrees = if back_side.y > 0. {
+            0.
+        } else if back_side.y < 0. {
+            180.
+        } else if back_side.x > 0. {
+            -90.
+        } else {
+            90.
+        };
+        let at = |x: f64, y: f64, z: f64| centre + DVec3::new(x, y, z);
+        let (hw, hd) = (w / 2., d / 2.);
+        let mut parts = Vec::new();
+        for (x, y) in
+            [(-hw + 0.08, -hd + 0.08), (hw - 0.08, -hd + 0.08), (-hw + 0.08, hd - 0.08), (hw - 0.08, hd - 0.08)]
+        {
+            parts.push(column(e, at(x, y, 0.), 0.02, 0.08, 16, p.dark)?);
         }
-    }
-    let inner = w - 2. * arm;
-    let count = (inner / 0.8).round().max(1.) as usize;
-    let each = inner / count as f64;
-    for k in 0..count {
-        let x = -hw + arm + k as f64 * each;
-        parts.push(rounded(e, at(x + 0.005, -hd + 0.02, 0.28), at(x + each - 0.005, hd - 0.36, 0.44), 0.06, cover)?);
-        parts.push(rounded(e, at(x + 0.005, hd - 0.36, 0.28), at(x + each - 0.005, hd - 0.18, 0.8), 0.07, cover)?);
-    }
-    // Two scatter cushions in a contrasting colour.
-    for x in [-hw + arm + 0.1, hw - arm - 0.55] {
-        let c = rounded(e, at(x, hd - 0.42, 0.44), at(x + 0.45, hd - 0.3, 0.84), 0.06, cushions)?;
-        e.apply(Command::Rotate {
-            elements: vec![Element::Instance(c)],
-            centre: at(x, hd - 0.36, 0.44),
-            axis: DVec3::X,
-            angle: 12.,
-            copies: 0,
-        })?;
-        parts.push(c);
-    }
-    turn(e, &parts, centre, degrees)
+        parts.push(rounded(e, at(-hw, -hd, 0.08), at(hw, hd, 0.28), 0.03, cover)?);
+        parts.push(rounded(e, at(-hw, hd - 0.18, 0.28), at(hw, hd, 0.72), 0.05, cover)?);
+        let arm = if arms { 0.16 } else { 0. };
+        if arms {
+            for x in [-hw, hw - arm] {
+                parts.push(rounded(e, at(x, -hd, 0.28), at(x + arm, hd - 0.18, 0.6), 0.05, cover)?);
+            }
+        }
+        let inner = w - 2. * arm;
+        let count = (inner / 0.8).round().max(1.) as usize;
+        let each = inner / count as f64;
+        for k in 0..count {
+            let x = -hw + arm + k as f64 * each;
+            parts.push(rounded(
+                e,
+                at(x + 0.005, -hd + 0.02, 0.28),
+                at(x + each - 0.005, hd - 0.36, 0.44),
+                0.06,
+                cover,
+            )?);
+            parts.push(rounded(e, at(x + 0.005, hd - 0.36, 0.28), at(x + each - 0.005, hd - 0.18, 0.8), 0.07, cover)?);
+        }
+        // Two scatter cushions in a contrasting colour.
+        for x in [-hw + arm + 0.1, hw - arm - 0.55] {
+            let c = rounded(e, at(x, hd - 0.42, 0.44), at(x + 0.45, hd - 0.3, 0.84), 0.06, cushions)?;
+            e.apply(Command::Rotate {
+                elements: vec![Element::Instance(c)],
+                centre: at(x, hd - 0.36, 0.44),
+                axis: DVec3::X,
+                angle: 12.,
+                copies: 0,
+            })?;
+            parts.push(c);
+        }
+        turn(e, &parts, centre, degrees)
+    })
 }
 
 /// A horizontal log along X or Y, its foot at `at`.
@@ -1077,173 +1154,221 @@ fn log(e: &mut Editor, at: DVec3, radius: f64, length: f64, along_x: bool, colou
 
 /// A ring of stones around glowing embers and a few logs.
 fn fire_pit(e: &mut Editor, at: DVec3, p: &Paints) -> Result<()> {
-    let mut random = Random(17);
-    for i in 0..12 {
-        let a = i as f64 * std::f64::consts::TAU / 12.;
-        let r = random.range(0.13, 0.17);
-        clump(
-            e,
-            at + DVec3::new(a.cos() * 0.62, a.sin() * 0.62, r * 0.6),
-            DVec3::new(r, r * 1.2, r * 0.75),
-            &mut random,
-            p.plinth,
-        )?;
-    }
-    column(e, at, 0.5, 0.04, 32, p.dark)?;
-    column(e, at + DVec3::Z * 0.04, 0.32, 0.03, 24, p.embers)?;
-    log(e, at + DVec3::new(-0.3, -0.12, 0.07), 0.05, 0.6, true, p.bark)?;
-    log(e, at + DVec3::new(0.1, -0.3, 0.07), 0.05, 0.55, false, p.bark)?;
-    Ok(())
+    grouped(e, |e| {
+        let mut random = Random(17);
+        for i in 0..12 {
+            let a = i as f64 * std::f64::consts::TAU / 12.;
+            let r = random.range(0.13, 0.17);
+            clump(
+                e,
+                at + DVec3::new(a.cos() * 0.62, a.sin() * 0.62, r * 0.6),
+                DVec3::new(r, r * 1.2, r * 0.75),
+                &mut random,
+                p.plinth,
+            )?;
+        }
+        column(e, at, 0.5, 0.04, 32, p.dark)?;
+        column(e, at + DVec3::Z * 0.04, 0.32, 0.03, 24, p.embers)?;
+        log(e, at + DVec3::new(-0.3, -0.12, 0.07), 0.05, 0.6, true, p.bark)?;
+        log(e, at + DVec3::new(0.1, -0.3, 0.07), 0.05, 0.55, false, p.bark)?;
+        Ok(())
+    })
 }
 
 /// A garden bench, back on +Y so it faces -Y before turning: cast side frames, a seat of
 /// four slats and two back slats.
 fn bench(e: &mut Editor, at: DVec3, degrees: f64, p: &Paints) -> Result<()> {
-    let mut parts = Vec::new();
-    for x in [-0.7, 0.62] {
-        parts.push(rounded(e, at + DVec3::new(x, -0.22, 0.), at + DVec3::new(x + 0.08, -0.16, 0.4), 0.015, p.dark)?);
-        // The rear leg continues up behind the seat and carries the back slats.
-        parts.push(rounded(e, at + DVec3::new(x, 0.2, 0.), at + DVec3::new(x + 0.08, 0.26, 0.86), 0.015, p.dark)?);
-        parts.push(rounded(e, at + DVec3::new(x, -0.22, 0.34), at + DVec3::new(x + 0.08, 0.26, 0.4), 0.01, p.dark)?);
-    }
-    for k in 0..4 {
-        let y = -0.24 + k as f64 * 0.115;
-        parts.push(rounded(e, at + DVec3::new(-0.82, y, 0.4), at + DVec3::new(0.82, y + 0.1, 0.44), 0.015, p.teak)?);
-    }
-    for z in [0.52, 0.7] {
-        parts.push(rounded(e, at + DVec3::new(-0.82, 0.17, z), at + DVec3::new(0.82, 0.2, z + 0.12), 0.012, p.teak)?);
-    }
-    turn(e, &parts, at, degrees)
+    grouped(e, |e| {
+        let mut parts = Vec::new();
+        for x in [-0.7, 0.62] {
+            parts.push(rounded(
+                e,
+                at + DVec3::new(x, -0.22, 0.),
+                at + DVec3::new(x + 0.08, -0.16, 0.4),
+                0.015,
+                p.dark,
+            )?);
+            // The rear leg continues up behind the seat and carries the back slats.
+            parts.push(rounded(e, at + DVec3::new(x, 0.2, 0.), at + DVec3::new(x + 0.08, 0.26, 0.86), 0.015, p.dark)?);
+            parts.push(rounded(
+                e,
+                at + DVec3::new(x, -0.22, 0.34),
+                at + DVec3::new(x + 0.08, 0.26, 0.4),
+                0.01,
+                p.dark,
+            )?);
+        }
+        for k in 0..4 {
+            let y = -0.24 + k as f64 * 0.115;
+            parts.push(rounded(
+                e,
+                at + DVec3::new(-0.82, y, 0.4),
+                at + DVec3::new(0.82, y + 0.1, 0.44),
+                0.015,
+                p.teak,
+            )?);
+        }
+        for z in [0.52, 0.7] {
+            parts.push(rounded(
+                e,
+                at + DVec3::new(-0.82, 0.17, z),
+                at + DVec3::new(0.82, 0.2, z + 0.12),
+                0.012,
+                p.teak,
+            )?);
+        }
+        turn(e, &parts, at, degrees)
+    })
 }
 
 /// A swept heap of leaves with a rake lying beside it.
 fn leaf_pile(e: &mut Editor, at: DVec3, p: &Paints) -> Result<()> {
-    let mut random = Random(5);
-    clump(e, at + DVec3::Z * 0.05, DVec3::new(0.75, 0.6, 0.32), &mut random, p.autumn[0])?;
-    clump(e, at + DVec3::new(0.5, 0.3, 0.04), DVec3::new(0.45, 0.4, 0.22), &mut random, p.autumn[2])?;
-    limb(e, at + DVec3::new(0.95, -0.95, 0.015), at + DVec3::new(0.95, 0.6, 0.015), 0.014, 0.014, p.oak)?;
-    rounded(e, at + DVec3::new(0.75, -1.0, 0.), at + DVec3::new(1.15, -0.94, 0.04), 0.01, p.steel)?;
-    Ok(())
+    grouped(e, |e| {
+        let mut random = Random(5);
+        clump(e, at + DVec3::Z * 0.05, DVec3::new(0.75, 0.6, 0.32), &mut random, p.autumn[0])?;
+        clump(e, at + DVec3::new(0.5, 0.3, 0.04), DVec3::new(0.45, 0.4, 0.22), &mut random, p.autumn[2])?;
+        limb(e, at + DVec3::new(0.95, -0.95, 0.015), at + DVec3::new(0.95, 0.6, 0.015), 0.014, 0.014, p.oak)?;
+        rounded(e, at + DVec3::new(0.75, -1.0, 0.), at + DVec3::new(1.15, -0.94, 0.04), 0.01, p.steel)?;
+        Ok(())
+    })
 }
 
 /// Split logs stacked against a wall between two steel end frames, each row bedded in the
 /// hollows of the one below.
 fn woodpile(e: &mut Editor, min: DVec2, length: f64, p: &Paints) -> Result<()> {
-    let r = 0.09;
-    for row in 0..6 {
-        let shift = if row % 2 == 0 { 0. } else { r + 0.01 };
-        let mut y = min.y + 0.05 + r + shift;
-        while y + r < min.y + length - 0.05 {
-            log(e, DVec3::new(min.x, y, row as f64 * 0.15), r, 0.5, true, p.firewood)?;
-            y += 2. * r + 0.02;
+    grouped(e, |e| {
+        let r = 0.09;
+        for row in 0..6 {
+            let shift = if row % 2 == 0 { 0. } else { r + 0.01 };
+            let mut y = min.y + 0.05 + r + shift;
+            while y + r < min.y + length - 0.05 {
+                log(e, DVec3::new(min.x, y, row as f64 * 0.15), r, 0.5, true, p.firewood)?;
+                y += 2. * r + 0.02;
+            }
         }
-    }
-    for y in [min.y, min.y + length - 0.05] {
-        cuboid(e, DVec3::new(min.x, y, 0.), DVec3::new(min.x + 0.5, y + 0.05, 1.0), p.dark)?;
-    }
-    Ok(())
+        for y in [min.y, min.y + length - 0.05] {
+            cuboid(e, DVec3::new(min.x, y, 0.), DVec3::new(min.x + 0.5, y + 0.05, 1.0), p.dark)?;
+        }
+        Ok(())
+    })
 }
 
 /// A wall-mounted letterbox with a slot and a flap.
 fn letterbox(e: &mut Editor, at: DVec3, out: DVec3, p: &Paints) -> Result<()> {
-    let along = DVec3::Z.cross(out);
-    let q = |s: f64, z: f64, d: f64| at + along * s + DVec3::Z * z + out * d;
-    rounded(e, q(-0.18, 0., 0.), q(0.18, 0.4, 0.13), 0.02, p.dark)?;
-    cuboid(e, q(-0.12, 0.3, 0.13), q(0.12, 0.33, 0.135), p.steel)?;
-    Ok(())
+    grouped(e, |e| {
+        let along = DVec3::Z.cross(out);
+        let q = |s: f64, z: f64, d: f64| at + along * s + DVec3::Z * z + out * d;
+        rounded(e, q(-0.18, 0., 0.), q(0.18, 0.4, 0.13), 0.02, p.dark)?;
+        cuboid(e, q(-0.12, 0.3, 0.13), q(0.12, 0.33, 0.135), p.steel)?;
+        Ok(())
+    })
 }
 
 /// A wheelie bin with a hinged lid, two wheels and a handle, front towards -Y.
 fn bin(e: &mut Editor, at: DVec3, degrees: f64, colour: MaterialId, p: &Paints) -> Result<()> {
-    let mut parts = built(e, |e| {
-        rounded(e, at + DVec3::new(-0.27, -0.3, 0.05), at + DVec3::new(0.27, 0.3, 1.0), 0.04, colour)?;
-        rounded(e, at + DVec3::new(-0.29, -0.34, 1.0), at + DVec3::new(0.29, 0.36, 1.05), 0.03, colour)?;
-        limb(e, at + DVec3::new(-0.24, 0.36, 1.0), at + DVec3::new(0.24, 0.36, 1.0), 0.015, 0.015, p.dark)?;
-        for x in [-0.3, 0.24] {
-            let hub = at + DVec3::new(x, 0.26, 0.1);
-            limb(e, hub, hub + DVec3::X * 0.06, 0.1, 0.1, p.dark)?;
-        }
-        Ok(())
-    })?;
-    parts.sort();
-    turn(e, &parts, at, degrees)
+    grouped(e, |e| {
+        let mut parts = built(e, |e| {
+            rounded(e, at + DVec3::new(-0.27, -0.3, 0.05), at + DVec3::new(0.27, 0.3, 1.0), 0.04, colour)?;
+            rounded(e, at + DVec3::new(-0.29, -0.34, 1.0), at + DVec3::new(0.29, 0.36, 1.05), 0.03, colour)?;
+            limb(e, at + DVec3::new(-0.24, 0.36, 1.0), at + DVec3::new(0.24, 0.36, 1.0), 0.015, 0.015, p.dark)?;
+            for x in [-0.3, 0.24] {
+                let hub = at + DVec3::new(x, 0.26, 0.1);
+                limb(e, hub, hub + DVec3::X * 0.06, 0.1, 0.1, p.dark)?;
+            }
+            Ok(())
+        })?;
+        parts.sort();
+        turn(e, &parts, at, degrees)
+    })
 }
 
 /// A street lamp: a tapered steel column on a base and a slim luminaire on an arm.
 fn street_lamp(e: &mut Editor, foot: DVec3, out: DVec2, p: &Paints) -> Result<()> {
-    lathe(e, foot, &[(0., 0.), (0.13, 0.), (0.13, 0.5), (0.08, 0.55), (0.055, 6.0), (0., 6.0)], 24, p.dark)?;
-    let head = foot + DVec3::Z * 6.0 + (out * 1.1).extend(0.12);
-    limb(e, foot + DVec3::Z * 5.9, head, 0.035, 0.03, p.dark)?;
-    let lamp = head + (out * 0.25).extend(-0.05);
-    let a = DVec3::new(lamp.x - 0.35, lamp.y - 0.15, lamp.z - 0.05);
-    let b = DVec3::new(lamp.x + 0.35, lamp.y + 0.15, lamp.z + 0.06);
-    rounded(e, a, b, 0.06, p.dark)?;
-    cuboid(e, a + DVec3::new(0.05, 0.03, -0.01), DVec3::new(b.x - 0.05, b.y - 0.03, a.z), p.lamp)?;
-    Ok(())
+    grouped(e, |e| {
+        lathe(e, foot, &[(0., 0.), (0.13, 0.), (0.13, 0.5), (0.08, 0.55), (0.055, 6.0), (0., 6.0)], 24, p.dark)?;
+        let head = foot + DVec3::Z * 6.0 + (out * 1.1).extend(0.12);
+        limb(e, foot + DVec3::Z * 5.9, head, 0.035, 0.03, p.dark)?;
+        let lamp = head + (out * 0.25).extend(-0.05);
+        let a = DVec3::new(lamp.x - 0.35, lamp.y - 0.15, lamp.z - 0.05);
+        let b = DVec3::new(lamp.x + 0.35, lamp.y + 0.15, lamp.z + 0.06);
+        rounded(e, a, b, 0.06, p.dark)?;
+        cuboid(e, a + DVec3::new(0.05, 0.03, -0.01), DVec3::new(b.x - 0.05, b.y - 0.03, a.z), p.lamp)?;
+        Ok(())
+    })
 }
 
 /// A low-voltage garden bollard with a glowing band under its cap.
 fn bollard(e: &mut Editor, foot: DVec3, p: &Paints) -> Result<()> {
-    lathe(e, foot, &[(0., 0.), (0.07, 0.), (0.07, 0.55), (0., 0.55)], 32, p.dark)?;
-    lathe(e, foot + DVec3::Z * 0.55, &[(0., 0.), (0.065, 0.), (0.065, 0.06), (0., 0.06)], 32, p.lamp)?;
-    lathe(e, foot + DVec3::Z * 0.61, &[(0., 0.), (0.085, 0.), (0.085, 0.02), (0.06, 0.04), (0., 0.045)], 32, p.dark)?;
-    Ok(())
+    grouped(e, |e| {
+        lathe(e, foot, &[(0., 0.), (0.07, 0.), (0.07, 0.55), (0., 0.55)], 32, p.dark)?;
+        lathe(e, foot + DVec3::Z * 0.55, &[(0., 0.), (0.065, 0.), (0.065, 0.06), (0., 0.06)], 32, p.lamp)?;
+        lathe(
+            e,
+            foot + DVec3::Z * 0.61,
+            &[(0., 0.), (0.085, 0.), (0.085, 0.02), (0.06, 0.04), (0., 0.045)],
+            32,
+            p.dark,
+        )?;
+        Ok(())
+    })
 }
 
 /// A parasol: a granite base, a timber pole, ribs and struts, and a sagging canvas canopy in
 /// panels of two colours with a valance.
 fn parasol(e: &mut Editor, at: DVec3, colours: [MaterialId; 2], p: &Paints) -> Result<()> {
-    let (edge, apex, radius) = (2.05, 2.55, 1.5);
-    lathe(e, at, &[(0., 0.), (0.28, 0.), (0.28, 0.05), (0.25, 0.08), (0.05, 0.1), (0., 0.1)], 40, p.stone)?;
-    column(e, at, 0.022, apex + 0.1, 24, p.oak)?;
-    lathe(e, at + DVec3::Z * (apex + 0.1), &[(0., 0.), (0.035, 0.), (0.04, 0.04), (0., 0.09)], 16, p.oak)?;
-    column(e, at + DVec3::Z * 1.5, 0.034, 0.12, 24, p.steel)?;
-    // Eight panels sag between the ribs; the canopy has a thin, real thickness.
-    let canopy = lathe_with(
-        e,
-        at,
-        &[(0.0, apex - 0.012), (radius - 0.02, edge - 0.012), (radius, edge), (0.0, apex)],
-        64,
-        |a| 1. - 0.035 * (4. * a).sin().abs(),
-        colours[0],
-    )?;
-    let place = e.active().instances.get(&canopy).ok_or("no canopy")?.transform;
-    e.enter(canopy)?;
-    let mesh = e.mesh();
-    let stripes: Vec<_> = mesh
-        .faces()
-        .filter(|(_, f)| {
-            let c = f.outer.iter().map(|v| mesh.pos(*v)).sum::<DVec3>() / f.outer.len() as f64;
-            let c = place.transform_point3(c) - at;
-            let sector = (c.y.atan2(c.x).rem_euclid(std::f64::consts::TAU) / (std::f64::consts::TAU / 8.)) as usize;
-            sector % 2 == 1
-        })
-        .map(|(id, _)| id)
-        .collect();
-    e.apply(Command::Paint { faces: stripes.clone(), material: Some(colours[1]), back: false })?;
-    e.apply(Command::Paint { faces: stripes, material: Some(colours[1]), back: true })?;
-    e.exit();
-    lathe(
-        e,
-        at,
-        &[
-            (radius - 0.012, edge - 0.15),
-            (radius, edge - 0.15),
-            (radius, edge),
-            (radius - 0.012, edge),
-            (radius - 0.012, edge - 0.15),
-        ],
-        64,
-        colours[1],
-    )?;
-    for k in 0..8 {
-        let a = (k as f64 + 0.5) * std::f64::consts::TAU / 8.;
-        let dir = DVec3::new(a.cos(), a.sin(), 0.);
-        let under = |r: f64| at + dir * r + DVec3::Z * (apex - 0.02 - (apex - edge) * r / radius);
-        limb(e, under(0.04), under(radius - 0.03), 0.008, 0.007, p.steel)?;
-        limb(e, at + DVec3::Z * 1.56 + dir * 0.03, under(0.75), 0.006, 0.006, p.steel)?;
-    }
-    Ok(())
+    grouped(e, |e| {
+        let (edge, apex, radius) = (2.05, 2.55, 1.5);
+        lathe(e, at, &[(0., 0.), (0.28, 0.), (0.28, 0.05), (0.25, 0.08), (0.05, 0.1), (0., 0.1)], 40, p.stone)?;
+        column(e, at, 0.022, apex + 0.1, 24, p.oak)?;
+        lathe(e, at + DVec3::Z * (apex + 0.1), &[(0., 0.), (0.035, 0.), (0.04, 0.04), (0., 0.09)], 16, p.oak)?;
+        column(e, at + DVec3::Z * 1.5, 0.034, 0.12, 24, p.steel)?;
+        // Eight panels sag between the ribs; the canopy has a thin, real thickness.
+        let canopy = lathe_with(
+            e,
+            at,
+            &[(0.0, apex - 0.012), (radius - 0.02, edge - 0.012), (radius, edge), (0.0, apex)],
+            64,
+            |a| 1. - 0.035 * (4. * a).sin().abs(),
+            colours[0],
+        )?;
+        let place = e.active().instances.get(&canopy).ok_or("no canopy")?.transform;
+        e.enter(canopy)?;
+        let mesh = e.mesh();
+        let stripes: Vec<_> = mesh
+            .faces()
+            .filter(|(_, f)| {
+                let c = f.outer.iter().map(|v| mesh.pos(*v)).sum::<DVec3>() / f.outer.len() as f64;
+                let c = place.transform_point3(c) - at;
+                let sector = (c.y.atan2(c.x).rem_euclid(std::f64::consts::TAU) / (std::f64::consts::TAU / 8.)) as usize;
+                sector % 2 == 1
+            })
+            .map(|(id, _)| id)
+            .collect();
+        e.apply(Command::Paint { faces: stripes.clone(), material: Some(colours[1]), back: false })?;
+        e.apply(Command::Paint { faces: stripes, material: Some(colours[1]), back: true })?;
+        e.exit();
+        lathe(
+            e,
+            at,
+            &[
+                (radius - 0.012, edge - 0.15),
+                (radius, edge - 0.15),
+                (radius, edge),
+                (radius - 0.012, edge),
+                (radius - 0.012, edge - 0.15),
+            ],
+            64,
+            colours[1],
+        )?;
+        for k in 0..8 {
+            let a = (k as f64 + 0.5) * std::f64::consts::TAU / 8.;
+            let dir = DVec3::new(a.cos(), a.sin(), 0.);
+            let under = |r: f64| at + dir * r + DVec3::Z * (apex - 0.02 - (apex - edge) * r / radius);
+            limb(e, under(0.04), under(radius - 0.03), 0.008, 0.007, p.steel)?;
+            limb(e, at + DVec3::Z * 1.56 + dir * 0.03, under(0.75), 0.006, 0.006, p.steel)?;
+        }
+        Ok(())
+    })
 }
 
 /// A simple neighbouring house facing +Y: a plinth, rendered walls, windows on both long
@@ -1261,180 +1386,192 @@ fn neighbour(
     door_colour: MaterialId,
     p: &Paints,
 ) -> Result<()> {
-    let at = |x: f64, y: f64, z: f64| base + DVec3::new(x, y, z);
-    rounded(e, at(-0.05, -0.05, -0.3), at(w + 0.05, d + 0.05, 0.45), 0.01, p.plinth)?;
-    cuboid(e, at(0., 0., 0.45), at(w, d, h), walls)?;
-    if let Some(roof) = roof {
-        // Roof: two tiled slopes over the walls with an overhang, gable ends and a ridge.
-        let rise = d * 0.42;
-        let (over, t) = (0.45, 0.12);
-        let slope = DVec2::new(d / 2. + over, rise * (d / 2. + over) / (d / 2.)).normalize();
-        for (y0, sign) in [(-over, 1.), (d + over, -1.)] {
-            let drop = rise * over / (d / 2.);
-            let eave = |x: f64| at(x, y0, h - drop);
-            let ridge = |x: f64| at(x, d / 2., h + rise);
-            let up = DVec3::new(0., -slope.y * sign, slope.x) * t;
-            prism(e, [eave(-over), eave(w + over), ridge(w + over), ridge(-over)], up, roof)?;
-            // Fascia board, a half-round gutter and a downpipe at each end.
+    grouped(e, |e| {
+        let at = |x: f64, y: f64, z: f64| base + DVec3::new(x, y, z);
+        rounded(e, at(-0.05, -0.05, -0.3), at(w + 0.05, d + 0.05, 0.45), 0.01, p.plinth)?;
+        cuboid(e, at(0., 0., 0.45), at(w, d, h), walls)?;
+        if let Some(roof) = roof {
+            // Roof: two tiled slopes over the walls with an overhang, gable ends and a ridge.
+            let rise = d * 0.42;
+            let (over, t) = (0.45, 0.12);
+            let slope = DVec2::new(d / 2. + over, rise * (d / 2. + over) / (d / 2.)).normalize();
+            for (y0, sign) in [(-over, 1.), (d + over, -1.)] {
+                let drop = rise * over / (d / 2.);
+                let eave = |x: f64| at(x, y0, h - drop);
+                let ridge = |x: f64| at(x, d / 2., h + rise);
+                let up = DVec3::new(0., -slope.y * sign, slope.x) * t;
+                prism(e, [eave(-over), eave(w + over), ridge(w + over), ridge(-over)], up, roof)?;
+                // Fascia board, a half-round gutter and a downpipe at each end.
+                rounded(
+                    e,
+                    eave(-over) + DVec3::new(0., -0.03 * sign, -0.2),
+                    eave(w + over) + DVec3::new(0., 0.0, 0.02),
+                    0.01,
+                    p.coping,
+                )?;
+                let g = eave(-over) + DVec3::new(0., -0.1 * sign, -0.12);
+                limb(e, g, g + DVec3::X * (w + 2. * over), 0.07, 0.07, p.dark)?;
+                let wall_y = if sign > 0. { base.y - 0.11 } else { base.y + d + 0.11 };
+                for x in [0.25, w - 0.25] {
+                    let top = DVec3::new(base.x + x, g.y, g.z);
+                    rail(
+                        e,
+                        &[top, DVec3::new(top.x, wall_y, top.z - 0.3), DVec3::new(top.x, wall_y, base.z)],
+                        0.04,
+                        p.dark,
+                    )?;
+                }
+            }
+            // Gable end walls as triangular prisms filling the roof void.
+            for x in [0., w - 0.3] {
+                let tri = [at(x, 0., h), at(x, d, h), at(x, d / 2., h + rise)];
+                let mut triangles =
+                    vec![tri, [tri[0] + DVec3::X * 0.3, tri[2] + DVec3::X * 0.3, tri[1] + DVec3::X * 0.3]];
+                for k in 0..3 {
+                    let n = (k + 1) % 3;
+                    triangles.push([tri[k], tri[n] + DVec3::X * 0.3, tri[n]]);
+                    triangles.push([tri[k], tri[k] + DVec3::X * 0.3, tri[n] + DVec3::X * 0.3]);
+                }
+                let centre = (tri[0] + tri[1] + tri[2]) / 3. + DVec3::X * 0.15;
+                for t in &mut triangles {
+                    let c = (t[0] + t[1] + t[2]) / 3.;
+                    if (t[1] - t[0]).cross(t[2] - t[0]).dot(c - centre) < 0. {
+                        t.swap(1, 2);
+                    }
+                }
+                solid(e, &triangles, 10., walls)?;
+            }
+            // Ridge tiles and a chimney with a cap and two pots.
+            limb(e, at(-over, d / 2., h + rise + 0.1), at(w + over, d / 2., h + rise + 0.1), 0.11, 0.11, roof)?;
+            let cx = w * 0.72;
+            rounded(e, at(cx, d * 0.35, h + rise * 0.5), at(cx + 0.6, d * 0.35 + 0.6, h + rise + 1.0), 0.01, p.brick)?;
             rounded(
                 e,
-                eave(-over) + DVec3::new(0., -0.03 * sign, -0.2),
-                eave(w + over) + DVec3::new(0., 0.0, 0.02),
+                at(cx - 0.05, d * 0.35 - 0.05, h + rise + 1.0),
+                at(cx + 0.65, d * 0.35 + 0.65, h + rise + 1.08),
                 0.01,
                 p.coping,
             )?;
-            let g = eave(-over) + DVec3::new(0., -0.1 * sign, -0.12);
-            limb(e, g, g + DVec3::X * (w + 2. * over), 0.07, 0.07, p.dark)?;
-            let wall_y = if sign > 0. { base.y - 0.11 } else { base.y + d + 0.11 };
-            for x in [0.25, w - 0.25] {
-                let top = DVec3::new(base.x + x, g.y, g.z);
-                rail(
-                    e,
-                    &[top, DVec3::new(top.x, wall_y, top.z - 0.3), DVec3::new(top.x, wall_y, base.z)],
-                    0.04,
-                    p.dark,
-                )?;
+            for dx in [0.18, 0.42] {
+                column(e, at(cx + dx, d * 0.35 + 0.3, h + rise + 1.08), 0.08, 0.3, 24, p.terracotta)?;
+            }
+        } else {
+            // A flat roof behind a parapet with a coping, a steel flue and downpipes.
+            cuboid(e, at(0., 0., h), at(w, d, h + 0.5), walls)?;
+            rounded(e, at(-0.04, -0.04, h + 0.5), at(w + 0.04, d + 0.04, h + 0.56), 0.01, p.coping)?;
+            lathe(
+                e,
+                at(w * 0.7, d * 0.4, h + 0.56),
+                &[(0., 0.), (0.1, 0.), (0.1, 0.9), (0.16, 0.95), (0., 1.05)],
+                24,
+                p.chrome,
+            )?;
+            for x in [0.2, w - 0.2] {
+                rail(e, &[at(x, d + 0.06, h + 0.45), at(x, d + 0.06, 0.)], 0.045, p.dark)?;
             }
         }
-        // Gable end walls as triangular prisms filling the roof void.
-        for x in [0., w - 0.3] {
-            let tri = [at(x, 0., h), at(x, d, h), at(x, d / 2., h + rise)];
-            let mut triangles = vec![tri, [tri[0] + DVec3::X * 0.3, tri[2] + DVec3::X * 0.3, tri[1] + DVec3::X * 0.3]];
-            for k in 0..3 {
-                let n = (k + 1) % 3;
-                triangles.push([tri[k], tri[n] + DVec3::X * 0.3, tri[n]]);
-                triangles.push([tri[k], tri[k] + DVec3::X * 0.3, tri[n] + DVec3::X * 0.3]);
-            }
-            let centre = (tri[0] + tri[1] + tri[2]) / 3. + DVec3::X * 0.15;
-            for t in &mut triangles {
-                let c = (t[0] + t[1] + t[2]) / 3.;
-                if (t[1] - t[0]).cross(t[2] - t[0]).dot(c - centre) < 0. {
-                    t.swap(1, 2);
+        // Windows front and back, one or two storeys.
+        let floors = if h > 4. { 2 } else { 1 };
+        let count = ((w - 1.0) / 2.6) as usize;
+        for f in 0..floors {
+            let z = 1.0 + f as f64 * 2.8;
+            for k in 0..count {
+                let x = 1.0 + k as f64 * 2.6;
+                if f == 0 && k == 1 {
+                    // Front door with a step and a canopy.
+                    let door = at(x, d, 0.45);
+                    cuboid(e, door + DVec3::new(-0.08, 0., 0.), door + DVec3::new(1.08, 0.05, 2.2), p.coping)?;
+                    rounded(e, door + DVec3::new(0., 0.02, 0.), door + DVec3::new(1.0, 0.07, 2.12), 0.01, door_colour)?;
+                    limb(
+                        e,
+                        door + DVec3::new(0.85, 0.07, 1.0),
+                        door + DVec3::new(0.85, 0.13, 1.0),
+                        0.01,
+                        0.01,
+                        p.chrome,
+                    )?;
+                    rounded(e, door + DVec3::new(-0.4, 0., 2.5), door + DVec3::new(1.4, 1.0, 2.62), 0.02, p.coping)?;
+                    rounded(e, at(x - 0.3, d, 0.), at(x + 1.3, d + 1.0, 0.43), 0.02, p.coping)?;
+                    cuboid(e, at(x - 0.25, d + 0.0, 2.0), at(x - 0.12, d + 0.08, 2.2), p.lamp)?;
+                    continue;
                 }
+                facade_window(e, at(x, d, z), DVec3::X, DVec3::Y, 1.3, 1.45, p.frame, p)?;
+                facade_window(e, at(x + 1.3, 0., z), -DVec3::X, -DVec3::Y, 1.3, 1.45, p.frame, p)?;
             }
-            solid(e, &triangles, 10., walls)?;
         }
-        // Ridge tiles and a chimney with a cap and two pots.
-        limb(e, at(-over, d / 2., h + rise + 0.1), at(w + over, d / 2., h + rise + 0.1), 0.11, 0.11, roof)?;
-        let cx = w * 0.72;
-        rounded(e, at(cx, d * 0.35, h + rise * 0.5), at(cx + 0.6, d * 0.35 + 0.6, h + rise + 1.0), 0.01, p.brick)?;
-        rounded(
-            e,
-            at(cx - 0.05, d * 0.35 - 0.05, h + rise + 1.0),
-            at(cx + 0.65, d * 0.35 + 0.65, h + rise + 1.08),
-            0.01,
-            p.coping,
-        )?;
-        for dx in [0.18, 0.42] {
-            column(e, at(cx + dx, d * 0.35 + 0.3, h + rise + 1.08), 0.08, 0.3, 24, p.terracotta)?;
-        }
-    } else {
-        // A flat roof behind a parapet with a coping, a steel flue and downpipes.
-        cuboid(e, at(0., 0., h), at(w, d, h + 0.5), walls)?;
-        rounded(e, at(-0.04, -0.04, h + 0.5), at(w + 0.04, d + 0.04, h + 0.56), 0.01, p.coping)?;
-        lathe(
-            e,
-            at(w * 0.7, d * 0.4, h + 0.56),
-            &[(0., 0.), (0.1, 0.), (0.1, 0.9), (0.16, 0.95), (0., 1.05)],
-            24,
-            p.chrome,
-        )?;
-        for x in [0.2, w - 0.2] {
-            rail(e, &[at(x, d + 0.06, h + 0.45), at(x, d + 0.06, 0.)], 0.045, p.dark)?;
-        }
-    }
-    // Windows front and back, one or two storeys.
-    let floors = if h > 4. { 2 } else { 1 };
-    let count = ((w - 1.0) / 2.6) as usize;
-    for f in 0..floors {
-        let z = 1.0 + f as f64 * 2.8;
-        for k in 0..count {
-            let x = 1.0 + k as f64 * 2.6;
-            if f == 0 && k == 1 {
-                // Front door with a step and a canopy.
-                let door = at(x, d, 0.45);
-                cuboid(e, door + DVec3::new(-0.08, 0., 0.), door + DVec3::new(1.08, 0.05, 2.2), p.coping)?;
-                rounded(e, door + DVec3::new(0., 0.02, 0.), door + DVec3::new(1.0, 0.07, 2.12), 0.01, door_colour)?;
-                limb(e, door + DVec3::new(0.85, 0.07, 1.0), door + DVec3::new(0.85, 0.13, 1.0), 0.01, 0.01, p.chrome)?;
-                rounded(e, door + DVec3::new(-0.4, 0., 2.5), door + DVec3::new(1.4, 1.0, 2.62), 0.02, p.coping)?;
-                rounded(e, at(x - 0.3, d, 0.), at(x + 1.3, d + 1.0, 0.43), 0.02, p.coping)?;
-                cuboid(e, at(x - 0.25, d + 0.0, 2.0), at(x - 0.12, d + 0.08, 2.2), p.lamp)?;
-                continue;
-            }
-            facade_window(e, at(x, d, z), DVec3::X, DVec3::Y, 1.3, 1.45, p.frame, p)?;
-            facade_window(e, at(x + 1.3, 0., z), -DVec3::X, -DVec3::Y, 1.3, 1.45, p.frame, p)?;
-        }
-    }
-    Ok(())
+        Ok(())
+    })
 }
 
 /// A small hatchback, nose towards +Y: a body lofted through cross-sections along its length
 /// with a glasshouse, wheels with hubs, and lights.
 fn car(e: &mut Editor, at: DVec3, degrees: f64, paint_colour: MaterialId, p: &Paints) -> Result<()> {
-    let parts = built(e, |e| {
-        // Height of the body's top along its length, from the tail to the nose.
-        let profile = [
-            (-2.05, 0.95),
-            (-1.95, 1.05),
-            (-1.75, 1.38),
-            (-1.2, 1.46),
-            (-0.3, 1.47),
-            (0.35, 1.42),
-            (0.95, 0.98),
-            (1.6, 0.9),
-            (2.0, 0.78),
-            (2.1, 0.62),
-        ];
-        let ring = |y: f64, top: f64| -> Vec<DVec3> {
-            let belt = (top - 0.06).min(0.9);
-            let roof = 0.86 - (top - belt) * 0.32;
-            [
-                (-0.82, 0.3),
-                (0.82, 0.3),
-                (0.88, 0.42),
-                (0.89, belt),
-                (roof, top),
-                (-roof, top),
-                (-0.89, belt),
-                (-0.88, 0.42),
-            ]
-            .iter()
-            .map(|&(x, z)| at + DVec3::new(x, y, z))
-            .collect()
-        };
-        let mut rings = vec![vec![at + DVec3::new(0., profile[0].0 - 0.02, 0.62); 8]];
-        rings.extend(profile.iter().map(|&(y, top)| ring(y, top)));
-        rings.push(vec![at + DVec3::new(0., 2.12, 0.5); 8]);
-        let body = loft(e, &rings, 30., paint_colour)?;
-        // The glasshouse: steep faces above the waist.
-        let place = e.active().instances.get(&body).ok_or("no body")?.transform;
-        e.enter(body)?;
-        let mesh = e.mesh();
-        let glass: Vec<_> = mesh
-            .faces()
-            .filter(|(id, f)| {
-                let c =
-                    place.transform_point3(f.outer.iter().map(|v| mesh.pos(*v)).sum::<DVec3>() / f.outer.len() as f64);
-                let n = mesh.face_normal(*id).unwrap_or(DVec3::Z);
-                c.z - at.z > 0.98 && n.z < 0.85 && (c.y - at.y) > -1.9
-            })
-            .map(|(id, _)| id)
-            .collect();
-        e.apply(Command::Paint { faces: glass, material: Some(p.tinted), back: false })?;
-        e.exit();
-        for (x, y) in [(-0.8, -1.3), (0.8, -1.3), (-0.8, 1.32), (0.8, 1.32)] {
-            let hub = at + DVec3::new(x, y, 0.31);
-            let side = DVec3::X * x.signum();
-            limb(e, hub - side * 0.08, hub + side * 0.1, 0.31, 0.31, p.rubber)?;
-            limb(e, hub + side * 0.1, hub + side * 0.11, 0.2, 0.19, p.steel)?;
-        }
-        for x in [-0.72, 0.5] {
-            rounded(e, at + DVec3::new(x, 2.0, 0.66), at + DVec3::new(x + 0.22, 2.09, 0.74), 0.02, p.lamp)?;
-            rounded(e, at + DVec3::new(x, -2.08, 0.82), at + DVec3::new(x + 0.22, -1.97, 0.95), 0.02, p.taillight)?;
-        }
-        Ok(())
-    })?;
-    turn(e, &parts, at, degrees)
+    grouped(e, |e| {
+        let parts = built(e, |e| {
+            // Height of the body's top along its length, from the tail to the nose.
+            let profile = [
+                (-2.05, 0.95),
+                (-1.95, 1.05),
+                (-1.75, 1.38),
+                (-1.2, 1.46),
+                (-0.3, 1.47),
+                (0.35, 1.42),
+                (0.95, 0.98),
+                (1.6, 0.9),
+                (2.0, 0.78),
+                (2.1, 0.62),
+            ];
+            let ring = |y: f64, top: f64| -> Vec<DVec3> {
+                let belt = (top - 0.06).min(0.9);
+                let roof = 0.86 - (top - belt) * 0.32;
+                [
+                    (-0.82, 0.3),
+                    (0.82, 0.3),
+                    (0.88, 0.42),
+                    (0.89, belt),
+                    (roof, top),
+                    (-roof, top),
+                    (-0.89, belt),
+                    (-0.88, 0.42),
+                ]
+                .iter()
+                .map(|&(x, z)| at + DVec3::new(x, y, z))
+                .collect()
+            };
+            let mut rings = vec![vec![at + DVec3::new(0., profile[0].0 - 0.02, 0.62); 8]];
+            rings.extend(profile.iter().map(|&(y, top)| ring(y, top)));
+            rings.push(vec![at + DVec3::new(0., 2.12, 0.5); 8]);
+            let body = loft(e, &rings, 30., paint_colour)?;
+            // The glasshouse: steep faces above the waist.
+            let place = e.active().instances.get(&body).ok_or("no body")?.transform;
+            e.enter(body)?;
+            let mesh = e.mesh();
+            let glass: Vec<_> = mesh
+                .faces()
+                .filter(|(id, f)| {
+                    let c = place
+                        .transform_point3(f.outer.iter().map(|v| mesh.pos(*v)).sum::<DVec3>() / f.outer.len() as f64);
+                    let n = mesh.face_normal(*id).unwrap_or(DVec3::Z);
+                    c.z - at.z > 0.98 && n.z < 0.85 && (c.y - at.y) > -1.9
+                })
+                .map(|(id, _)| id)
+                .collect();
+            e.apply(Command::Paint { faces: glass, material: Some(p.tinted), back: false })?;
+            e.exit();
+            for (x, y) in [(-0.8, -1.3), (0.8, -1.3), (-0.8, 1.32), (0.8, 1.32)] {
+                let hub = at + DVec3::new(x, y, 0.31);
+                let side = DVec3::X * x.signum();
+                limb(e, hub - side * 0.08, hub + side * 0.1, 0.31, 0.31, p.rubber)?;
+                limb(e, hub + side * 0.1, hub + side * 0.11, 0.2, 0.19, p.steel)?;
+            }
+            for x in [-0.72, 0.5] {
+                rounded(e, at + DVec3::new(x, 2.0, 0.66), at + DVec3::new(x + 0.22, 2.09, 0.74), 0.02, p.lamp)?;
+                rounded(e, at + DVec3::new(x, -2.08, 0.82), at + DVec3::new(x + 0.22, -1.97, 0.95), 0.02, p.taillight)?;
+            }
+            Ok(())
+        })?;
+        turn(e, &parts, at, degrees)
+    })
 }
 
 /// Builds with `build` in a fresh editor holding only the materials, then pastes the result
@@ -1956,7 +2093,7 @@ fn main() -> Result<()> {
             p.wood,
             &p,
         )?;
-        rounded(e, DVec3::new(-5.8, -1.55, LEVEL + 0.9), DVec3::new(-5.77, -1.52, LEVEL + 1.4), 0.01, p.chrome)?;
+        rounded(e, DVec3::new(-5.8, -1.47, LEVEL + 0.9), DVec3::new(-5.77, -1.44, LEVEL + 1.4), 0.01, p.chrome)?;
         // Partition between the study and the bedroom, with a doorway.
         cuboid(e, DVec3::new(4.3, -2.9, LEVEL), DVec3::new(4.42, 0.4, TOP), p.render)?;
         cuboid(e, DVec3::new(4.3, 1.4, LEVEL), DVec3::new(4.42, 4.5, TOP), p.render)?;
@@ -2001,10 +2138,10 @@ fn main() -> Result<()> {
             rounded(e, DVec3::new(8.2, 4.32, 0.42), DVec3::new(8.8, 4.5, 0.85), 0.02, p.lacquer)?;
             rounded(e, DVec3::new(10.0, 2.62, 0.), DVec3::new(10.7, 3.6, 0.04), 0.01, p.lacquer)?;
             cuboid(e, DVec3::new(9.98, 2.62, 0.04), DVec3::new(10.0, 3.6, 2.0), p.railing)?;
-            limb(e, DVec3::new(10.4, 3.5, 1.2), DVec3::new(10.4, 3.5, 2.1), 0.012, 0.012, p.chrome)?;
+            limb(e, DVec3::new(10.69, 3.5, 1.2), DVec3::new(10.69, 3.5, 2.1), 0.012, 0.012, p.chrome)?;
             // Roller blinds half down at the study and bedroom windows.
-            cuboid(e, DVec3::new(-4.8, -2.88, 1.85), DVec3::new(-3.0, -2.86, 2.42), p.linen)?;
-            cuboid(e, DVec3::new(9.0, 4.46, 1.4), DVec3::new(9.8, 4.48, 2.2), p.linen)?;
+            cuboid(e, DVec3::new(-4.8, -2.9, 1.85), DVec3::new(-3.0, -2.88, 2.42), p.linen)?;
+            cuboid(e, DVec3::new(9.0, 4.48, 1.4), DVec3::new(9.8, 4.5, 2.2), p.linen)?;
             cuboid(e, DVec3::new(10.68, -0.9, 1.6), DVec3::new(10.7, 1.5, 2.42), p.linen)?;
             // A print on the partition.
             cuboid(e, DVec3::new(4.27, 1.8, 1.2), DVec3::new(4.3, 3.0, 2.0), p.dark)?;
@@ -2034,7 +2171,7 @@ fn main() -> Result<()> {
                 24,
                 p.dark,
             )?;
-            lathe(e, DVec3::new(-2.7, -2.5, 0.34), &[(0., 0.), (0.1, 0.), (0.06, 0.12), (0., 0.12)], 32, p.lamp)?;
+            lathe(e, DVec3::new(-2.7, -2.5, 1.02), &[(0., 0.), (0.1, 0.), (0.06, 0.12), (0., 0.12)], 32, p.lamp)?;
             for (x, y) in [(7.7, 0.), (0.5, 0.7), (-3.5, -1.5)] {
                 downlight(e, x, y, TOP - LEVEL, &p)?;
             }
@@ -2290,6 +2427,10 @@ fn main() -> Result<()> {
             lounger(e, DVec3::new(x, -5.6, top), 0., &p)?;
         }
         parasol(e, DVec3::new(16.6, -5.4, top), [p.parasol[0], p.parasol[1]], &p)?;
+        // Steps down from the raised surround: one to the deck and two to the covered terrace.
+        rounded(e, DVec3::new(4.0, -10.0, 0.), DVec3::new(4.52, -4.4, 0.385), 0.015, p.coping)?;
+        rounded(e, DVec3::new(4.5, -4.42, 0.), DVec3::new(18.5, -4.05, 0.36), 0.015, p.coping)?;
+        rounded(e, DVec3::new(4.5, -4.07, 0.), DVec3::new(18.5, -3.7, 0.2), 0.015, p.coping)?;
         Ok(())
     })?;
 
@@ -2520,7 +2661,7 @@ fn main() -> Result<()> {
         limb(e, DVec3::new(p1 - 0.14, py - 0.03, 1.05), DVec3::new(p1 - 0.14, py - 0.08, 1.05), 0.01, 0.01, p.chrome)?;
         limb(e, DVec3::new(p1 - 0.14, py - 0.08, 1.05), DVec3::new(p1 - 0.28, py - 0.08, 1.05), 0.01, 0.01, p.chrome)?;
         rounded(e, DVec3::new(-5.2, wall_y - 0.1, 1.1), DVec3::new(-5.12, wall_y - 0.08, 1.25), 0.008, p.chrome)?;
-        letterbox(e, DVec3::new(-4.3, wall_y - 0.08, 0.5), -DVec3::Y, &p)?;
+        letterbox(e, DVec3::new(-4.3, wall_y, 0.5), -DVec3::Y, &p)?;
         let number = e.apply(Command::CreateText3d {
             content: "12".into(),
             settings: rysmo_model::text3d::Text3dSettings { height: 0.12, depth: 0.01, ..Default::default() },
@@ -2632,8 +2773,8 @@ fn main() -> Result<()> {
                     let (c0, c1) = (q0 + dir * s, q0 + dir * (s + 0.14));
                     let z = ground_at((c0.x + c1.x) / 2., (c0.y + c1.y) / 2.);
                     let quad = [c0 + normal * 0.095, c1 + normal * 0.095, c1 + normal * 0.115, c0 + normal * 0.115]
-                        .map(|q| q.extend(z + 0.05));
-                    slab(e, &quad, 1.65, p.wood)?;
+                        .map(|q| q.extend(z - 0.03));
+                    slab(e, &quad, 1.73, p.wood)?;
                 }
             }
             Ok(())
@@ -2858,7 +2999,7 @@ fn main() -> Result<()> {
         (34., -64., 1.2),
         (-23., -67., 0.9),
     ] {
-        batch(&mut e, &base, |e| tree(e, DVec3::new(x, y, ground_at(x, y)), size, &p))?;
+        batch(&mut e, &base, |e| tree(e, DVec3::new(x, y, ground_at(x, y)), size, &ground_at, &p))?;
     }
     for (x, y, size) in [
         (-14., 15., 1.3),
@@ -2878,12 +3019,28 @@ fn main() -> Result<()> {
     // front wall and along the side fences.
     for k in 0..11 {
         let x = -150. + k as f64 * 30.;
-        batch(&mut e, &base, |e| tree(e, DVec3::new(x, -41.3, 0.14), 0.75, &p))?;
+        batch(&mut e, &base, |e| {
+            tree(
+                e,
+                DVec3::new(x, -41.3, 0.14),
+                0.75,
+                &|x, y| {
+                    if (-42.3..=-40.15).contains(&y) {
+                        0.14
+                    } else if (-40.0..=-33.5).contains(&y) {
+                        0.04
+                    } else {
+                        ground_at(x, y)
+                    }
+                },
+                &p,
+            )
+        })?;
     }
     for (x, size) in
         [(-36., 0.8), (-30., 0.7), (-24., 0.85), (8., 0.75), (14., 0.8), (21., 0.7), (28., 0.85), (35., 0.75)]
     {
-        batch(&mut e, &base, |e| tree(e, DVec3::new(x, -28.6, ground_at(x, -28.6)), size, &p))?;
+        batch(&mut e, &base, |e| tree(e, DVec3::new(x, -28.6, ground_at(x, -28.6)), size, &ground_at, &p))?;
     }
     for y in [-24., -15., -4., 4.] {
         for x in [-38.4, 38.4] {
@@ -2895,7 +3052,7 @@ fn main() -> Result<()> {
     // Woods and hedgerow trees across the surrounding fields, away from the houses.
     let mut wood = Random(4242);
     let mut planted = 0;
-    while planted < 46 {
+    while planted < 80 {
         let (x, y) = (wood.range(-150., 150.), wood.range(-130., 130.));
         let built_up = (-100.0..100.0).contains(&x) && (-75.0..14.0).contains(&y)
             || (-118.0..115.0).contains(&x) && (14.0..52.0).contains(&y);
@@ -2908,7 +3065,7 @@ fn main() -> Result<()> {
         if wood.next() < 0.45 {
             batch(&mut e, &base, |e| conifer(e, foot, size, &p))?;
         } else {
-            batch(&mut e, &base, |e| tree(e, foot, size, &p))?;
+            batch(&mut e, &base, |e| tree(e, foot, size, &ground_at, &p))?;
         }
         planted += 1;
     }
@@ -2928,10 +3085,10 @@ fn main() -> Result<()> {
     doc.style.sun.hour = std::env::var("DEMO_HOUR").ok().and_then(|h| h.parse().ok()).unwrap_or(HOUR);
     doc.style.sun.north = 65.;
     doc.camera = Some(OrbitCamera {
-        target: DVec3::new(-1., -4., 2.),
-        distance: 36.,
-        yaw: -1.1,
-        pitch: 0.28,
+        target: DVec3::new(-1., -2., 3.),
+        distance: 38.,
+        yaw: -1.25,
+        pitch: 0.22,
         fov_y: 0.7,
         parallel: false,
         eye_base_z: 0.,
