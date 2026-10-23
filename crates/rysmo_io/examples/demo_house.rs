@@ -17,6 +17,8 @@ struct Paints {
     stone: MaterialId,
     water: MaterialId,
     paving: MaterialId,
+    asphalt: MaterialId,
+    marking: MaterialId,
     bark: MaterialId,
     /// Autumn foliage, chosen per tree from its position.
     autumn: [MaterialId; 4],
@@ -541,6 +543,8 @@ fn main() -> Result<()> {
         stone: material(&mut e, "Stone", [0.62, 0.59, 0.52, 1.])?,
         water: material(&mut e, "Water", [0.25, 0.62, 0.8, 0.9])?,
         paving: material(&mut e, "Paving", [0.52, 0.52, 0.5, 1.])?,
+        asphalt: material(&mut e, "Asphalt", [0.17, 0.17, 0.18, 1.])?,
+        marking: material(&mut e, "Yellow road marking", [0.95, 0.75, 0.12, 1.])?,
         bark: material(&mut e, "Bark", [0.35, 0.26, 0.18, 1.])?,
         autumn: [
             material(&mut e, "Orange leaves", [0.86, 0.45, 0.13, 1.])?,
@@ -823,7 +827,15 @@ fn main() -> Result<()> {
     parasol(&mut e, DVec3::new(16.6, -5.4, 0.52), &p)?;
 
     // Driveway with a car, hedges and garden lights; stepping stones across the lawn.
-    cuboid(&mut e, DVec3::new(-20., -30., 0.), DVec3::new(-15., 7.9, 0.05), p.paving)?;
+    cuboid(&mut e, DVec3::new(-20., -30., 0.), DVec3::new(-15., 7.9, 0.05), p.asphalt)?;
+    // Solid yellow edge lines and a dashed centre line, just above the asphalt.
+    for x in [-19.85, -15.25] {
+        cuboid(&mut e, DVec3::new(x, -30., 0.05), DVec3::new(x + 0.1, 7.6, 0.056), p.marking)?;
+    }
+    for i in 0..10 {
+        let y = -29. + i as f64 * 3.6;
+        cuboid(&mut e, DVec3::new(-17.56, y, 0.05), DVec3::new(-17.44, y + 2., 0.056), p.marking)?;
+    }
     car(&mut e, DVec3::new(-17.5, -1.5, 0.05), &p)?;
     for i in 0..9 {
         let y = -28. + i as f64 * 3.2;
