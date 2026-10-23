@@ -1,4 +1,7 @@
 //! Build the demo model for the README screenshot: a modern villa with a pool on hilly terrain.
+#[path = "shared/cybertruck.rs"]
+mod cybertruck;
+
 use rysmo_math::{DVec2, DVec3, OrbitCamera};
 use rysmo_model::{Command, Editor, Element, InstanceId, MaterialId};
 
@@ -24,10 +27,6 @@ struct Paints {
     tile: MaterialId,
     chrome: MaterialId,
     taillight: MaterialId,
-    stainless: MaterialId,
-    cyber_glass: MaterialId,
-    led: MaterialId,
-    cladding: MaterialId,
     firewood: MaterialId,
     bark: MaterialId,
     /// Autumn foliage, chosen per tree from its position.
@@ -40,7 +39,6 @@ struct Paints {
     oak: MaterialId,
     rug: MaterialId,
     solar: MaterialId,
-    tyre: MaterialId,
     parasol: MaterialId,
     lamp: MaterialId,
 }
@@ -594,181 +592,6 @@ fn letterbox(e: &mut Editor, at: DVec3, p: &Paints) -> Result<()> {
     Ok(())
 }
 
-/// A closed solid from its face loops, drawn as edges so each loop becomes a face.
-fn solid(e: &mut Editor, faces: &[Vec<DVec3>], colour: MaterialId) -> Result<InstanceId> {
-    let mut lines = Vec::new();
-    for face in faces {
-        for i in 0..face.len() {
-            lines.push([face[i], face[(i + 1) % face.len()]]);
-        }
-    }
-    e.apply(Command::DrawLines { lines, facing: None })?;
-    let group = group_loose(e)?;
-    paint(e, group, colour)
-}
-
-/// A thin plate on a planar outline, lifted off the surface along `normal`.
-fn plate(e: &mut Editor, outline: &[DVec3], normal: DVec3, thickness: f64, colour: MaterialId) -> Result<()> {
-    let normal = normal.normalize();
-    let lines = (0..outline.len())
-        .map(|i| [outline[i] + normal * 0.003, outline[(i + 1) % outline.len()] + normal * 0.003])
-        .collect();
-    e.apply(Command::DrawLines { lines, facing: Some(normal) })?;
-    let mesh = e.mesh();
-    let face = mesh.faces().next().ok_or("no plate")?.0;
-    let sign = mesh.face_normal(face).ok_or("no normal")?.dot(normal).signum();
-    e.apply(Command::PushPull { face, distance: thickness * sign, keep_base: false })?;
-    let group = group_loose(e)?;
-    paint(e, group, colour)?;
-    Ok(())
-}
-
-/// A point of the quad `[a0, b0, b1, a1]` (`a` and `b` the two long edges), at fraction `t`
-/// from the `0` end and `u` across from `a` to `b`. Points of a planar quad stay in its plane.
-fn on_quad(a0: DVec3, a1: DVec3, b0: DVec3, b1: DVec3, t: f64, u: f64) -> DVec3 {
-    a0.lerp(a1, t).lerp(b0.lerp(b1, t), u)
-}
-
-/// A rectangle-like patch of a planar quad between fractions `t0..t1` and `u0..u1`.
-fn patch(q: [DVec3; 4], (t0, t1): (f64, f64), (u0, u1): (f64, f64)) -> Vec<DVec3> {
-    let [a0, a1, b0, b1] = q;
-    [(t0, u0), (t1, u0), (t1, u1), (t0, u1)].map(|(t, u)| on_quad(a0, a1, b0, b1, t, u)).to_vec()
-}
-
-/// The outward normal of a quad, chosen to point along `outward`.
-fn facing(q: [DVec3; 4], outward: DVec3) -> DVec3 {
-    let n = (q[1] - q[0]).cross(q[2] - q[0]).normalize();
-    if n.dot(outward) < 0. { -n } else { n }
-}
-
-/// A Tesla Cybertruck: 5.68 m long, 2.03 m wide, 1.79 m tall, 3.64 m wheelbase, front to -Y.
-/// One faceted stainless body with the roof apex above the front seats, a full-width light
-/// bar at each end, a slatted bed cover, angular wheel arches and hexagonal aero wheel covers.
-fn cybertruck(e: &mut Editor, at: DVec3, p: &Paints) -> Result<()> {
-    let v = |x: f64, y: f64, z: f64| at + DVec3::new(x, y, z);
-    // Profile stations, for the left (-1) and right (+1) sides.
-    let f_low = |s: f64| v(s, -2.72, 0.42);
-    let f_belt = |s: f64| v(s, -2.84, 0.92);
-    let f_top = |s: f64| v(0.95 * s, -2.87, 0.98);
-    let apex = |s: f64| v(0.72 * s, -0.2, 1.79);
-    let m_belt = |s: f64| v(s, -0.2, 1.12);
-    let tail = |s: f64| v(0.98 * s, 2.84, 1.28);
-    let r_belt = |s: f64| v(s, 2.84, 1.2);
-    let r_low = |s: f64| v(s, 2.7, 0.45);
-    let (l, r) = (-1., 1.);
-    let mut faces = vec![
-        vec![f_low(l), f_low(r), r_low(r), r_low(l)],
-        vec![f_low(l), f_belt(l), f_belt(r), f_low(r)],
-        vec![f_belt(l), f_top(l), f_top(r), f_belt(r)],
-        vec![f_top(l), apex(l), apex(r), f_top(r)],
-        vec![apex(l), tail(l), tail(r), apex(r)],
-        vec![tail(l), r_belt(l), r_belt(r), tail(r)],
-        vec![r_belt(l), r_low(l), r_low(r), r_belt(r)],
-    ];
-    for s in [l, r] {
-        faces.push(vec![f_low(s), f_belt(s), m_belt(s), r_belt(s), r_low(s)]);
-        faces.push(vec![f_belt(s), f_top(s), apex(s)]);
-        faces.push(vec![f_belt(s), apex(s), m_belt(s)]);
-        faces.push(vec![m_belt(s), apex(s), r_belt(s)]);
-        faces.push(vec![apex(s), tail(s), r_belt(s)]);
-    }
-    solid(e, &faces, p.stainless)?;
-
-    // Windscreen and glass roof, on the two top planes.
-    let hood = [f_top(l), apex(l), f_top(r), apex(r)];
-    plate(e, &patch(hood, (0.47, 0.975), (0.05, 0.95)), facing(hood, DVec3::Z), 0.004, p.cyber_glass)?;
-    let roof = [apex(l), tail(l), apex(r), tail(r)];
-    let up = facing(roof, DVec3::Z);
-    plate(e, &patch(roof, (0.025, 0.36), (0.07, 0.93)), up, 0.004, p.cyber_glass)?;
-    // The bed cover's slats.
-    for i in 0..15 {
-        let t = 0.42 + i as f64 * 0.038;
-        plate(e, &patch(roof, (t, t + 0.004), (0.03, 0.97)), up, 0.002, p.cladding)?;
-    }
-    // Light bars: white across the nose, red across the top of the tailgate.
-    let nose = [f_belt(l), f_top(l), f_belt(r), f_top(r)];
-    plate(e, &patch(nose, (0.35, 0.8), (0.03, 0.97)), facing(nose, -DVec3::Y), 0.004, p.led)?;
-    let gate = [r_belt(l), tail(l), r_belt(r), tail(r)];
-    plate(e, &patch(gate, (0.25, 0.75), (0.03, 0.97)), facing(gate, DVec3::Y), 0.004, p.taillight)?;
-    // A dark lower front valance.
-    let front = [f_low(l), f_belt(l), f_low(r), f_belt(r)];
-    plate(e, &patch(front, (0.0, 0.3), (0.0, 1.0)), facing(front, -DVec3::Y), 0.004, p.cladding)?;
-
-    for s in [l, r] {
-        let out = DVec3::X * s;
-        // Side windows on the inclined upper facets, with the B-pillar between them.
-        let (fb, ap, mb, rb) = (f_belt(s), apex(s), m_belt(s), r_belt(s));
-        let front_window = vec![
-            fb * 0.08 + ap * 0.07 + mb * 0.85,
-            fb * 0.05 + ap * 0.85 + mb * 0.1,
-            fb * 0.55 + ap * 0.43 + mb * 0.02,
-            fb * 0.55 + ap * 0.02 + mb * 0.43,
-        ];
-        let n = (ap - fb).cross(mb - fb).normalize();
-        plate(e, &front_window, if n.dot(out) < 0. { -n } else { n }, 0.004, p.cyber_glass)?;
-        let rear_window = vec![
-            mb * 0.85 + ap * 0.1 + rb * 0.05,
-            mb * 0.1 + ap * 0.85 + rb * 0.05,
-            mb * 0.05 + ap * 0.62 + rb * 0.33,
-            mb * 0.62 + ap * 0.05 + rb * 0.33,
-        ];
-        let n = (ap - mb).cross(rb - mb).normalize();
-        plate(e, &rear_window, if n.dot(out) < 0. { -n } else { n }, 0.004, p.cyber_glass)?;
-        // Angular wheel arches and the rocker, in black cladding on the flat sides.
-        let x = s * 1.0;
-        for y in [-1.82, 1.82] {
-            let arch = vec![v(x, y - 0.68, 0.42), v(x, y - 0.5, 1.0), v(x, y + 0.5, 1.0), v(x, y + 0.68, 0.42)];
-            plate(e, &arch, out, 0.012, p.cladding)?;
-        }
-        plate(e, &[v(x, -1.14, 0.42), v(x, -1.14, 0.54), v(x, 1.14, 0.54), v(x, 1.14, 0.42)], out, 0.008, p.cladding)?;
-        // Door shut lines.
-        for (y, belt) in [(-1.45, 1.04), (-0.2, 1.1), (0.95, 1.13)] {
-            plate(
-                e,
-                &[v(x, y, 0.56), v(x, y, belt), v(x, y + 0.008, belt), v(x, y + 0.008, 0.56)],
-                out,
-                0.002,
-                p.cladding,
-            )?;
-        }
-        // A slim mirror on a stalk near the base of the windscreen.
-        cuboid(e, v(s * 1.0, -1.43, 1.12), v(s * 1.06, -1.39, 1.16), p.cladding)?;
-        rounded(e, v(s * 1.05, -1.47, 1.1), v(s * 1.25, -1.37, 1.21), 0.02, p.cladding)?;
-        // Wheels: 35-inch tyres with hexagonal aero covers.
-        for y in [-1.82, 1.82] {
-            let inner = s * 0.72;
-            e.apply(Command::DrawPolygon {
-                centre: v(inner, y, 0.445),
-                normal: DVec3::X,
-                radius: 0.445,
-                segments: 24,
-                start: None,
-            })?;
-            let mesh = e.mesh();
-            let face = mesh.faces().next().ok_or("no tyre")?.0;
-            let sign = mesh.face_normal(face).ok_or("no normal")?.x.signum();
-            e.apply(Command::PushPull { face, distance: 0.32 * sign * s, keep_base: false })?;
-            let tyre = group_loose(e)?;
-            paint(e, tyre, p.tyre)?;
-            let cover = (0..6)
-                .map(|i| {
-                    let a = i as f64 * std::f64::consts::TAU / 6.;
-                    v(s * 1.04, y + 0.31 * a.cos(), 0.445 + 0.31 * a.sin())
-                })
-                .collect::<Vec<_>>();
-            plate(e, &cover, out, 0.01, p.dark)?;
-            let cap = (0..6)
-                .map(|i| {
-                    let a = i as f64 * std::f64::consts::TAU / 6. + 0.5;
-                    v(s * 1.052, y + 0.07 * a.cos(), 0.445 + 0.07 * a.sin())
-                })
-                .collect::<Vec<_>>();
-            plate(e, &cap, out, 0.006, p.stainless)?;
-        }
-    }
-    Ok(())
-}
-
 fn parasol(e: &mut Editor, at: DVec3, p: &Paints) -> Result<()> {
     column(e, at, 0.25, 0.08, 16, p.steel)?;
     column(e, at + DVec3::Z * 2.45, 0.04, 0.08, 8, p.steel)?;
@@ -817,10 +640,6 @@ fn main() -> Result<()> {
         tile: surface(&mut e, "Waterline tile", [0.12, 0.33, 0.5, 1.], 0.15, 0.0)?,
         chrome: surface(&mut e, "Chrome", [0.78, 0.8, 0.82, 1.], 0.12, 1.0)?,
         taillight: material(&mut e, "Tail light", [0.7, 0.06, 0.05, 1.])?,
-        stainless: surface(&mut e, "Stainless steel", [0.62, 0.63, 0.64, 1.], 0.36, 1.)?,
-        cyber_glass: surface(&mut e, "Truck glass", [0.05, 0.06, 0.07, 0.94], 0.04, 0.)?,
-        led: material(&mut e, "LED light bar", [0.97, 0.97, 0.95, 1.])?,
-        cladding: surface(&mut e, "Black cladding", [0.07, 0.07, 0.075, 1.], 0.8, 0.)?,
         bark: material(&mut e, "Bark", [0.35, 0.26, 0.18, 1.])?,
         autumn: [
             material(&mut e, "Orange leaves", [0.86, 0.45, 0.13, 1.])?,
@@ -836,7 +655,6 @@ fn main() -> Result<()> {
         oak: surface(&mut e, "Oak", [0.72, 0.56, 0.38, 1.], 0.55, 0.0)?,
         rug: material(&mut e, "Rug", [0.66, 0.42, 0.3, 1.])?,
         solar: surface(&mut e, "Solar panel", [0.12, 0.17, 0.3, 1.], 0.12, 0.3)?,
-        tyre: surface(&mut e, "Tyre", [0.08, 0.08, 0.08, 1.], 0.9, 0.0)?,
         parasol: material(&mut e, "Parasol", [0.95, 0.94, 0.9, 1.])?,
         lamp: glowing(&mut e, "Warm lamp", [1., 0.8, 0.55, 1.], 30000.)?,
     };
@@ -1156,7 +974,8 @@ fn main() -> Result<()> {
         let y = -29. + i as f64 * 3.6;
         cuboid(&mut e, DVec3::new(-17.56, y, 0.05), DVec3::new(-17.44, y + 2., 0.056), p.marking)?;
     }
-    cybertruck(&mut e, DVec3::new(-17.5, -1.5, 0.05), &p)?;
+    let truck = cybertruck::Paints::new(&mut e)?;
+    cybertruck::build(&mut e, DVec3::new(-17.5, -1.5, 0.05), &truck)?;
     for i in 0..9 {
         let y = -28. + i as f64 * 3.2;
         rounded(&mut e, DVec3::new(-21.4, y, 0.), DVec3::new(-20.4, y + 2.9, 1.3), 0.35, p.hedge)?;
