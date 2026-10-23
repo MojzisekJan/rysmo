@@ -33,5 +33,9 @@ by PolyDucky (https://sketchfab.com/salphytheunemployed), licensed under
 CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). It is converted to a single
 binary glTF file; the licence note is alongside it.
 
+The demo scene's sky (`crates/rysmo_io/examples/assets/sky/`) is "Autumn Field
+(Pure Sky)" (https://polyhaven.com/a/autumn_field_puresky) by Sergej Majboroda with sky
+edits by Jarod Guest, from Poly Haven, dedicated to the public domain under CC0 1.0.
+
 `vendor/bevy_pbr` is bevy_pbr 0.20.0 (MIT OR Apache-2.0, licence files included) with
 the change described in `vendor/README.md`.

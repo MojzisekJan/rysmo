@@ -1,0 +1,7 @@
+autumn_field_puresky_2k.hdr
+
+"Autumn Field (Pure Sky)" from Poly Haven: https://polyhaven.com/a/autumn_field_puresky
+Original by Sergej Majboroda, sky edits by Jarod Guest.
+Licensed CC0 1.0 Universal (public domain dedication):
+https://creativecommons.org/publicdomain/zero/1.0/
+The 2K Radiance HDR file is unchanged.
