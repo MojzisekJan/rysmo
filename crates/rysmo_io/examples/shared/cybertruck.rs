@@ -17,7 +17,7 @@ fn surface(name: &str) -> Option<([f32; 4], f32, f32)> {
         "body" => ([0.68, 0.69, 0.7, 1.], 0.38, 1.),
         "gray" => ([0.2, 0.205, 0.21, 1.], 0.85, 0.),
         "glass" => ([0.05, 0.055, 0.06, 0.9], 0.04, 0.),
-        "glassframes" | "black" | "shader" => ([0.04, 0.04, 0.045, 1.], 0.5, 0.),
+        "glassframes" | "black" => ([0.04, 0.04, 0.045, 1.], 0.5, 0.),
         "tires" => ([0.035, 0.035, 0.035, 1.], 0.92, 0.),
         "rims" => ([0.07, 0.07, 0.075, 1.], 0.3, 0.3),
         "lights" => ([0.96, 0.96, 0.98, 1.], 0.15, 0.),
@@ -34,6 +34,22 @@ pub fn build(e: &mut Editor, at: DVec3) -> Result<()> {
         if let Some((color, roughness, metallic)) = surface(&material.name) {
             material.color = color;
             material.pbr = rysmo_model::Pbr { roughness, metallic, ..Default::default() };
+        }
+    }
+    // "shader" is a black inverted hull drawn for a toon outline; with both sides shown it
+    // would hide the stainless body, so it goes.
+    let outline: Vec<_> = document.materials.iter().filter(|(_, m)| m.name == "shader").map(|(id, _)| *id).collect();
+    let owners: Vec<_> = std::iter::once(None).chain(document.definitions.keys().copied().map(Some)).collect();
+    for owner in owners {
+        let Some(definition) = document.def_mut(owner) else { continue };
+        let faces: Vec<_> = definition
+            .mesh
+            .faces()
+            .filter(|(_, f)| f.material.is_some_and(|m| outline.contains(&m)))
+            .map(|(id, _)| id)
+            .collect();
+        for face in faces {
+            definition.mesh.remove_face(face);
         }
     }
     let (lo, hi) = document.definition_bounds(None).ok_or("empty truck model")?;
