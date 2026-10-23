@@ -156,29 +156,46 @@ pub(crate) fn slot_button(ui: &mut egui::Ui, app: &mut App3d, slot: &Slot, icon_
     }
 }
 
+/// A rounded tray grouping related tool buttons.
+fn tool_tray(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
+    egui::Frame::new()
+        .fill(ui.visuals().faint_bg_color)
+        .corner_radius(8)
+        .inner_margin(egui::Margin::symmetric(4, 3))
+        .show(ui, |ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(2., 2.);
+            ui.horizontal(add);
+        });
+}
+
 /// Compact tool shelf. Short viewports use more columns instead of scrolling.
 fn tool_palette(ui: &mut egui::Ui, app: &mut App3d, columns: usize) {
     let icon_size = if app.touch.enabled { 26. } else { 22. };
     ui.spacing_mut().item_spacing = egui::vec2(3., 4.);
     for (group, slots) in LEFT_TOOLS.split(|slot| matches!(slot, Slot::Gap)).enumerate() {
         if group > 0 {
-            ui.separator();
+            ui.add_space(4.);
         }
-        egui::Grid::new(("tool-group", group))
-            .num_columns(columns)
-            .min_col_width(icon_size + 14.)
-            .spacing(egui::vec2(3., 3.))
-            .show(ui, |ui| {
-                for (index, slot) in slots.iter().enumerate() {
-                    slot_button(ui, app, slot, icon_size);
-                    if (index + 1) % columns == 0 {
-                        ui.end_row();
-                    }
-                }
-                if slots.len() % columns != 0 {
-                    ui.end_row();
-                }
-            });
+        egui::Frame::new().fill(ui.visuals().faint_bg_color).corner_radius(8).inner_margin(egui::Margin::same(3)).show(
+            ui,
+            |ui| {
+                egui::Grid::new(("tool-group", group))
+                    .num_columns(columns)
+                    .min_col_width(icon_size + 14.)
+                    .spacing(egui::vec2(3., 3.))
+                    .show(ui, |ui| {
+                        for (index, slot) in slots.iter().enumerate() {
+                            slot_button(ui, app, slot, icon_size);
+                            if (index + 1) % columns == 0 {
+                                ui.end_row();
+                            }
+                        }
+                        if slots.len() % columns != 0 {
+                            ui.end_row();
+                        }
+                    });
+            },
+        );
     }
 }
 
@@ -232,11 +249,32 @@ fn panels(
                         }
                         menus(ui, &mut app);
                     });
-                ui.horizontal_wrapped(|ui| {
-                    ui.spacing_mut().item_spacing = egui::vec2(3., 3.);
-                    for slot in TOP_TOOLS {
-                        slot_button(ui, &mut app, slot, if touch { 26. } else { 22. });
+                ui.add_space(2.);
+                ui.horizontal(|ui| {
+                    // Tool groups sit in quiet rounded trays; the panel toggle and command
+                    // search stay at the right end.
+                    ui.spacing_mut().item_spacing = egui::vec2(6., 3.);
+                    for slots in TOP_TOOLS.split(|slot| matches!(slot, Slot::Gap)) {
+                        tool_tray(ui, |ui| {
+                            for slot in slots {
+                                slot_button(ui, &mut app, slot, 20.);
+                            }
+                        });
                     }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let panel_open = crate::tablet::sidebar_open(&mut app);
+                        let text = if panel_open { "Hide panel" } else { "Show panel" };
+                        let panels = egui::Button::new(menu::label(menu::glyph::SIDEBAR_SIMPLE, text))
+                            .min_size(egui::vec2(0., 28.));
+                        if ui.add(panels).on_hover_text("Show or hide the side panel").clicked() {
+                            crate::tablet::toggle_sidebar(&mut app, ui.ctx());
+                        }
+                        let search = egui::Button::new(menu::label(menu::glyph::MAGNIFYING_GLASS, "Search commands"))
+                            .min_size(egui::vec2(0., 28.));
+                        if ui.add(search).on_hover_text("Shift+S").clicked() {
+                            crate::command_search::open(&mut app);
+                        }
+                    });
                 });
             });
         rects.push(top.response.rect);
@@ -331,6 +369,7 @@ fn panels(
                 tool_palette(ui, &mut app, columns);
             });
         rects.push(palette.response.rect);
+        crate::tablet::desktop_sidebar(&mut root, &mut app, &mut rects);
     }
     let canvas = root.available_rect_before_wrap();
     crate::theme::set_model_area(ctx, canvas);

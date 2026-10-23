@@ -1,5 +1,4 @@
 //! Phosphor command icons with consistent menu rows and shortcut columns.
-#[cfg(not(target_os = "macos"))]
 use bevy_egui::egui::Color32;
 #[cfg(not(target_os = "macos"))]
 use bevy_egui::egui::RichText;
@@ -11,8 +10,6 @@ use crate::macos::MENU_ICON;
 #[cfg(not(target_os = "macos"))]
 const MENU_ROW: f32 = 32.;
 #[cfg(not(target_os = "macos"))]
-const MENU_TEXT: f32 = 15.;
-#[cfg(not(target_os = "macos"))]
 const MENU_ICON: f32 = 18.;
 
 pub fn style(style: &mut egui::Style) {
@@ -23,8 +20,10 @@ pub fn style(style: &mut egui::Style) {
 
 /// An icon and text label. Both are centred on the row, because the icon font is larger
 /// and would otherwise sit on the text baseline, above the text's visual centre.
-#[cfg(not(target_os = "macos"))]
-fn label(icon: &str, text: &str) -> egui::text::LayoutJob {
+/// Text size beside an icon in buttons and menu rows.
+const LABEL_TEXT: f32 = if cfg!(target_os = "macos") { 13. } else { 15. };
+
+pub fn label(icon: &str, text: &str) -> egui::text::LayoutJob {
     let mut job = egui::text::LayoutJob::default();
     job.append(
         icon,
@@ -40,7 +39,7 @@ fn label(icon: &str, text: &str) -> egui::text::LayoutJob {
         text,
         10.,
         egui::TextFormat {
-            font_id: FontId::proportional(MENU_TEXT),
+            font_id: FontId::proportional(LABEL_TEXT),
             color: Color32::PLACEHOLDER,
             valign: egui::Align::Center,
             ..Default::default()

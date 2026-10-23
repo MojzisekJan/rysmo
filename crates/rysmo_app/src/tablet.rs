@@ -175,6 +175,62 @@ pub fn chrome(ctx: &egui::Context, root: &mut egui::Ui, app: &mut App3d, rects: 
     set_state(ctx, st);
 }
 
+/// The desktop's docked right-hand panel: the same tabs as the tablet sidebar, shown while
+/// one of them is open, resizable, with a button to close it.
+pub fn desktop_sidebar(root: &mut egui::Ui, app: &mut App3d, rects: &mut Vec<egui::Rect>) {
+    let mut st = state(root.ctx());
+    sync_sidebar(app, &mut st);
+    if st.sidebar {
+        let free = root.available_rect_before_wrap();
+        let panel = egui::Panel::right("desktop-sidebar")
+            .frame(panel_frame(root, 10, 8))
+            .default_size(330_f32.min(free.width() * 0.4))
+            .size_range(280_f32..=(free.width() * 0.5).max(300.))
+            .resizable(true)
+            .show(root, |ui| {
+                ui.horizontal(|ui| {
+                    // Tabs wrap onto a second row when the panel is narrow.
+                    let close = 28.;
+                    ui.allocate_ui(egui::vec2(ui.available_width() - close, 0.), |ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.spacing_mut().item_spacing = egui::vec2(2., 4.);
+                            for (i, (label, _)) in TABS.iter().enumerate() {
+                                if crate::icons::tab(ui, label, st.tab == i).clicked() {
+                                    *tab_flag(app, st.tab) = false;
+                                    st.tab = i;
+                                    *tab_flag(app, i) = true;
+                                }
+                            }
+                        });
+                    });
+                    let x = egui::Button::new(egui::RichText::new(crate::menu::glyph::X).size(14.)).frame(false);
+                    if ui.add_sized(egui::vec2(close - 4., 24.), x).on_hover_text("Close panel").clicked() {
+                        *tab_flag(app, st.tab) = false;
+                    }
+                });
+                ui.add_space(6.);
+                let rect = ui.available_rect_before_wrap();
+                crate::theme::dock(ui.ctx(), TABS[st.tab].1, rect);
+                ui.allocate_rect(rect, egui::Sense::hover());
+            });
+        rects.push(panel.response.rect);
+    }
+    set_state(root.ctx(), st);
+}
+
+/// Opens the desktop panel on its last tab, or closes it.
+pub fn toggle_sidebar(app: &mut App3d, ctx: &egui::Context) {
+    let st = state(ctx);
+    let open = (0..TABS.len()).any(|i| *tab_flag(app, i));
+    for i in 0..TABS.len() {
+        *tab_flag(app, i) = !open && i == st.tab;
+    }
+}
+
+pub fn sidebar_open(app: &mut App3d) -> bool {
+    (0..TABS.len()).any(|i| *tab_flag(app, i))
+}
+
 fn panel_frame(ui: &egui::Ui, x: i8, y: i8) -> egui::Frame {
     egui::Frame::new().fill(ui.visuals().panel_fill).inner_margin(egui::Margin::symmetric(x, y))
 }
