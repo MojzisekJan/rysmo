@@ -66,10 +66,9 @@ fn material(e: &mut Editor, name: &str, color: [f32; 4]) -> Result<MaterialId> {
     Ok(out.material.ok_or("no material")?)
 }
 
-/// A material with its surface roughness and metalness, from an sRGB colour. The viewport
-/// shades plain colours as linear values, so the colour is converted to keep its look.
+/// A material with its surface roughness and metalness, from an sRGB colour.
 fn surface(e: &mut Editor, name: &str, color: [f32; 4], roughness: f32, metallic: f32) -> Result<MaterialId> {
-    let m = material(e, name, textures::linear(color))?;
+    let m = material(e, name, color)?;
     let pbr = rysmo_model::Pbr { roughness, metallic, ..Default::default() };
     e.apply(Command::SetMaterialPbr { material: m, pbr })?;
     Ok(m)

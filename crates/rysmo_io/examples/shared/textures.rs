@@ -39,12 +39,6 @@ fn fbm(x: f32, y: f32, base: i64, octaves: u32, seed: u64) -> f32 {
     sum / total
 }
 
-/// An sRGB colour as linear values; alpha stays as it is.
-pub fn linear(c: [f32; 4]) -> [f32; 4] {
-    let f = |v: f32| if v <= 0.04045 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) };
-    [f(c[0]), f(c[1]), f(c[2]), c[3]]
-}
-
 fn mix(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
     let t = t.clamp(0., 1.);
     [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
