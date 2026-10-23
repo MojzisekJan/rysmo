@@ -77,7 +77,8 @@ pub fn plugin(app: &mut App) {
 }
 
 fn setup(mut commands: Commands, mut gizmo_store: ResMut<GizmoConfigStore>) {
-    commands.spawn((
+    #[cfg_attr(not(target_arch = "wasm32"), expect(unused_variables, unused_mut))]
+    let mut camera = commands.spawn((
         Camera3d::default(),
         Tonemapping::None,
         DebandDither::Disabled,
@@ -85,6 +86,16 @@ fn setup(mut commands: Commands, mut gizmo_store: ResMut<GizmoConfigStore>) {
         MainCamera,
         Transform::default(),
     ));
+    // WebGL2 keeps clustered lights in uniform buffers with room for 16384 light indices.
+    // Glow lights reach far, so each can touch every cluster: 64 lights × 192 clusters fits,
+    // where the default 4096 clusters overflowed and dropped lights from some clusters.
+    #[cfg(target_arch = "wasm32")]
+    camera.insert(bevy::light::cluster::ClusterConfig::FixedZ {
+        total: 192,
+        z_slices: 8,
+        z_config: default(),
+        dynamic_resizing: true,
+    });
 
     commands.spawn((
         Camera2d,
