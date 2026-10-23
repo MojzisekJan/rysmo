@@ -56,7 +56,7 @@ test("loader never displays more downloaded bytes than the served WASM size",asy
   loader.onProgress({current:2097152});
   assert.equal(status.textContent,"Downloading 1.0 of 1.0 MB");
   assert.equal(fill.style.width,"100%");
-  loader.onSuccess();assert.equal(status.textContent,"Starting...");
+  loader.onSuccess();assert.equal(status.textContent,"Preparing the 3D view...");
 });
 
 test("renderer diagnostics update only the opt-in DOM panel",async()=>{
