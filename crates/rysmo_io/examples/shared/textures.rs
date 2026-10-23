@@ -261,7 +261,7 @@ pub fn foliage(e: &mut Editor, name: &str, tint: [f32; 4]) -> Result<MaterialId>
     let s = surface(|x, y| {
         let leaves = noise(x / 6., y / 6., N as i64 / 6, 91);
         let shadow = fbm(x, y, 6, 3, 92);
-        let k = 0.55 + 0.55 * leaves.powf(1.5) * (0.6 + 0.6 * shadow);
+        let k = 0.35 + 0.6 * leaves.powf(1.5) * (0.6 + 0.6 * shadow);
         ([k, k, k], leaves)
     });
     add(e, name, s, [0.8, 0.8], 0.8, 0., 5., Some(tint))

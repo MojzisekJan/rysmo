@@ -223,21 +223,146 @@ fn pick(at: DVec3, count: usize) -> usize {
     ((at.x * 7.31 + at.y * 3.17).abs() * 13.) as usize % count
 }
 
+/// A closed solid from triangle loops, smooth shaded, faces turned away from its centre.
+fn blob_solid(e: &mut Editor, triangles: &[[DVec3; 3]], colour: MaterialId) -> Result<InstanceId> {
+    let lines = triangles.iter().flat_map(|t| [[t[0], t[1]], [t[1], t[2]], [t[2], t[0]]]).collect();
+    e.apply(Command::DrawLines { lines, facing: None })?;
+    let mesh = e.mesh();
+    let points: Vec<DVec3> = mesh.vertices().map(|(_, v)| v.pos).collect();
+    let middle = points.iter().copied().sum::<DVec3>() / points.len().max(1) as f64;
+    let inward: Vec<_> = mesh
+        .faces()
+        .filter(|(id, f)| {
+            let c = f.outer.iter().map(|v| mesh.pos(*v)).sum::<DVec3>() / f.outer.len() as f64;
+            mesh.face_normal(*id).is_some_and(|n| n.dot(c - middle) < 0.)
+        })
+        .map(|(id, _)| id)
+        .collect();
+    if !inward.is_empty() {
+        e.apply(Command::ReverseFaces { faces: inward })?;
+    }
+    let group = group_loose(e)?;
+    e.enter(group)?;
+    let edges = e.mesh().edges().map(|(edge, _)| edge).collect();
+    e.apply(Command::SetEdges { edges, soft: Some(true), smooth: Some(true), hidden: None })?;
+    e.exit();
+    paint(e, group, colour)
+}
+
+/// An irregular, rounded clump of leaves: a once-subdivided icosahedron with a lumpy surface.
+fn clump(e: &mut Editor, centre: DVec3, radii: DVec3, random: &mut Random, colour: MaterialId) -> Result<()> {
+    let t = (1. + 5f64.sqrt()) / 2.;
+    let mut v: Vec<DVec3> = [
+        (-1., t, 0.),
+        (1., t, 0.),
+        (-1., -t, 0.),
+        (1., -t, 0.),
+        (0., -1., t),
+        (0., 1., t),
+        (0., -1., -t),
+        (0., 1., -t),
+        (t, 0., -1.),
+        (t, 0., 1.),
+        (-t, 0., -1.),
+        (-t, 0., 1.),
+    ]
+    .iter()
+    .map(|&(x, y, z)| DVec3::new(x, y, z).normalize())
+    .collect();
+    let faces = [
+        [0, 11, 5],
+        [0, 5, 1],
+        [0, 1, 7],
+        [0, 7, 10],
+        [0, 10, 11],
+        [1, 5, 9],
+        [5, 11, 4],
+        [11, 10, 2],
+        [10, 7, 6],
+        [7, 1, 8],
+        [3, 9, 4],
+        [3, 4, 2],
+        [3, 2, 6],
+        [3, 6, 8],
+        [3, 8, 9],
+        [4, 9, 5],
+        [2, 4, 11],
+        [6, 2, 10],
+        [8, 6, 7],
+        [9, 8, 1],
+    ];
+    let mut mids = std::collections::BTreeMap::new();
+    let mut mid = |a: usize, b: usize, v: &mut Vec<DVec3>| -> usize {
+        *mids.entry((a.min(b), a.max(b))).or_insert_with(|| {
+            v.push((v[a] + v[b]).normalize());
+            v.len() - 1
+        })
+    };
+    let mut tris = Vec::new();
+    for [a, b, c] in faces {
+        let (ab, bc, ca) = (mid(a, b, &mut v), mid(b, c, &mut v), mid(c, a, &mut v));
+        tris.extend([[a, ab, ca], [b, bc, ab], [c, ca, bc], [ab, bc, ca]]);
+    }
+    let bumps: Vec<f64> = v.iter().map(|_| random.range(0.82, 1.12)).collect();
+    let place = |i: usize| centre + v[i] * radii * bumps[i];
+    let triangles: Vec<[DVec3; 3]> = tris.iter().map(|t| t.map(place)).collect();
+    blob_solid(e, &triangles, colour)?;
+    Ok(())
+}
+
+/// A straight tapered limb from `from` to `to`, as a hexagonal frustum.
+fn limb(e: &mut Editor, from: DVec3, to: DVec3, r0: f64, r1: f64, colour: MaterialId) -> Result<()> {
+    let axis = (to - from).normalize();
+    let side = axis.any_orthonormal_vector();
+    let other = axis.cross(side);
+    let ring = |c: DVec3, r: f64| -> Vec<DVec3> {
+        (0..6)
+            .map(|k| {
+                let a = k as f64 * std::f64::consts::TAU / 6.;
+                c + (side * a.cos() + other * a.sin()) * r
+            })
+            .collect()
+    };
+    let (a, b) = (ring(from, r0), ring(to, r1));
+    let mut triangles = Vec::new();
+    for k in 0..6 {
+        let n = (k + 1) % 6;
+        triangles.push([a[k], a[n], b[n]]);
+        triangles.push([a[k], b[n], b[k]]);
+        triangles.push([from, a[n], a[k]]);
+        triangles.push([to, b[k], b[n]]);
+    }
+    blob_solid(e, &triangles, colour)?;
+    Ok(())
+}
+
+/// A broadleaf tree in autumn: a tapering trunk, a few limbs and many leaf clumps.
 fn tree(e: &mut Editor, foot: DVec3, size: f64, p: &Paints) -> Result<()> {
-    column(e, foot, 0.12 * size, 2.4 * size, 6, p.bark)?;
-    // A main crown with two smaller clusters, in neighbouring autumn colours.
-    let first = pick(foot, p.autumn.len());
-    crown(e, foot + DVec3::Z * 3.4 * size, 1.6 * size, 2.2 * size, 1.4 * size, 14, p.autumn[first])?;
-    for (k, (dx, dy, dz, r)) in [(0.9, 0.5, 2.9, 0.95), (-0.8, -0.6, 3.6, 0.85)].into_iter().enumerate() {
-        let colour = p.autumn[(first + k + 1) % p.autumn.len()];
-        let at = foot + DVec3::new(dx, dy, dz) * size;
-        crown(e, at, r * size, 1.3 * size, 0.8 * size, 12, colour)?;
+    let mut random = Random((foot.x * 1000.) as i64 as u64 ^ ((foot.y * 1000.) as i64 as u64).rotate_left(32));
+    let top = foot + DVec3::Z * 3.0 * size;
+    limb(e, foot - DVec3::Z * 0.1, top, 0.17 * size, 0.08 * size, p.bark)?;
+    let hue = pick(foot, p.autumn.len());
+    let crown = foot + DVec3::Z * 3.9 * size;
+    for k in 0..4 {
+        let a = k as f64 * 1.7 + random.range(0., 0.6);
+        let start = foot + DVec3::Z * random.range(1.9, 2.6) * size;
+        let end = crown + DVec3::new(a.cos() * 1.2, a.sin() * 1.2, random.range(-0.4, 0.6)) * size;
+        limb(e, start, end, 0.07 * size, 0.03 * size, p.bark)?;
+    }
+    for _ in 0..14 {
+        let a = random.range(0., std::f64::consts::TAU);
+        let reach = random.next().sqrt() * 1.5 * size;
+        let at = crown + DVec3::new(a.cos() * reach, a.sin() * reach, random.range(-0.9, 1.1) * size);
+        let r = random.range(0.55, 0.95) * size;
+        let radii = DVec3::new(r, r * random.range(0.85, 1.15), r * random.range(0.75, 0.95));
+        // Mostly one hue per tree, with a neighbouring colour mixed in.
+        let colour = if random.next() < 0.75 { p.autumn[hue] } else { p.autumn[(hue + 1) % p.autumn.len()] };
+        clump(e, at, radii, &mut random, colour)?;
     }
     // Fallen leaves scattered under the crown, denser near the trunk.
-    let mut random = Random((foot.x * 1000.) as i64 as u64 ^ ((foot.y * 1000.) as i64 as u64).rotate_left(32));
-    for _ in 0..18 {
+    for _ in 0..22 {
         let angle = random.range(0., std::f64::consts::TAU);
-        let reach = random.next().sqrt() * 2.4 * size;
+        let reach = random.next().sqrt() * 2.6 * size;
         let at = foot + DVec3::new(angle.cos() * reach, angle.sin() * reach, 0.12);
         let colour = p.autumn[(random.next() * p.autumn.len() as f64) as usize];
         leaf(e, at, &mut random, colour)?;
@@ -644,10 +769,10 @@ fn main() -> Result<()> {
         taillight: material(&mut e, "Tail light", [0.7, 0.06, 0.05, 1.])?,
         bark: textures::bark(&mut e)?,
         autumn: [
-            textures::foliage(&mut e, "Orange leaves", [0.86, 0.45, 0.13, 1.])?,
-            textures::foliage(&mut e, "Red leaves", [0.66, 0.17, 0.1, 1.])?,
-            textures::foliage(&mut e, "Golden leaves", [0.9, 0.68, 0.2, 1.])?,
-            textures::foliage(&mut e, "Rust leaves", [0.55, 0.28, 0.12, 1.])?,
+            textures::foliage(&mut e, "Orange leaves", [0.92, 0.36, 0.04, 1.])?,
+            textures::foliage(&mut e, "Red leaves", [0.72, 0.1, 0.04, 1.])?,
+            textures::foliage(&mut e, "Golden leaves", [0.95, 0.66, 0.06, 1.])?,
+            textures::foliage(&mut e, "Rust leaves", [0.6, 0.24, 0.06, 1.])?,
         ],
         pumpkin: material(&mut e, "Pumpkin", [0.92, 0.48, 0.1, 1.])?,
         conifer: textures::foliage(&mut e, "Spruce", [0.18, 0.34, 0.2, 1.])?,
