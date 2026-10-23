@@ -158,11 +158,13 @@ struct Buffers {
 }
 
 impl Buffers {
+    /// `c` is sRGB, like material colours; vertex colours are linear.
     fn push(&mut self, p: DVec3, n: DVec3, c: [f32; 4], uv: [f64; 2]) {
         self.idx.push(self.pos.len() as u32);
         self.pos.push([p.x as f32, p.y as f32, p.z as f32]);
         self.nrm.push([n.x as f32, n.y as f32, n.z as f32]);
-        self.col.push(c);
+        let linear = LinearRgba::from(Color::srgba(c[0], c[1], c[2], c[3]));
+        self.col.push(linear.to_f32_array());
         self.uv.push([uv[0] as f32, uv[1] as f32]);
     }
 
@@ -545,6 +547,10 @@ fn rebuild_faces(
         })
         .collect();
     lights.sort_by(|a, b| b.0.total_cmp(&a.0));
+    // Each shadowed lamp redraws the model six times. In daylight its shadows vanish under the
+    // sun's, so only lamps after dark or in the studio cast them.
+    let daylight = style.lighting == Lighting::Sun && style.sun.position().1 > 0.;
+    let lamp_shadows = style.shadows && !daylight;
     for (rank, (flux, color, centre, area)) in lights.into_iter().take(MAX_LIGHTS).enumerate() {
         // Out to where the light falls to about 0.05 lx.
         let range = (flux / (4.0 * std::f32::consts::PI * 0.05)).sqrt().clamp(1.0, 200.0);
@@ -553,7 +559,7 @@ fn rebuild_faces(
             intensity: flux,
             range,
             radius: (area / std::f64::consts::PI).sqrt().min(0.5) as f32 * 0.5,
-            shadow_maps_enabled: style.shadows && rank < SHADOWED_LIGHTS,
+            shadow_maps_enabled: lamp_shadows && rank < SHADOWED_LIGHTS,
             ..default()
         };
         let at = Vec3::new(centre.x as f32, centre.z as f32, -centre.y as f32);
@@ -701,5 +707,18 @@ mod texture_quality_tests {
         assert_eq!(bytes, original);
         let full = decode(&bytes, "image/png", 0, 1).unwrap();
         assert_eq!(full.texture_descriptor.size.width, 1024);
+    }
+}
+
+#[cfg(test)]
+mod colour_tests {
+    use super::*;
+    #[test]
+    fn material_colours_reach_the_gpu_as_linear_values() {
+        let mut buffers = Buffers::default();
+        buffers.push(DVec3::ZERO, DVec3::Z, [0.5, 1., 0., 0.25], [0., 0.]);
+        let [r, g, b, a] = buffers.col[0];
+        assert!((r - 0.214).abs() < 1e-3, "{r}");
+        assert_eq!([g, b, a], [1., 0., 0.25]);
     }
 }
