@@ -702,8 +702,9 @@ pub fn settings(ctx: &egui::Context, app: &mut App3d) {
                 let environment = style
                     .environment_image
                     .and_then(|id| app.editor.doc().images.get(&id))
-                    .map(|image| image.name.clone());
-                if renderer_controls(ui, &mut style, environment.as_deref()) {
+                    .map(|image| (image.name.clone(), image.bytes.clone()));
+                let environment = environment.as_ref().map(|(name, bytes)| (name.as_str(), bytes.as_slice()));
+                if renderer_controls(ui, &mut style, environment) {
                     crate::features::data_files::pick(app, crate::features::data_files::Purpose::Environment);
                 }
                 crate::widgets::section(ui, "Display", false, |ui| {
@@ -1653,7 +1654,8 @@ mod text_entity_info_tests {
 
 /// Shared by the floating Inspector and the full style editor.
 /// Returns whether an environment panorama should be chosen.
-fn renderer_controls(ui: &mut egui::Ui, style: &mut rysmo_model::Style, environment: Option<&str>) -> bool {
+fn renderer_controls(ui: &mut egui::Ui, style: &mut rysmo_model::Style, panorama: Option<(&str, &[u8])>) -> bool {
+    let environment = panorama.map(|(name, _)| name);
     let mut load_environment = false;
     use rysmo_model::{AntiAliasing, Lighting, ShadowQuality, ToneMapping};
     #[cfg(not(target_arch = "wasm32"))]
@@ -1711,16 +1713,36 @@ fn renderer_controls(ui: &mut egui::Ui, style: &mut rysmo_model::Style, environm
             &mut style.lighting,
             &[(Lighting::Flat, "Flat"), (Lighting::Sun, "Sun"), (Lighting::Studio, "Studio")],
         );
-        if style.lighting == Lighting::Studio {
+        if style.lighting != Lighting::Flat {
+            let studio = style.lighting == Lighting::Studio;
             if let Some(name) = environment {
                 ui.horizontal(|ui| {
                     ui.label(crate::menu::label(egui_phosphor::regular::IMAGE, name));
-                    if ui.small_button("Remove").on_hover_text("Return to the built-in environments.").clicked() {
+                    let hint =
+                        if studio { "Return to the built-in environments." } else { "Return to the painted sky." };
+                    if ui.small_button("Remove").on_hover_text(hint).clicked() {
                         style.environment_image = None;
                     }
                 });
                 crate::widgets::checkbox(ui, &mut style.environment_background, "Show as background");
-            } else {
+                if !studio
+                    && ui
+                        .button("Match sun to panorama")
+                        .on_hover_text(
+                            "Moves the sun to the panorama's brightest point, so shadows agree with the sky.",
+                        )
+                        .clicked()
+                    && let Some((_, bytes)) = panorama
+                    && let Some(sun) = crate::environment::sun_direction(bytes)
+                {
+                    // The panorama turns with the environment rotation; Bevy is Y up, the model Z up.
+                    let world = bevy::math::Quat::from_rotation_y(style.studio_rotation.to_radians()) * sun;
+                    let (x, y, z) = (world.x as f64, -world.z as f64, world.y as f64);
+                    style.sun.from_time = false;
+                    style.sun.elevation = z.clamp(-1., 1.).asin().to_degrees();
+                    style.sun.azimuth = (x.atan2(y).to_degrees() + style.sun.north).rem_euclid(360.);
+                }
+            } else if studio {
                 choice(
                     ui,
                     "studio-environment",
@@ -1738,15 +1760,20 @@ fn renderer_controls(ui: &mut egui::Ui, style: &mut rysmo_model::Style, environm
             {
                 load_environment = true;
             }
-            ui.add(crate::widgets::Slider::new(&mut style.studio_intensity, 0. ..=4.).text("Environment intensity"));
-            ui.add(
-                crate::widgets::Slider::new(&mut style.studio_rotation, -180. ..=180.)
-                    .text("Environment rotation (degrees)"),
-            );
-            ui.small(if environment.is_some() {
-                "The panorama lights the model and shows in reflections. Studio lighting does not cast sun shadows."
-            } else {
-                "Built-in studio environments light the model without changing its background. Studio lighting does not cast sun shadows."
+            if studio || environment.is_some() {
+                ui.add(
+                    crate::widgets::Slider::new(&mut style.studio_intensity, 0. ..=4.).text("Environment intensity"),
+                );
+                ui.add(
+                    crate::widgets::Slider::new(&mut style.studio_rotation, -180. ..=180.)
+                        .text("Environment rotation (degrees)"),
+                );
+            }
+            ui.small(match (studio, environment.is_some()) {
+                (true, true) => "The panorama lights the model and shows in reflections. Studio lighting does not cast sun shadows.",
+                (true, false) => "Built-in studio environments light the model without changing its background. Studio lighting does not cast sun shadows.",
+                (false, true) => "The panorama is the sky: it fills the shade and shows in reflections. Turn it so its sun matches the sun position.",
+                (false, false) => "A panorama can replace the painted sky.",
             });
         }
         ui.add_enabled(

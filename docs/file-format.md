@@ -534,7 +534,9 @@ it are not drawn, which suits leaves, fences and decals. GLB import reads
 `style.environment_image` names an embedded equirectangular panorama, a Radiance
 HDR (`image/vnd.radiance`), PNG or JPEG image of at most 32 million pixels. With
 studio lighting it replaces the built-in environments: the model is lit and
-reflects it, scaled by `studio_intensity` and turned by `studio_rotation`.
+reflects it, scaled by `studio_intensity` and turned by `studio_rotation`. With sun
+lighting it replaces the painted sky and the atmosphere, fills the shade and shows
+in reflections, while the sun still casts the shadows.
 `style.environment_background`, default true, also shows it behind the model.
 Readers reject a missing image or another image type. Replacing or clearing the
 panorama removes its image when nothing else uses it. Scene lighting snapshots do

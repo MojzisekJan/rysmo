@@ -186,7 +186,7 @@ fn apply_style(
     let studio_lit = style.lighting == Lighting::Studio;
     let panorama = style
         .environment_image
-        .filter(|_| studio_lit)
+        .filter(|_| studio_lit || sun_lit)
         .and_then(|id| app.editor.doc().images.get(&id))
         .map(|image| image.bytes.clone());
     let panorama_key = panorama.as_ref().map(|bytes| std::sync::Arc::as_ptr(bytes) as usize);
@@ -200,11 +200,12 @@ fn apply_style(
         _ => None,
     };
     let studio_rotation = Quat::from_rotation_y(style.studio_rotation.to_radians());
-    let atmosphere = style.atmosphere && sun_lit && ADVANCED;
+    // A panorama replaces the painted or computed sky.
+    let atmosphere = style.atmosphere && sun_lit && ADVANCED && panorama.is_none();
     let (horizon, _) = sky_gradient(style.sky_color);
     // On the desktop renderer the sky itself lights a sunlit model: soft light in the
     // shade and reflections in glass and water. Elsewhere a flat ambient light stands in.
-    let sky_light = sun_lit && ADVANCED && (atmosphere || style.sky);
+    let sky_light = sun_lit && (panorama.is_some() || ADVANCED && (atmosphere || style.sky));
     let backdrop = panorama.filter(|_| style.environment_background).map(|maps| maps.background.clone());
     clear.0 = if atmosphere || backdrop.is_some() {
         Color::BLACK
@@ -246,11 +247,16 @@ fn apply_style(
     let base = if sun_lit { SUN_EV100 } else { bevy::camera::Exposure::default().ev100 };
     let ev100 = base - if style.lighting == Lighting::Flat { 0. } else { style.exposure };
     e.insert(bevy::camera::Exposure { ev100 });
+    // Panorama luminance per unit of its normalised radiance. In the studio it is a light
+    // level. Under the sun it stands in for the painted sky: like that sky it shows at its own
+    // brightness whatever the exposure, and fills the shade about as much.
+    let panorama_nits = if sun_lit { 3. * 2f32.powf(ev100) } else { STUDIO_NITS } * style.studio_intensity;
+    let panorama_light =
+        if sun_lit { 1.6 * 2f32.powf(ev100) * style.ambient_intensity } else { STUDIO_NITS } * style.studio_intensity;
     match &sky_cube {
         _ if backdrop.is_some() => {
             // The panorama in the same units as the light it gives.
-            let brightness = STUDIO_NITS * style.studio_intensity;
-            e.insert(Skybox { image: backdrop.clone(), brightness, rotation: studio_rotation });
+            e.insert(Skybox { image: backdrop.clone(), brightness: panorama_nits, rotation: studio_rotation });
         }
         Some(cube) if style.sky && !atmosphere => {
             if repaint && let Some(mut image) = images.as_mut().and_then(|i| i.get_mut(&cube.0)) {
@@ -290,6 +296,9 @@ fn apply_style(
             e.remove::<GeneratedEnvironmentMapLight>();
             e.insert(AtmosphereEnvironmentMapLight { intensity: style.ambient_intensity, ..default() });
         }
+        _ if panorama.is_some() => {
+            e.remove::<(AtmosphereEnvironmentMapLight, GeneratedEnvironmentMapLight)>();
+        }
         Some(cube) if sky_light => {
             e.remove::<AtmosphereEnvironmentMapLight>();
             e.insert(GeneratedEnvironmentMapLight {
@@ -302,10 +311,16 @@ fn apply_style(
             e.remove::<(AtmosphereEnvironmentMapLight, GeneratedEnvironmentMapLight)>();
         }
     }
-    if studio_lit && let Some(studio) = studio {
-        let maps = if let Some(maps) = panorama {
-            [maps.diffuse.clone(), maps.specular.clone()]
-        } else if style.studio_environment == rysmo_model::StudioEnvironment::Warm {
+    if let Some(maps) = panorama {
+        e.insert(bevy::light::EnvironmentMapLight {
+            diffuse_map: maps.diffuse.clone(),
+            specular_map: maps.specular.clone(),
+            intensity: panorama_light,
+            rotation: studio_rotation,
+            ..default()
+        });
+    } else if studio_lit && let Some(studio) = studio {
+        let maps = if style.studio_environment == rysmo_model::StudioEnvironment::Warm {
             studio.warm.clone()
         } else {
             studio.neutral.clone()

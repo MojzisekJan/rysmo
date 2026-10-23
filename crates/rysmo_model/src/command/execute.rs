@@ -1407,7 +1407,9 @@ impl Command {
                 let image = ImageId(doc.reserve_id());
                 doc.images.insert(image, Image { name, mime, bytes: Arc::new(data) });
                 let previous = doc.style.environment_image.replace(image);
-                doc.style.lighting = crate::Lighting::Studio;
+                if doc.style.lighting == crate::Lighting::Flat {
+                    doc.style.lighting = crate::Lighting::Studio;
+                }
                 drop_unused_image(doc, previous);
                 out.image = Some(image);
             }

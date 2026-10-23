@@ -190,8 +190,8 @@ pub struct Style {
     pub sun_intensity: f32,
     pub ambient_intensity: f32,
     pub studio_environment: StudioEnvironment,
-    /// An equirectangular panorama (Radiance HDR, PNG or JPEG) that lights the studio in place
-    /// of the built-in environments.
+    /// An equirectangular panorama (Radiance HDR, PNG or JPEG). With studio lighting it replaces
+    /// the built-in environments; under the sun it replaces the painted or computed sky.
     pub environment_image: Option<rysmo_mesh::ImageId>,
     /// Shows the panorama behind the model.
     pub environment_background: bool,

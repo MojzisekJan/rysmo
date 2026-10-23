@@ -29,7 +29,8 @@ pub enum Command {
         #[serde(with = "b64")]
         data: Vec<u8>,
     },
-    /// Lights the studio with an equirectangular panorama (Radiance HDR, PNG or JPEG).
+    /// Sets an equirectangular panorama (Radiance HDR, PNG or JPEG) as sky and environment
+    /// light; a flat-lit model switches to studio lighting.
     SetEnvironment {
         name: String,
         mime: String,

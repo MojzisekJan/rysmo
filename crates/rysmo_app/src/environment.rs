@@ -291,6 +291,19 @@ pub fn build(bytes: &[u8]) -> Option<[Image; 3]> {
     Some([cube(background_size, 1, background), cube(DIFFUSE, 1, diffuse), cube(specular_size, levels, specular)])
 }
 
+/// The direction of a panorama's brightest point (its sun), before any rotation.
+pub fn sun_direction(bytes: &[u8]) -> Option<Vec3> {
+    let panorama = Panorama::decode(bytes, 512)?;
+    let (w, h, data) = &panorama.levels[0];
+    let luminance = |c: &Vec3| c.dot(Vec3::new(0.2126, 0.7152, 0.0722));
+    let (index, _) =
+        data[..(w * h / 2) as usize].iter().enumerate().max_by(|a, b| luminance(a.1).total_cmp(&luminance(b.1)))?;
+    let (x, y) = (index as u32 % w, index as u32 / w);
+    let theta = (y as f32 + 0.5) / *h as f32 * PI;
+    let phi = ((x as f32 + 0.5) / *w as f32 - 0.5) * 2. * PI;
+    Some(Vec3::new(theta.sin() * phi.sin(), theta.cos(), -theta.sin() * phi.cos()))
+}
+
 /// Decoded maps of the current panorama, keyed by its bytes.
 #[derive(Resource, Default)]
 pub struct Cache {
@@ -347,6 +360,17 @@ mod tests {
             half::f16::from_le_bytes([data[at], data[at + 1]]).to_f32()
         };
         assert!(red(2) > 3. * red(3), "{} {}", red(2), red(3));
+    }
+
+    #[test]
+    fn the_sun_is_the_brightest_point_of_the_upper_half() {
+        let mut image = image::Rgb32FImage::from_pixel(64, 32, image::Rgb([1., 1., 1.]));
+        // A sun to the right of the centre (+X), 30 degrees up.
+        image.put_pixel(47, 10, image::Rgb([500., 480., 450.]));
+        let mut out = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgb32F(image).write_to(&mut out, image::ImageFormat::Hdr).unwrap();
+        let sun = sun_direction(&out.into_inner()).unwrap();
+        assert!(sun.x > 0.75 && sun.y > 0.4 && sun.z.abs() < 0.2, "{sun}");
     }
 
     #[test]
