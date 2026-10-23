@@ -62,6 +62,11 @@ pub fn offscreen(app: &App3d) -> bool {
     (app.editor.doc().style.render_scale - 1.).abs() > 0.001 || app.features.photo.active || needs_hdr(app)
 }
 
+/// Under the sun, the luminance in cd/m² of a panorama value of one as light. A normalised sky
+/// then lights a level surface with roughly a fifth of the sun's 10 000 lx, so shadows stay
+/// legible whatever the exposure.
+const SKY_FILL_NITS: f32 = 1200.;
+
 /// Luminance, in cd/m², of a studio environment map value of one.
 const STUDIO_NITS: f32 = 2000.;
 
@@ -249,10 +254,10 @@ fn apply_style(
     e.insert(bevy::camera::Exposure { ev100 });
     // Panorama luminance per unit of its normalised radiance. In the studio it is a light
     // level. Under the sun it stands in for the painted sky: like that sky it shows at its own
-    // brightness whatever the exposure, and fills the shade about as much.
+    // brightness whatever the exposure; the shade it fills is set against the sun.
     let panorama_nits = if sun_lit { 3. * 2f32.powf(ev100) } else { STUDIO_NITS } * style.studio_intensity;
     let panorama_light =
-        if sun_lit { 1.6 * 2f32.powf(ev100) * style.ambient_intensity } else { STUDIO_NITS } * style.studio_intensity;
+        if sun_lit { SKY_FILL_NITS * style.ambient_intensity } else { STUDIO_NITS } * style.studio_intensity;
     match &sky_cube {
         _ if backdrop.is_some() => {
             // The panorama in the same units as the light it gives.
