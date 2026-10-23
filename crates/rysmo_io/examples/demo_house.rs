@@ -1,6 +1,8 @@
 //! Build the demo model for the README screenshot: a modern villa with a pool on hilly terrain.
 #[path = "shared/cybertruck.rs"]
 mod cybertruck;
+#[path = "shared/textures.rs"]
+mod textures;
 
 use rysmo_math::{DVec2, DVec3, OrbitCamera};
 use rysmo_model::{Command, Editor, Element, InstanceId, MaterialId};
@@ -618,21 +620,21 @@ const HOUR: f64 = 16.4;
 fn main() -> Result<()> {
     let path = std::env::args().nth(1).ok_or("Usage: demo_house output.rysmo")?;
     let mut e = Editor::new();
-    let grass = surface(&mut e, "Autumn grass", [0.5, 0.52, 0.28, 1.], 0.98, 0.)?;
+    let grass = textures::grass(&mut e)?;
     let p = Paints {
-        render: surface(&mut e, "White render", [0.94, 0.93, 0.9, 1.], 0.9, 0.0)?,
-        concrete: surface(&mut e, "Concrete", [0.74, 0.73, 0.7, 1.], 0.9, 0.0)?,
-        wood: surface(&mut e, "Larch cladding", [0.6, 0.4, 0.24, 1.], 0.8, 0.0)?,
-        deck: surface(&mut e, "Decking", [0.55, 0.38, 0.25, 1.], 0.75, 0.0)?,
+        render: textures::render(&mut e)?,
+        concrete: textures::concrete(&mut e)?,
+        wood: textures::larch(&mut e)?,
+        deck: textures::decking(&mut e)?,
         clear: surface(&mut e, "Clear glass", [0.7, 0.82, 0.88, 0.22], 0.03, 0.0)?,
         tinted: surface(&mut e, "Tinted glass", [0.24, 0.32, 0.38, 0.85], 0.06, 0.0)?,
         railing: surface(&mut e, "Railing glass", [0.7, 0.85, 0.9, 0.3], 0.03, 0.0)?,
         dark: surface(&mut e, "Anthracite", [0.18, 0.19, 0.21, 1.], 0.55, 0.2)?,
         steel: surface(&mut e, "Steel", [0.3, 0.31, 0.33, 1.], 0.35, 0.9)?,
-        stone: surface(&mut e, "Stone", [0.62, 0.59, 0.52, 1.], 0.85, 0.0)?,
+        stone: textures::stone(&mut e)?,
         water: surface(&mut e, "Water", [0.25, 0.62, 0.8, 0.9], 0.02, 0.0)?,
-        paving: surface(&mut e, "Paving", [0.52, 0.52, 0.5, 1.], 0.9, 0.0)?,
-        asphalt: surface(&mut e, "Asphalt", [0.17, 0.17, 0.18, 1.], 0.95, 0.0)?,
+        paving: textures::paving(&mut e)?,
+        asphalt: textures::asphalt(&mut e)?,
         marking: material(&mut e, "Yellow road marking", [0.95, 0.75, 0.12, 1.])?,
         embers: glowing(&mut e, "Embers", [1., 0.42, 0.12, 1.], 20000.)?,
         firewood: material(&mut e, "Firewood", [0.62, 0.45, 0.3, 1.])?,
@@ -640,16 +642,16 @@ fn main() -> Result<()> {
         tile: surface(&mut e, "Waterline tile", [0.12, 0.33, 0.5, 1.], 0.15, 0.0)?,
         chrome: surface(&mut e, "Chrome", [0.78, 0.8, 0.82, 1.], 0.12, 1.0)?,
         taillight: material(&mut e, "Tail light", [0.7, 0.06, 0.05, 1.])?,
-        bark: material(&mut e, "Bark", [0.35, 0.26, 0.18, 1.])?,
+        bark: textures::bark(&mut e)?,
         autumn: [
-            material(&mut e, "Orange leaves", [0.86, 0.45, 0.13, 1.])?,
-            material(&mut e, "Red leaves", [0.66, 0.17, 0.1, 1.])?,
-            material(&mut e, "Golden leaves", [0.9, 0.68, 0.2, 1.])?,
-            material(&mut e, "Rust leaves", [0.55, 0.28, 0.12, 1.])?,
+            textures::foliage(&mut e, "Orange leaves", [0.86, 0.45, 0.13, 1.])?,
+            textures::foliage(&mut e, "Red leaves", [0.66, 0.17, 0.1, 1.])?,
+            textures::foliage(&mut e, "Golden leaves", [0.9, 0.68, 0.2, 1.])?,
+            textures::foliage(&mut e, "Rust leaves", [0.55, 0.28, 0.12, 1.])?,
         ],
         pumpkin: material(&mut e, "Pumpkin", [0.92, 0.48, 0.1, 1.])?,
-        conifer: material(&mut e, "Spruce", [0.18, 0.34, 0.2, 1.])?,
-        hedge: material(&mut e, "Hedge", [0.38, 0.4, 0.18, 1.])?,
+        conifer: textures::foliage(&mut e, "Spruce", [0.18, 0.34, 0.2, 1.])?,
+        hedge: textures::foliage(&mut e, "Hedge", [0.38, 0.4, 0.18, 1.])?,
         fabric: material(&mut e, "Sofa fabric", [0.55, 0.56, 0.58, 1.])?,
         cushion: material(&mut e, "Cushion", [0.9, 0.88, 0.82, 1.])?,
         oak: surface(&mut e, "Oak", [0.72, 0.56, 0.38, 1.], 0.55, 0.0)?,
@@ -1042,7 +1044,7 @@ fn main() -> Result<()> {
     doc.style.shadows = true;
     doc.style.ambient_occlusion = true;
     doc.style.edges = false;
-    doc.style.tone_mapping = rysmo_model::ToneMapping::TonyMcMapface;
+    doc.style.tone_mapping = rysmo_model::ToneMapping::AgX;
     doc.style.exposure = std::env::var("DEMO_EXPOSURE").ok().and_then(|x| x.parse().ok()).unwrap_or(3.);
     doc.style.atmosphere = true;
     doc.style.ground = true;
