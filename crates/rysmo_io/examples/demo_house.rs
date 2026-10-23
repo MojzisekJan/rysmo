@@ -19,6 +19,8 @@ struct Paints {
     paving: MaterialId,
     asphalt: MaterialId,
     marking: MaterialId,
+    embers: MaterialId,
+    firewood: MaterialId,
     bark: MaterialId,
     /// Autumn foliage, chosen per tree from its position.
     autumn: [MaterialId; 4],
@@ -482,6 +484,74 @@ fn sofa(e: &mut Editor, min: DVec2, max: DVec2, back_side: DVec2, p: &Paints) ->
     Ok(())
 }
 
+/// A horizontal log along X or Y, its foot at `at`.
+fn log(e: &mut Editor, at: DVec3, radius: f64, length: f64, along_x: bool, colour: MaterialId) -> Result<()> {
+    let normal = if along_x { DVec3::X } else { DVec3::Y };
+    e.apply(Command::DrawPolygon { centre: at + DVec3::Z * radius, normal, radius, segments: 7, start: None })?;
+    let mesh = e.mesh();
+    let face = mesh.faces().next().ok_or("no log")?.0;
+    let sign = mesh.face_normal(face).ok_or("no normal")?.dot(normal).signum();
+    e.apply(Command::PushPull { face, distance: length * sign, keep_base: false })?;
+    let group = group_loose(e)?;
+    paint(e, group, colour)?;
+    Ok(())
+}
+
+/// A ring of stones around glowing embers and a few logs.
+fn fire_pit(e: &mut Editor, at: DVec3, p: &Paints) -> Result<()> {
+    for i in 0..10 {
+        let a = i as f64 * std::f64::consts::TAU / 10.;
+        crown(e, at + DVec3::new(a.cos() * 0.6, a.sin() * 0.6, 0.12), 0.16, 0.14, 0.1, 6, p.stone)?;
+    }
+    column(e, at, 0.42, 0.06, 10, p.embers)?;
+    log(e, at + DVec3::new(-0.35, -0.12, 0.06), 0.06, 0.7, true, p.bark)?;
+    log(e, at + DVec3::new(0.1, -0.35, 0.1), 0.05, 0.6, false, p.bark)?;
+    Ok(())
+}
+
+/// A garden bench with a rounded seat and its back on +Y, so it faces -Y before turning.
+fn bench(e: &mut Editor, at: DVec3, degrees: f64, p: &Paints) -> Result<()> {
+    let mut parts = Vec::new();
+    for x in [-0.7, 0.62] {
+        parts.push(cuboid(e, at + DVec3::new(x, -0.2, 0.), at + DVec3::new(x + 0.08, 0.2, 0.42), p.dark)?);
+    }
+    parts.push(rounded(e, at + DVec3::new(-0.8, -0.22, 0.42), at + DVec3::new(0.8, 0.22, 0.47), 0.05, p.oak)?);
+    parts.push(rounded(e, at + DVec3::new(-0.8, 0.18, 0.6), at + DVec3::new(0.8, 0.24, 0.85), 0.05, p.oak)?);
+    turn(e, &parts, at, degrees)
+}
+
+/// A swept heap of leaves with a rake lying beside it.
+fn leaf_pile(e: &mut Editor, at: DVec3, p: &Paints) -> Result<()> {
+    crown(e, at + DVec3::Z * 0.02, 0.7, 0.35, 0., 9, p.autumn[0])?;
+    crown(e, at + DVec3::new(0.5, 0.3, 0.02), 0.45, 0.25, 0., 8, p.autumn[2])?;
+    cuboid(e, at + DVec3::new(0.9, -0.9, 0.), at + DVec3::new(0.93, 0.6, 0.03), p.oak)?;
+    cuboid(e, at + DVec3::new(0.72, -1.0, 0.), at + DVec3::new(1.11, -0.94, 0.05), p.steel)?;
+    Ok(())
+}
+
+/// Split logs stacked against a wall, with a small roof.
+fn woodpile(e: &mut Editor, min: DVec2, length: f64, p: &Paints) -> Result<()> {
+    for row in 0..5 {
+        for i in 0..((length / 0.2) as usize) {
+            let shift = if row % 2 == 0 { 0. } else { 0.1 };
+            let y = min.y + shift + i as f64 * 0.2;
+            if y + 0.2 > min.y + length {
+                continue;
+            }
+            log(e, DVec3::new(min.x, y + 0.1, row as f64 * 0.17), 0.09, 0.5, true, p.firewood)?;
+        }
+    }
+    cuboid(e, DVec3::new(min.x - 0.1, min.y - 0.1, 0.9), DVec3::new(min.x + 0.65, min.y + length + 0.1, 0.95), p.dark)?;
+    Ok(())
+}
+
+/// A post-mounted letterbox.
+fn letterbox(e: &mut Editor, at: DVec3, p: &Paints) -> Result<()> {
+    cuboid(e, at + DVec3::new(-0.04, -0.04, 0.), at + DVec3::new(0.04, 0.04, 1.0), p.dark)?;
+    rounded(e, at + DVec3::new(-0.2, -0.14, 1.0), at + DVec3::new(0.2, 0.14, 1.32), 0.06, p.car)?;
+    Ok(())
+}
+
 fn car(e: &mut Editor, at: DVec3, p: &Paints) -> Result<()> {
     rounded(e, at + DVec3::new(-0.9, -2.3, 0.28), at + DVec3::new(0.9, 2.3, 0.95), 0.4, p.car)?;
     rounded(e, at + DVec3::new(-0.82, -1.2, 0.95), at + DVec3::new(0.82, 1.0, 1.42), 0.25, p.tinted)?;
@@ -545,6 +615,8 @@ fn main() -> Result<()> {
         paving: material(&mut e, "Paving", [0.52, 0.52, 0.5, 1.])?,
         asphalt: material(&mut e, "Asphalt", [0.17, 0.17, 0.18, 1.])?,
         marking: material(&mut e, "Yellow road marking", [0.95, 0.75, 0.12, 1.])?,
+        embers: glowing(&mut e, "Embers", [1., 0.42, 0.12, 1.], 20000.)?,
+        firewood: material(&mut e, "Firewood", [0.62, 0.45, 0.3, 1.])?,
         bark: material(&mut e, "Bark", [0.35, 0.26, 0.18, 1.])?,
         autumn: [
             material(&mut e, "Orange leaves", [0.86, 0.45, 0.13, 1.])?,
@@ -869,6 +941,14 @@ fn main() -> Result<()> {
     for (x, y, size) in [(4.6, -4.9, 1.), (4.9, -5.5, 0.8), (-14.6, -5.2, 0.9), (-15.0, -4.6, 0.7)] {
         pumpkin(&mut e, DVec3::new(x, y, 0.25), size, &p)?;
     }
+
+    // A fire pit with a bench on the lawn, a swept leaf pile, firewood and the letterbox.
+    fire_pit(&mut e, DVec3::new(-7., -15., ground_at(-7., -15.)), &p)?;
+    bench(&mut e, DVec3::new(-7., -16.9, ground_at(-7., -16.9)), 180., &p)?;
+    bench(&mut e, DVec3::new(-8.9, -15., ground_at(-8.9, -15.)), 90., &p)?;
+    leaf_pile(&mut e, DVec3::new(-5.5, -20.5, ground_at(-5.5, -20.5)), &p)?;
+    woodpile(&mut e, DVec2::new(-14.85, 1.0), 2.4, &p)?;
+    letterbox(&mut e, DVec3::new(-14.5, -28.5, ground_at(-14.5, -28.5)), &p)?;
 
     // Trees around the garden and on the hills.
     for (x, y, size) in [
