@@ -75,6 +75,10 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
         }
     });
     super::remember(app, &result);
+    // Escape cancels the preview just as it cancels the placement that follows.
+    if ctx.input(|i| i.key_pressed(egui::Key::Escape)) && !ctx.egui_wants_keyboard_input() {
+        open = false;
+    }
     if place {
         if let Some(imported) = draft.imported.take()
             && let Err(error) =
