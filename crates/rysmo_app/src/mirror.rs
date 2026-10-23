@@ -678,11 +678,11 @@ mod tests {
         app.editor.undo();
         app.editor.set_selection(selected);
         let mut doc = app.editor.doc().clone();
-        doc.root.sections.planes.insert(
+        doc.root_mut().sections.planes.insert(
             999,
             rysmo_model::sections::SectionPlane { name: "Cut".into(), origin: point - normal * 0.1, normal },
         );
-        doc.root.sections.active = Some(999);
+        doc.root_mut().sections.active = Some(999);
         app.editor.replace_document(doc);
         assert!(face_frame(&app, at, DVec3::ZERO).is_none());
     }

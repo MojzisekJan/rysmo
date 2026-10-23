@@ -389,12 +389,14 @@ mod source_tests {
         let child = DefinitionId(1000);
         let parent = DefinitionId(1001);
         doc.definitions
-            .insert(child, Definition { mesh: crate::terrain::grid(2., 1., 1.).unwrap(), ..Default::default() });
+            .insert(child, Definition { mesh: crate::terrain::grid(2., 1., 1.).unwrap(), ..Default::default() }.into());
         let mut container = Definition::default();
         container.instances.insert(InstanceId(1002), instance(child, DMat4::from_translation(DVec3::new(3., 4., 5.))));
-        doc.definitions.insert(parent, container);
-        doc.root.instances.insert(InstanceId(1003), instance(parent, DMat4::from_scale(DVec3::new(-2., 3., 1.))));
-        doc.root.instances.insert(InstanceId(1004), instance(parent, DMat4::from_translation(DVec3::new(20., 0., 0.))));
+        doc.definitions.insert(parent, (container).into());
+        doc.root_mut().instances.insert(InstanceId(1003), instance(parent, DMat4::from_scale(DVec3::new(-2., 3., 1.))));
+        doc.root_mut()
+            .instances
+            .insert(InstanceId(1004), instance(parent, DMat4::from_translation(DVec3::new(20., 0., 0.))));
         let before = doc.clone();
         let rings = source_boundaries(
             &doc,
@@ -429,7 +431,7 @@ mod source_tests {
 
         assert_eq!(doc, before);
         assert!(source_boundaries(&doc, None, &[Element::Instance(InstanceId(99999))], DMat4::IDENTITY).is_err());
-        doc.definitions.get_mut(&child).unwrap().instances.insert(InstanceId(1005), instance(parent, DMat4::IDENTITY));
+        doc.def_mut(Some(child)).unwrap().instances.insert(InstanceId(1005), instance(parent, DMat4::IDENTITY));
         assert!(source_boundaries(&doc, None, &[Element::Instance(InstanceId(1003))], DMat4::IDENTITY).is_err());
     }
 }
@@ -518,8 +520,8 @@ mod drape_face_source_tests {
         use rysmo_math::DVec3;
         use rysmo_mesh::Element;
         let mut document = crate::Document::default();
-        document.root.mesh = crate::terrain::grid(2., 2., 2.).unwrap();
-        document.root.mesh.map_all(|p| p + DVec3::new(1., 1., 4.));
+        document.root_mut().mesh = crate::terrain::grid(2., 2., 2.).unwrap();
+        document.root_mut().mesh.map_all(|p| p + DVec3::new(1., 1., 4.));
         document.next_id = document.root.mesh.next_id();
         let mut editor = Editor::new();
         editor.replace_document(document);
@@ -549,7 +551,7 @@ mod drape_face_source_tests {
     fn selected_face_set_excludes_internal_edges_but_explicit_edges_remain() {
         use rysmo_mesh::Element;
         let mut document = crate::Document::default();
-        document.root.mesh = crate::terrain::grid(2., 2., 2.).unwrap();
+        document.root_mut().mesh = crate::terrain::grid(2., 2., 2.).unwrap();
         let faces = document.root.mesh.faces().map(|(id, _)| Element::Face(id)).collect::<Vec<_>>();
         assert_eq!(faces.len(), 2);
         let lines = source_segments(&document, None, &faces, DMat4::IDENTITY).unwrap();

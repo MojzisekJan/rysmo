@@ -81,7 +81,7 @@ impl Command {
                     out.changed = false;
                 } else {
                     let mesh = spec.mesh().map_err(CommandError::Invalid)?.with_fresh_ids(|| doc.reserve_id())?;
-                    let target = doc.definitions.get_mut(&definition).unwrap();
+                    let target = doc.def_mut(Some(definition)).unwrap();
                     target.mesh = mesh;
                     target.parametric = Some(spec);
                 }
@@ -350,7 +350,8 @@ impl Command {
                         mesh,
                         axes: rysmo_math::DrawingAxes { origin: DVec3::ZERO, x: axes.x, y: axes.y },
                         ..Default::default()
-                    },
+                    }
+                    .into(),
                 );
                 let instance = InstanceId(doc.reserve_id());
                 doc.def_mut(def).unwrap().instances.insert(
@@ -381,8 +382,10 @@ impl Command {
                 }
                 doc.next_id = doc.next_id.max(mesh.next_id());
                 let definition = DefinitionId(doc.reserve_id());
-                doc.definitions
-                    .insert(definition, Definition { name: "Terrain".into(), group: true, mesh, ..Default::default() });
+                doc.definitions.insert(
+                    definition,
+                    Definition { name: "Terrain".into(), group: true, mesh, ..Default::default() }.into(),
+                );
                 let instance = InstanceId(doc.reserve_id());
                 doc.def_mut(def).unwrap().instances.insert(
                     instance,
@@ -418,7 +421,8 @@ impl Command {
                         group: true,
                         mesh,
                         ..Default::default()
-                    },
+                    }
+                    .into(),
                 );
                 let instance = InstanceId(doc.reserve_id());
                 doc.def_mut(def).unwrap().instances.insert(
@@ -1192,8 +1196,7 @@ impl Command {
                     return invalid("invalid component properties");
                 }
                 let definition = doc
-                    .definitions
-                    .get_mut(&definition)
+                    .def_mut(Some(definition))
                     .ok_or_else(|| CommandError::Invalid("component is missing".into()))?;
                 out.changed = definition.name != name || definition.component != settings;
                 definition.name = name;
@@ -1469,7 +1472,7 @@ impl Command {
                 let definition = DefinitionId(doc.reserve_id());
                 doc.definitions.insert(
                     definition,
-                    Definition { name: "Section Slice".into(), group: true, mesh, ..Default::default() },
+                    Definition { name: "Section Slice".into(), group: true, mesh, ..Default::default() }.into(),
                 );
                 let instance = InstanceId(doc.reserve_id());
                 doc.def_mut(def).unwrap().instances.insert(
@@ -1656,7 +1659,7 @@ impl Command {
                 if doc.tags.remove(&tag).is_none() {
                     return invalid(format!("no tag {tag}"));
                 }
-                for d in std::iter::once(&mut doc.root).chain(doc.definitions.values_mut()) {
+                for d in doc.definitions_mut_where(|d| d.instances.values().any(|i| i.tag == Some(tag))) {
                     for i in d.instances.values_mut() {
                         if i.tag == Some(tag) {
                             i.tag = None;

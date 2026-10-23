@@ -273,7 +273,7 @@ fn section<T: Serialize>(out: &mut String, name: &str, items: impl Iterator<Item
 
 /// Every definition with its id: the model first (`None`), then the others.
 fn all_defs(doc: &Document) -> Vec<(In, &Definition)> {
-    std::iter::once((None, &doc.root)).chain(doc.definitions.iter().map(|(id, d)| (Some(*id), d))).collect()
+    std::iter::once((None, &*doc.root)).chain(doc.definitions.iter().map(|(id, d)| (Some(*id), &**d))).collect()
 }
 
 fn tidy_guide(g: &Guide) -> Guide {
@@ -598,7 +598,7 @@ pub fn load(text: &str) -> Result<Document, IoError> {
     if !axes.valid() {
         return Err(IoError::Format("invalid drawing axes".into()));
     }
-    doc.root.axes = axes;
+    doc.root_mut().axes = axes;
     doc.tags = tags;
     doc.units = f.display_units;
     if f.length_precision.is_some_and(|p| p > 6) {
@@ -641,7 +641,7 @@ pub fn load(text: &str) -> Result<Document, IoError> {
         }
         environment_dimensions(&image.bytes)?;
     }
-    doc.root.mesh = meshes.remove(&None).unwrap_or_default();
+    doc.root_mut().mesh = meshes.remove(&None).unwrap_or_default();
     for (id, d) in def_lines.iter() {
         let mesh = meshes.remove(&Some(*id)).unwrap_or_default();
         let mut axes = d.axes;
@@ -674,7 +674,8 @@ pub fn load(text: &str) -> Result<Document, IoError> {
                     component
                 },
                 ..Default::default()
-            },
+            }
+            .into(),
         );
     }
     for mut section in f.section_planes {
@@ -907,9 +908,9 @@ mod tests {
         use rysmo_model::text::{Text, TextPlacement};
         let mut doc = load(include_str!("../../../testdata/dimensions-preview.rysmo")).unwrap();
         let definition = DefinitionId(doc.reserve_id());
-        doc.definitions.insert(definition, Definition::default());
+        doc.definitions.insert(definition, Definition::default().into());
         let instance = InstanceId(doc.reserve_id());
-        doc.root.instances.insert(
+        doc.root_mut().instances.insert(
             instance,
             Instance {
                 definition,
@@ -922,9 +923,9 @@ mod tests {
             },
         );
         let guide = GuideId(doc.reserve_id());
-        doc.root.guides.insert(guide, Guide::Point { p: DVec3::ZERO, origin: None, hidden: false });
+        doc.root_mut().guides.insert(guide, Guide::Point { p: DVec3::ZERO, origin: None, hidden: false });
         let text = rysmo_mesh::TextId(doc.reserve_id());
-        doc.root.texts.insert(
+        doc.root_mut().texts.insert(
             text,
             Text {
                 content: "Note".into(),
@@ -934,7 +935,7 @@ mod tests {
             },
         );
         let section = doc.reserve_id();
-        doc.root
+        doc.root_mut()
             .sections
             .planes
             .insert(section, SectionPlane { name: "Section".into(), origin: DVec3::ZERO, normal: DVec3::Z });

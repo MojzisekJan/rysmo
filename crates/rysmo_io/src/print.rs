@@ -237,12 +237,12 @@ mod tests {
         });
         let top = top.unwrap().0;
         let mut reversed = open.clone();
-        open.root.mesh.remove_face(top);
+        open.root_mut().mesh.remove_face(top);
         let report = check(&open);
         assert!(!report.is_printable());
         assert_eq!(report.open_edges.len(), 4);
         assert!(report.bad_edges.is_empty());
-        reversed.root.mesh.reverse_faces(&[top]);
+        reversed.root_mut().mesh.reverse_faces(&[top]);
         let report = check(&reversed);
         assert!(report.open_edges.is_empty());
         assert_eq!(report.bad_edges.len(), 4);
@@ -274,7 +274,7 @@ mod tests {
             .unwrap();
         let mut doc = editor.doc().clone();
         assert_eq!(check(&doc).triangles, 24);
-        doc.root.mesh.reverse_faces(&faces);
+        doc.root_mut().mesh.reverse_faces(&faces);
         let report = check(&doc);
         assert!(report.open_edges.is_empty() && report.bad_edges.is_empty(), "{report:?}");
         assert_eq!(report.inside_out, ["Model"]);

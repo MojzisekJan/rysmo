@@ -1341,7 +1341,7 @@ mod dimension_font_tests {
     fn different_font_sizes_keep_independent_measured_pick_bounds() {
         let mut doc = rysmo_io::load(include_str!("../../../testdata/dimensions-preview.rysmo")).unwrap();
         let small_id = rysmo_model::DimensionId(10);
-        doc.root.dimensions.retain(|id, _| *id == small_id);
+        doc.root_mut().dimensions.retain(|id, _| *id == small_id);
         let mut app = App3d::new(rysmo_model::Editor::with_document(doc));
         let small = app.editor.active().dimensions[&small_id].clone();
         let mut big = small.clone();

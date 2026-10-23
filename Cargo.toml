@@ -13,7 +13,7 @@ rust-version = "1.97.1"
 
 [workspace.dependencies]
 glam = { version = "0.33.2", features = ["serde"] }
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive", "rc"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 thiserror = "2"
 base64 = "0.23"

@@ -51,7 +51,7 @@ impl Document {
             return Vec::new();
         }
         let mut result = Vec::new();
-        let mut definition = &self.root;
+        let mut definition: &crate::Definition = &self.root;
         let mut transform = DMat4::IDENTITY;
         for step in 0..=path.len() {
             if let Some(plane) = definition.sections.active.and_then(|id| definition.sections.planes.get(&id)) {

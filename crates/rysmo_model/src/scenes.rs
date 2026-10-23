@@ -226,11 +226,11 @@ mod tests {
         let edge = editor.mesh().edges().next().unwrap().0;
         let tag = editor.apply(Command::AddTag { name: "Layer".into() }).unwrap().tag.unwrap();
         let mut source = editor.doc().clone();
-        source.root.mesh.set_edge_flags(&[edge], None, None, Some(true));
+        source.root_mut().mesh.set_edge_flags(&[edge], None, None, Some(true));
         source.tags.get_mut(&tag).unwrap().visible = false;
         source.style.faces = FaceStyle::Wireframe;
         source.style.shadows = true;
-        source.root.axes.origin = DVec3::X;
+        source.root_mut().axes.origin = DVec3::X;
         let camera = OrbitCamera { parallel: true, target: DVec3::new(5., 4., 3.), ..Default::default() };
         let mut scene = Scene::capture(&source, camera, "Top".into());
         scene.properties.shadows = false;

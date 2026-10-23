@@ -391,7 +391,8 @@ pub(crate) fn run(
         let mesh = mesh.with_fresh_ids(|| doc.reserve_id()).map_err(CommandError::from)?;
         let definition = DefinitionId(doc.reserve_id());
         let id = InstanceId(doc.reserve_id());
-        doc.definitions.insert(definition, Definition { name: name.into(), group: true, mesh, ..Default::default() });
+        doc.definitions
+            .insert(definition, (Definition { name: name.into(), group: true, mesh, ..Default::default() }).into());
         doc.def_mut(owner).unwrap().instances.insert(
             id,
             Instance {
@@ -423,9 +424,9 @@ mod tests {
         let mut doc = editor.doc().clone();
         let definition = DefinitionId(doc.reserve_id());
         let mesh = e.mesh().with_fresh_ids(|| doc.reserve_id()).unwrap();
-        doc.definitions.insert(definition, Definition { mesh, group: true, ..Default::default() });
+        doc.definitions.insert(definition, (Definition { mesh, group: true, ..Default::default() }).into());
         let id = InstanceId(doc.reserve_id());
-        doc.root.instances.insert(
+        doc.root_mut().instances.insert(
             id,
             Instance {
                 definition,
@@ -447,7 +448,7 @@ mod tests {
         let right = cube(&mut editor, DVec3::ONE, DVec3::ONE);
         let mut doc = editor.doc().clone();
         let instance = doc.root.instances[&left].clone();
-        doc.definitions.get_mut(&instance.definition).unwrap().instances.insert(left, instance);
+        doc.def_mut(Some(instance.definition)).unwrap().instances.insert(left, instance);
         let before = doc.clone();
         let error = run(&mut doc, None, left, right, BooleanOp::Union, false).unwrap_err();
         assert!(error.to_string().contains("cyclic"), "{error}");
@@ -468,11 +469,12 @@ mod tests {
             let b = InstanceId(doc.reserve_id());
             doc.definitions.insert(
                 definition,
-                Definition { instances: [(a, instance.clone()), (b, instance.clone())].into(), ..Default::default() },
+                Definition { instances: [(a, instance.clone()), (b, instance.clone())].into(), ..Default::default() }
+                    .into(),
             );
             instance.definition = definition;
         }
-        doc.root.instances.insert(left, instance);
+        doc.root_mut().instances.insert(left, instance);
         let before = doc.clone();
         let error = run(&mut doc, None, left, right, BooleanOp::Union, false).unwrap_err();
         assert!(error.to_string().contains("4096 occurrences"), "{error}");
@@ -491,9 +493,9 @@ mod tests {
             parent.instances.insert(InstanceId(doc.reserve_id()), instance.clone());
         }
         let definition = DefinitionId(doc.reserve_id());
-        doc.definitions.insert(definition, parent);
+        doc.definitions.insert(definition, (parent).into());
         instance.definition = definition;
-        doc.root.instances.insert(left, instance);
+        doc.root_mut().instances.insert(left, instance);
         let before = doc.clone();
         let error = run(&mut doc, None, left, right, BooleanOp::Union, false).unwrap_err();
         assert!(error.to_string().contains("4096 triangles"), "{error}");
@@ -583,11 +585,12 @@ mod tests {
         let transform = DMat4::from_translation(DVec3::new(3., 2., 1.))
             * DMat4::from_rotation_z(0.4)
             * DMat4::from_scale(DVec3::new(-2., 1., 1.));
-        doc.root.instances.get_mut(&a).unwrap().transform = transform;
-        doc.root.instances.get_mut(&b).unwrap().transform = transform;
+        doc.root_mut().instances.get_mut(&a).unwrap().transform = transform;
+        doc.root_mut().instances.get_mut(&b).unwrap().transform = transform;
         let definition = doc.root.instances[&a].definition;
         let shared = InstanceId(doc.reserve_id());
-        doc.root.instances.insert(shared, doc.root.instances[&a].clone());
+        let copy = doc.root.instances[&a].clone();
+        doc.root_mut().instances.insert(shared, copy);
         let before = doc.definitions[&definition].clone();
         e = Editor::with_document(doc);
         let out = e
@@ -615,7 +618,7 @@ mod tests {
         assert_eq!(e.undo_depth(), depth);
         let mut doc = e.doc().clone();
         let def = doc.root.instances[&b].definition;
-        let mesh = &mut doc.definitions.get_mut(&def).unwrap().mesh;
+        let mesh = &mut doc.def_mut(Some(def)).unwrap().mesh;
         let face = mesh.faces().next().unwrap().0;
         mesh.erase(&[Element::Face(face)]);
         e = Editor::with_document(doc);
@@ -693,7 +696,7 @@ mod tests {
         let mesh = Mesh::from_parts(vertices, edges, faces).unwrap();
         let error = crate::solid_validation::validate(&mesh, true).unwrap_err();
         assert!(error.contains("Self-intersecting"), "{error}");
-        doc.definitions.get_mut(&definition).unwrap().mesh = mesh;
+        doc.def_mut(Some(definition)).unwrap().mesh = mesh;
         e = Editor::with_document(doc);
         let before = e.doc().clone();
         assert!(
@@ -709,7 +712,7 @@ mod tests {
         let b = cube(&mut e, DVec3::ONE, DVec3::splat(2.));
         let mut doc = e.doc().clone();
         let definition = doc.root.instances[&a].definition;
-        let mesh = &mut doc.definitions.get_mut(&definition).unwrap().mesh;
+        let mesh = &mut doc.def_mut(Some(definition)).unwrap().mesh;
         let ids = mesh.faces().map(|(id, _)| id).collect::<Vec<_>>();
         let uv = rysmo_mesh::TexturePlacement { offset: [0.2, 0.3], rotation: 30., ..Default::default() };
         for id in &ids {
@@ -922,7 +925,7 @@ mod tests {
         let other = cube(&mut e, DVec3::X * 6., DVec3::ONE);
         let mut doc = e.doc().clone();
         let def = doc.root.instances[&hollow].definition;
-        let mesh = &mut doc.definitions.get_mut(&def).unwrap().mesh;
+        let mesh = &mut doc.def_mut(Some(def)).unwrap().mesh;
         let cavity = crate::solid_validation::analyse(mesh).unwrap().shells.into_iter().find(|s| s.depth == 1).unwrap();
         mesh.reverse_faces(&cavity.faces.into_iter().collect::<Vec<_>>());
         let error = crate::solid_validation::validate(mesh, false).unwrap_err();
@@ -977,7 +980,8 @@ mod tests {
         let Element::Instance(parent) = grouped.created[0] else { panic!() };
         let mut document = editor.doc().clone();
         let shared = InstanceId(document.reserve_id());
-        document.root.instances.insert(shared, document.root.instances[&parent].clone());
+        let copy = document.root.instances[&parent].clone();
+        document.root_mut().instances.insert(shared, copy);
         let definitions = document.definitions.clone();
         editor = Editor::with_document(document);
         let before = editor.doc().clone();
@@ -1011,7 +1015,7 @@ mod tests {
         let source = doc.root.instances[&parent].definition;
         let child = doc.definitions[&source].instances.values().next().unwrap().definition;
         let face = doc.definitions[&child].mesh.faces().next().unwrap().0;
-        doc.definitions.get_mut(&child).unwrap().mesh.erase(&[Element::Face(face)]);
+        doc.def_mut(Some(child)).unwrap().mesh.erase(&[Element::Face(face)]);
         editor = Editor::with_document(doc);
         let before = editor.doc().clone();
         assert!(
@@ -1089,7 +1093,7 @@ mod tests {
         let mut doc = editor.doc().clone();
         let definition = doc.root.instances[&a].definition;
         let mesh = mesh.with_fresh_ids(|| doc.reserve_id()).unwrap();
-        doc.definitions.get_mut(&definition).unwrap().mesh = mesh;
+        doc.def_mut(Some(definition)).unwrap().mesh = mesh;
         editor = Editor::with_document(doc);
         let out = editor
             .apply(Command::SolidBoolean { left: a, right: b, operation: BooleanOp::Union, keep_inputs: false })

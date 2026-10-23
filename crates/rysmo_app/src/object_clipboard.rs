@@ -186,7 +186,7 @@ pub fn place_external(
         && document.root.texts.is_empty()
         && document.root.sections.planes.is_empty()
     {
-        let instance = document.root.instances.values_mut().next().unwrap();
+        let instance = document.root_mut().instances.values_mut().next().unwrap();
         instance.name = name;
         if !preserve_origin {
             instance.transform = DMat4::from_translation(-bounds.0) * instance.transform;
@@ -203,10 +203,11 @@ pub fn place_external(
     let definition = rysmo_model::DefinitionId(document.reserve_id());
     let instance = InstanceId(document.reserve_id());
     let mut root = std::mem::take(&mut document.root);
-    root.name = name.clone();
-    root.group = false;
+    let edited = std::sync::Arc::make_mut(&mut root);
+    edited.name = name.clone();
+    edited.group = false;
     document.definitions.insert(definition, root);
-    document.root.instances.insert(
+    document.root_mut().instances.insert(
         instance,
         rysmo_model::Instance {
             definition,

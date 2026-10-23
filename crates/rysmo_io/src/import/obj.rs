@@ -91,6 +91,6 @@ pub(super) fn read(text: &str, options: Options) -> Result<Imported> {
     }
     let mesh = geometry.finish()?;
     let mut document = Document::new();
-    document.root = Definition { mesh, ..Default::default() };
+    document.root = Definition { mesh, ..Default::default() }.into();
     Ok(Imported { document, warnings })
 }

@@ -202,10 +202,10 @@ impl Spec {
         let definition = DefinitionId(document.reserve_id());
         document.definitions.insert(
             definition,
-            Definition { name: self.name().into(), mesh, parametric: Some(self.clone()), ..Default::default() },
+            Definition { name: self.name().into(), mesh, parametric: Some(self.clone()), ..Default::default() }.into(),
         );
         let id = InstanceId(document.reserve_id());
-        document.root.instances.insert(
+        document.root_mut().instances.insert(
             id,
             Instance {
                 definition,

@@ -440,7 +440,7 @@ pub fn run() {
             spacing: 1.,
         });
         let mut document = app3d.editor.doc().clone();
-        for definition in document.definitions.values_mut() {
+        for definition in document.definitions.values_mut().map(std::sync::Arc::make_mut) {
             definition.mesh.map_all(|p| {
                 DVec3::new(
                     p.x,

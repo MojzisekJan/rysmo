@@ -7,6 +7,7 @@
 //! definition can have many instances, and editing one edits them all.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use rysmo_math::{DMat4, DVec3, OrbitCamera};
 use rysmo_mesh::{DefinitionId, DimensionId, GuideId, InstanceId, MaterialId, Mesh, TagId};
@@ -161,9 +162,10 @@ pub struct Definition {
 /// Everything that is saved in a file.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Document {
-    /// The model's own geometry and its top-level groups and components.
-    pub root: Definition,
-    pub definitions: BTreeMap<DefinitionId, Definition>,
+    /// The model's own geometry and its top-level groups and components. Definitions are
+    /// shared copy-on-write, so undo snapshots copy only the definitions an edit changes.
+    pub root: Arc<Definition>,
+    pub definitions: BTreeMap<DefinitionId, Arc<Definition>>,
     pub materials: BTreeMap<MaterialId, Material>,
     pub images: BTreeMap<rysmo_mesh::ImageId, crate::Image>,
     pub tags: BTreeMap<TagId, Tag>,
@@ -185,7 +187,7 @@ pub struct Document {
 impl Default for Document {
     fn default() -> Self {
         Document {
-            root: Definition { name: "Model".into(), mesh: Mesh::new(), ..Default::default() },
+            root: Arc::new(Definition { name: "Model".into(), mesh: Mesh::new(), ..Default::default() }),
             definitions: BTreeMap::new(),
             materials: BTreeMap::new(),
             images: BTreeMap::new(),
@@ -322,14 +324,31 @@ impl Document {
     pub fn def(&self, id: Option<DefinitionId>) -> Option<&Definition> {
         match id {
             None => Some(&self.root),
-            Some(d) => self.definitions.get(&d),
+            Some(d) => self.definitions.get(&d).map(|d| &**d),
         }
+    }
+
+    /// Every definition, the model's own first, that `needs` picks out, unshared for editing.
+    /// Definitions it passes over stay shared with the undo history.
+    pub fn definitions_mut_where(
+        &mut self,
+        needs: impl Fn(&Definition) -> bool,
+    ) -> impl Iterator<Item = &mut Definition> {
+        std::iter::once(&mut self.root)
+            .chain(self.definitions.values_mut())
+            .filter(move |d| needs(d))
+            .map(Arc::make_mut)
+    }
+
+    /// The model's own definition, unshared first if an undo step still holds it.
+    pub fn root_mut(&mut self) -> &mut Definition {
+        Arc::make_mut(&mut self.root)
     }
 
     pub fn def_mut(&mut self, id: Option<DefinitionId>) -> Option<&mut Definition> {
         match id {
-            None => Some(&mut self.root),
-            Some(d) => self.definitions.get_mut(&d),
+            None => Some(Arc::make_mut(&mut self.root)),
+            Some(d) => self.definitions.get_mut(&d).map(Arc::make_mut),
         }
     }
 

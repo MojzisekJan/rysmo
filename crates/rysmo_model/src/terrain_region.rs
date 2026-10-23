@@ -112,7 +112,7 @@ mod tests {
     fn raw_stamp_preserves_sources_and_unrelated_geometry_and_history() {
         use crate::{Command, Document, Editor, Element};
         let mut document = Document::default();
-        document.root.mesh = crate::terrain::grid(6., 6., 1.).unwrap();
+        document.root_mut().mesh = crate::terrain::grid(6., 6., 1.).unwrap();
         document.next_id = document.root.mesh.next_id();
         let mut editor = Editor::new();
         editor.replace_document(document);
@@ -164,9 +164,9 @@ mod tests {
         let transform = DMat4::from_rotation_translation(rotation, origin);
         let axes = DrawingAxes::new(origin, rotation * DVec3::X, rotation * DVec3::Y).unwrap();
         let mut document = Document::default();
-        document.root.axes = axes;
-        document.root.mesh = crate::terrain::grid(6., 6., 1.).unwrap();
-        document.root.mesh.map_all(|point| transform.transform_point3(point));
+        document.root_mut().axes = axes;
+        document.root_mut().mesh = crate::terrain::grid(6., 6., 1.).unwrap();
+        document.root_mut().mesh.map_all(|point| transform.transform_point3(point));
         document.next_id = document.root.mesh.next_id();
         let mut editor = Editor::new();
         editor.replace_document(document);
@@ -227,7 +227,7 @@ mod tests {
     fn raw_terrain_drape_adds_surface_edges_and_undoes_atomically() {
         use crate::{Command, Document, Editor, Element};
         let mut document = Document::default();
-        document.root.mesh = crate::terrain::grid(4., 4., 1.).unwrap();
+        document.root_mut().mesh = crate::terrain::grid(4., 4., 1.).unwrap();
         document.next_id = document.root.mesh.next_id();
         let mut editor = Editor::new();
         editor.replace_document(document);

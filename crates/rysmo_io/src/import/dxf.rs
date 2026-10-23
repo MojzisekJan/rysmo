@@ -361,9 +361,9 @@ pub(super) fn read(text: &str, options: Options) -> Result<Imported> {
         let definition = DefinitionId(document.reserve_id());
         document
             .definitions
-            .insert(definition, Definition { name: layer.clone(), group: true, mesh, ..Default::default() });
+            .insert(definition, Definition { name: layer.clone(), group: true, mesh, ..Default::default() }.into());
         let instance = InstanceId(document.reserve_id());
-        document.root.instances.insert(
+        document.root_mut().instances.insert(
             instance,
             Instance {
                 definition,

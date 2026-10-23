@@ -68,7 +68,7 @@ pub(super) fn make_definition(
         ..Default::default()
     };
     let id = DefinitionId(doc.reserve_id());
-    doc.definitions.insert(id, std::mem::take(&mut tmp));
+    doc.definitions.insert(id, (std::mem::take(&mut tmp)).into());
     let origin = doc
         .definition_bounds(Some(id))
         .map(|(lo, _)| lo)
@@ -112,7 +112,8 @@ pub(super) fn make_definition(
             axes: Default::default(),
             dimensions,
             texts,
-        },
+        }
+        .into(),
     );
     let iid = InstanceId(doc.reserve_id());
     doc.def_mut(def).expect("checked").instances.insert(
@@ -211,7 +212,7 @@ pub(crate) fn explode(
     let mut source = doc
         .definitions
         .get(&inst.definition)
-        .cloned()
+        .map(|d| Definition::clone(d))
         .ok_or_else(|| CommandError::Invalid("broken instance".into()))?;
     let t = inst.transform;
     let face_placements = source
@@ -269,7 +270,7 @@ pub(crate) fn explode(
         }
     }
     let target_mesh = doc.def(def).expect("checked").mesh.clone();
-    for definition in std::iter::once(&mut doc.root).chain(doc.definitions.values_mut()) {
+    for definition in doc.definitions_mut_where(|d| !d.dimensions.is_empty() || !d.texts.is_empty()) {
         for dimension in definition.dimensions.values_mut() {
             dimension.remap_instance_reference(instance, &source.mesh, &target_mesh, &instance_map, t, true);
         }
@@ -349,7 +350,7 @@ pub(super) fn make_unique(
     }
     let id = DefinitionId(doc.reserve_id());
     let name = if source.group { source.name.clone() } else { format!("{}#{}", source.name, doc.instance_count(old)) };
-    for definition in std::iter::once(&mut doc.root).chain(doc.definitions.values_mut()) {
+    for definition in doc.definitions_mut_where(|d| !d.dimensions.is_empty() || !d.texts.is_empty()) {
         for dimension in definition.dimensions.values_mut() {
             dimension.remap_instance_reference(instance, &source.mesh, &fresh, &instance_map, DMat4::IDENTITY, false);
         }
@@ -371,7 +372,8 @@ pub(super) fn make_unique(
             dimensions,
             texts,
             sections,
-        },
+        }
+        .into(),
     );
     doc.def_mut(def).expect("checked").instances.get_mut(&instance).expect("found above").definition = id;
     Ok(())

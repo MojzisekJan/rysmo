@@ -231,7 +231,7 @@ impl Nodes<'_> {
             definition.instances.insert(id, add_instance(child, transform, String::new()));
         }
         let id = DefinitionId(doc.reserve_id());
-        doc.definitions.insert(id, definition);
+        doc.definitions.insert(id, (definition).into());
         self.built.insert(index, id);
         self.visiting.remove(&index);
         Ok(id)
@@ -551,7 +551,8 @@ pub(super) fn read(bytes: &[u8], options: Options) -> Result<Imported> {
         let id = DefinitionId(document.reserve_id());
         document.definitions.insert(
             id,
-            Definition { name: source["name"].as_str().unwrap_or("Imported mesh").into(), mesh, ..Default::default() },
+            Definition { name: source["name"].as_str().unwrap_or("Imported mesh").into(), mesh, ..Default::default() }
+                .into(),
         );
         meshes.push(id);
     }
@@ -576,7 +577,7 @@ pub(super) fn read(bytes: &[u8], options: Options) -> Result<Imported> {
             * node_transform(item(&root, "nodes", index)?)?;
         let id = InstanceId(document.reserve_id());
         let instance = add_instance(definition, transform, String::new());
-        document.root.instances.insert(id, instance);
+        document.root_mut().instances.insert(id, instance);
     }
     if !list(&root, "skins")?.is_empty() || !list(&root, "animations")?.is_empty() {
         warnings.push("Animation and skin deformation are not imported; this is a static model.".into());

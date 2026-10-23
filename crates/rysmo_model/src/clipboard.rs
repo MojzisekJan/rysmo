@@ -31,11 +31,11 @@ impl Clipboard {
         if let Some(material) = inherited {
             let faces = document.root.mesh.faces().map(|(id, _)| id).collect::<Vec<_>>();
             for id in faces {
-                let face = document.root.mesh.face_mut(id).unwrap();
+                let face = document.root_mut().mesh.face_mut(id).unwrap();
                 face.material = face.material.or(Some(material));
                 face.back_material = face.back_material.or(Some(material));
             }
-            for child in document.root.instances.values_mut() {
+            for child in document.root_mut().instances.values_mut() {
                 child.material = child.material.or(Some(material));
             }
         }
@@ -55,7 +55,7 @@ impl Clipboard {
             })
             .collect::<Vec<_>>();
         for (id, placement, normal) in faces {
-            document.root.mesh.face_mut(id).unwrap().uv = Some(crate::texture::moved(placement, normal, offset));
+            document.root_mut().mesh.face_mut(id).unwrap().uv = Some(crate::texture::moved(placement, normal, offset));
         }
         let mut keep = BTreeSet::new();
         fn visit(doc: &Document, def: &Definition, keep: &mut BTreeSet<DefinitionId>) {
@@ -177,7 +177,7 @@ pub(crate) fn paste(
             } else {
                 let definition = self.build(doc, &source)?;
                 let new = DefinitionId(doc.reserve_id());
-                doc.definitions.insert(new, definition);
+                doc.definitions.insert(new, (definition).into());
                 new
             };
             self.visiting.remove(&id);
@@ -277,7 +277,7 @@ pub(crate) fn paste(
         }
     }
     let definition = DefinitionId(doc.reserve_id());
-    doc.definitions.insert(definition, root);
+    doc.definitions.insert(definition, (root).into());
     let id = InstanceId(doc.reserve_id());
     doc.def_mut(owner).unwrap().instances.insert(
         id,

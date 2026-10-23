@@ -84,7 +84,7 @@ mod tests {
         }
         let mut doc = editor.doc().clone();
         let inner = doc.root.mesh.faces().find(|(id, _)| doc.root.mesh.face_area(*id) < 2.).unwrap().0;
-        doc.root.mesh.remove_face(inner);
+        doc.root_mut().mesh.remove_face(inner);
         let geometry = collect(&doc);
         let triangles = &geometry[0].triangles;
         let area: f64 =
@@ -115,8 +115,8 @@ mod tests {
             hidden: false,
             glued_to: None,
         };
-        doc.root.instances.insert(InstanceId(501), instance.clone());
-        doc.root.instances.insert(InstanceId(502), Instance { hidden: true, ..instance });
+        doc.root_mut().instances.insert(InstanceId(501), instance.clone());
+        doc.root_mut().instances.insert(InstanceId(502), Instance { hidden: true, ..instance });
         let geometries = collect(&doc);
         assert_eq!(geometries.len(), 1);
         for triangle in &geometries[0].triangles {
@@ -135,7 +135,7 @@ mod tests {
         assert_eq!(collect(editor.doc())[0].lines.len(), 1);
         let mut doc = editor.doc().clone();
         let id = doc.root.mesh.faces().next().unwrap().0;
-        doc.root.mesh.face_mut(id).unwrap().hidden = true;
+        doc.root_mut().mesh.face_mut(id).unwrap().hidden = true;
         assert!(collect(&doc)[0].triangles.is_empty());
     }
 }

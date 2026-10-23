@@ -65,9 +65,9 @@ mod tests {
     fn nested() -> Document {
         let mut doc = Document::new();
         let outer = Definition { instances: [(SECOND, instance(INNER))].into(), ..Default::default() };
-        doc.definitions.insert(OUTER, outer);
-        doc.definitions.insert(INNER, Definition::default());
-        doc.root.instances.insert(FIRST, instance(OUTER));
+        doc.definitions.insert(OUTER, (outer).into());
+        doc.definitions.insert(INNER, (Definition::default()).into());
+        doc.root_mut().instances.insert(FIRST, instance(OUTER));
         doc
     }
 

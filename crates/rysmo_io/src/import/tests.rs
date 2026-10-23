@@ -137,9 +137,9 @@ fn shared_hierarchy_expansion_is_bounded_before_preview_or_collection_installati
                 );
             }
         }
-        doc.definitions.insert(DefinitionId(level), definition);
+        doc.definitions.insert(DefinitionId(level), (definition).into());
     }
-    doc.root.instances.insert(
+    doc.root_mut().instances.insert(
         InstanceId(999),
         Instance {
             definition: DefinitionId(29),
@@ -209,7 +209,7 @@ fn obj_planar_quads_stay_single_faces_unless_bent_or_unevenly_mapped() {
 vt 0 0\nvt 1 0\nvt 1 1\nvt 0 1\n\
 f 1/1 4/4 3/3 2/2\nf 5/1 6/2 7/3 8/4\nf 1/1 2/2 6/3 5/4\nf 2/1 3/2 7/3 6/4\nf 3/1 4/2 8/3 7/4\nf 4/1 1/2 5/3 8/4\n";
     let options = Options { obj_up: UpAxis::Z, ..Default::default() };
-    let mesh = read("cube.obj", cube, options).unwrap().document.root.mesh;
+    let mesh = read("cube.obj", cube, options).unwrap().document.root.mesh.clone();
     assert_eq!(mesh.face_count(), 6);
     assert!(mesh.faces().all(|(_, face)| face.outer.len() == 4 && face.uv.is_some()));
     // A bent quad and a quad whose UVs are not one affine map keep the triangulated fallback.

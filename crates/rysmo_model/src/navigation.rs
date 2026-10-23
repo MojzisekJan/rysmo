@@ -182,7 +182,7 @@ mod tests {
     use super::*;
     fn polygon(doc: &mut Document, points: &[DVec3]) {
         let lines: Vec<_> = (0..points.len()).map(|i| (points[i], points[(i + 1) % points.len()])).collect();
-        doc.root.mesh.add_lines(&lines, None).unwrap();
+        doc.root_mut().mesh.add_lines(&lines, None).unwrap();
     }
     fn room() -> Document {
         let mut doc = Document::new();
@@ -230,7 +230,7 @@ mod tests {
         let transform = rysmo_math::DMat4::from_translation(DVec3::new(4., 2., 3.))
             * rysmo_math::DMat4::from_rotation_y(0.4)
             * rysmo_math::DMat4::from_scale(DVec3::new(2., 3., 0.5));
-        doc.root.instances.get_mut(&id).unwrap().transform = transform;
+        doc.root_mut().instances.get_mut(&id).unwrap().transform = transform;
         let plane = doc
             .def(Some(doc.root.instances[&id].definition))
             .unwrap()
@@ -332,11 +332,11 @@ mod visible_surface_tests {
         let ray = Ray::new(DVec3::new(1., 1., 3.), -DVec3::Z);
         assert!((editor.doc().ray_surface(ray).unwrap().point.z - 1.).abs() < 1e-9);
         let mut doc = editor.doc().clone();
-        doc.root.sections.planes.insert(
+        doc.root_mut().sections.planes.insert(
             999,
             crate::sections::SectionPlane { name: "Cut".into(), origin: DVec3::Z * 0.5, normal: DVec3::Z },
         );
-        doc.root.sections.active = Some(999);
+        doc.root_mut().sections.active = Some(999);
         assert!(doc.ray_surface(ray).unwrap().point.z.abs() < 1e-9);
         let face = doc
             .root
@@ -345,7 +345,7 @@ mod visible_surface_tests {
             .find(|(id, _)| doc.root.mesh.face_plane(*id).unwrap().distance(DVec3::ZERO).abs() < 1e-9)
             .unwrap()
             .0;
-        doc.root.mesh.face_mut(face).unwrap().hidden = true;
+        doc.root_mut().mesh.face_mut(face).unwrap().hidden = true;
         assert!(doc.ray_surface(ray).is_none());
     }
 }

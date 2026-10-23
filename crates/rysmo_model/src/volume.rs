@@ -151,7 +151,7 @@ mod tests {
         let e = box_editor(DVec3::ZERO);
         let mut doc = Document::new();
         let id = DefinitionId(1000);
-        doc.definitions.insert(id, Definition { mesh: e.mesh().clone(), ..Default::default() });
+        doc.definitions.insert(id, (Definition { mesh: e.mesh().clone(), ..Default::default() }).into());
         let mut inst = Instance {
             definition: id,
             transform: DMat4::from_scale(DVec3::new(-2., 3., 4.)),
@@ -164,7 +164,7 @@ mod tests {
         assert!((doc.instance_volume(&inst, DMat4::from_scale(DVec3::splat(2.))).unwrap() - 4608.).abs() < 1e-8);
         inst.transform = DMat4::from_scale(DVec3::new(1., 0., 1.));
         assert!(doc.instance_volume(&inst, DMat4::IDENTITY).is_err());
-        doc.definitions.get_mut(&id).unwrap().instances.insert(crate::InstanceId(1001), inst.clone());
+        doc.def_mut(Some(id)).unwrap().instances.insert(crate::InstanceId(1001), inst.clone());
         assert_eq!(doc.instance_volume(&inst, DMat4::IDENTITY), Err("Contains nested groups or components"));
     }
     #[test]

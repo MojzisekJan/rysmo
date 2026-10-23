@@ -712,3 +712,35 @@ impl Editor {
         self.doc.camera = Some(camera);
     }
 }
+
+#[cfg(test)]
+mod shared_history_tests {
+    use super::*;
+    use rysmo_math::DVec3;
+    use std::sync::Arc;
+
+    #[test]
+    fn undo_steps_share_definitions_an_edit_leaves_alone() {
+        let mut editor = Editor::new();
+        editor
+            .apply(Command::DrawRectangle { corner: DVec3::ZERO, u: DVec3::X, v: DVec3::Y, facing: Some(DVec3::Z) })
+            .unwrap();
+        let face = editor.mesh().faces().next().unwrap().0;
+        editor.apply(Command::MakeGroup { elements: vec![Element::Face(face)] }).unwrap();
+        let group = *editor.doc().definitions.keys().next().unwrap();
+        editor
+            .apply(Command::DrawRectangle {
+                corner: DVec3::new(3., 0., 0.),
+                u: DVec3::X,
+                v: DVec3::Y,
+                facing: Some(DVec3::Z),
+            })
+            .unwrap();
+        // The drawing changed only the model's own geometry; the group is one shared copy.
+        let before = &editor.undo.last().unwrap().before;
+        assert!(Arc::ptr_eq(&before.definitions[&group], &editor.doc().definitions[&group]));
+        assert!(!Arc::ptr_eq(&before.root, &editor.doc().root));
+        editor.undo();
+        assert_eq!(editor.mesh().face_count(), 0);
+    }
+}
