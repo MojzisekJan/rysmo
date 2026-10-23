@@ -192,6 +192,18 @@ pub fn materials(ctx: &egui::Context, app: &mut App3d) {
                 if m.texture.is_some() {crate::widgets::checkbox(ui,&mut pbr.tint_texture,"Tint colour texture");}
                 ui.add(crate::widgets::Slider::new(&mut pbr.roughness,0.0..=1.0).text("Roughness"));
                 ui.add(crate::widgets::Slider::new(&mut pbr.metallic,0.0..=1.0).text("Metallic"));
+                if pbr.metallic_roughness_map.is_some() {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.small("A metallic-roughness image scales both values.");
+                        if ui.small_button("Remove").clicked() {pbr.metallic_roughness_map=None;}
+                    });
+                }
+                if m.texture.is_some() {
+                    let mut cutout=pbr.alpha_cutoff.is_some();
+                    crate::widgets::checkbox(ui,&mut cutout,"Alpha cutout").on_hover_text("Hides the parts of the texture whose alpha falls below the threshold, for leaves, fences and decals.");
+                    if cutout != pbr.alpha_cutoff.is_some() {pbr.alpha_cutoff=cutout.then_some(0.5);}
+                    if let Some(cutoff)=pbr.alpha_cutoff.as_mut() {ui.add(crate::widgets::Slider::new(cutoff,0.0..=1.0).text("Threshold"));}
+                }
                 ui.horizontal_wrapped(|ui| {
                     if ui.button("Load normal map...").clicked() {crate::features::data_files::pick(app,crate::features::data_files::Purpose::NormalMap(id));}
                     if pbr.normal_map.is_some() && ui.button("Remove normal map").clicked() {pbr.normal_map=None;}
@@ -687,7 +699,13 @@ pub fn settings(ctx: &egui::Context, app: &mut App3d) {
                     });
                 });
             } else {
-                renderer_controls(ui, &mut style);
+                let environment = style
+                    .environment_image
+                    .and_then(|id| app.editor.doc().images.get(&id))
+                    .map(|image| image.name.clone());
+                if renderer_controls(ui, &mut style, environment.as_deref()) {
+                    crate::features::data_files::pick(app, crate::features::data_files::Purpose::Environment);
+                }
                 crate::widgets::section(ui, "Display", false, |ui| {
                     crate::widgets::checkbox(ui, &mut style.show_hidden_geometry, "Show hidden geometry");
                     ui.label("Faces");
@@ -1634,7 +1652,9 @@ mod text_entity_info_tests {
 }
 
 /// Shared by the floating Inspector and the full style editor.
-fn renderer_controls(ui: &mut egui::Ui, style: &mut rysmo_model::Style) {
+/// Returns whether an environment panorama should be chosen.
+fn renderer_controls(ui: &mut egui::Ui, style: &mut rysmo_model::Style, environment: Option<&str>) -> bool {
+    let mut load_environment = false;
     use rysmo_model::{AntiAliasing, Lighting, ShadowQuality, ToneMapping};
     #[cfg(not(target_arch = "wasm32"))]
     let performance_preview = std::env::var_os("RYSMO_SCREENSHOT").is_some()
@@ -1692,18 +1712,42 @@ fn renderer_controls(ui: &mut egui::Ui, style: &mut rysmo_model::Style) {
             &[(Lighting::Flat, "Flat"), (Lighting::Sun, "Sun"), (Lighting::Studio, "Studio")],
         );
         if style.lighting == Lighting::Studio {
-            choice(
-                ui,
-                "studio-environment",
-                &mut style.studio_environment,
-                &[(rysmo_model::StudioEnvironment::Neutral, "Neutral"), (rysmo_model::StudioEnvironment::Warm, "Warm")],
-            );
+            if let Some(name) = environment {
+                ui.horizontal(|ui| {
+                    ui.label(crate::menu::label(egui_phosphor::regular::IMAGE, name));
+                    if ui.small_button("Remove").on_hover_text("Return to the built-in environments.").clicked() {
+                        style.environment_image = None;
+                    }
+                });
+                crate::widgets::checkbox(ui, &mut style.environment_background, "Show as background");
+            } else {
+                choice(
+                    ui,
+                    "studio-environment",
+                    &mut style.studio_environment,
+                    &[
+                        (rysmo_model::StudioEnvironment::Neutral, "Neutral"),
+                        (rysmo_model::StudioEnvironment::Warm, "Warm"),
+                    ],
+                );
+            }
+            if ui
+                .button("Load HDRI panorama...")
+                .on_hover_text("An equirectangular Radiance HDR, PNG or JPEG image lights and reflects in the model.")
+                .clicked()
+            {
+                load_environment = true;
+            }
             ui.add(crate::widgets::Slider::new(&mut style.studio_intensity, 0. ..=4.).text("Environment intensity"));
             ui.add(
                 crate::widgets::Slider::new(&mut style.studio_rotation, -180. ..=180.)
                     .text("Environment rotation (degrees)"),
             );
-            ui.small("Built-in studio environments light the model without changing its background. Studio lighting does not cast sun shadows.");
+            ui.small(if environment.is_some() {
+                "The panorama lights the model and shows in reflections. Studio lighting does not cast sun shadows."
+            } else {
+                "Built-in studio environments light the model without changing its background. Studio lighting does not cast sun shadows."
+            });
         }
         ui.add_enabled(
             style.lighting != Lighting::Flat,
@@ -1832,6 +1876,7 @@ fn renderer_controls(ui: &mut egui::Ui, style: &mut rysmo_model::Style) {
             "Display textures and the 3D target are capped at 8192 px. Original images remain in the model."
         });
     });
+    load_environment
 }
 
 #[cfg(test)]

@@ -10,6 +10,7 @@ impl Command {
             Command::SetPhotoMatch { .. } => "Photo Matching",
             Command::AddNormalMap { .. } => "Normal Map",
             Command::SetMaterialPbr { .. } => "Material Surface",
+            Command::SetEnvironment { .. } => "Environment",
             Command::SetParametric { .. } => "Edit Parametric Component",
             Command::SolidBoolean { operation, .. } => operation.name(),
             Command::ApplyTextDefaults { .. } => "Text Settings",

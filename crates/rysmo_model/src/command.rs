@@ -14,6 +14,7 @@ mod transforms;
 mod types;
 
 pub use drawing::{arc_points, centre_arc_points};
+pub use execute::ENVIRONMENT_MIMES;
 pub(crate) use groups::explode;
 pub(crate) use transforms::{rotation, transform_items, validate_rotation};
 pub use types::{Command, CommandError, MAX_GLOW, Outcome};

@@ -1386,7 +1386,7 @@ impl Command {
                 }
                 doc.images.insert(image, Image { name, mime, bytes: Arc::new(data) });
                 let previous = doc.photo_match.replace(setup).map(|p| p.image);
-                drop_unused_photo(doc, previous);
+                drop_unused_image(doc, previous);
             }
             Command::SetPhotoMatch { setup } => {
                 if setup.as_ref().is_some_and(|setup| !setup.valid() || !doc.images.contains_key(&setup.image)) {
@@ -1395,11 +1395,22 @@ impl Command {
                 out.changed = doc.photo_match != setup;
                 let previous = doc.photo_match.as_ref().map(|p| p.image);
                 doc.photo_match = setup;
-                drop_unused_photo(doc, previous);
+                drop_unused_image(doc, previous);
+            }
+            Command::SetEnvironment { name, mime, data } => {
+                if !ENVIRONMENT_MIMES.contains(&mime.as_str()) || data.is_empty() || data.len() > 64 * 1024 * 1024 {
+                    return invalid("Environments must be Radiance HDR, PNG or JPEG images up to 64 MB");
+                }
+                let image = ImageId(doc.reserve_id());
+                doc.images.insert(image, Image { name, mime, bytes: Arc::new(data) });
+                let previous = doc.style.environment_image.replace(image);
+                doc.style.lighting = crate::Lighting::Studio;
+                drop_unused_image(doc, previous);
+                out.image = Some(image);
             }
             Command::SetMaterialPbr { material, pbr } => {
-                if !pbr.valid() || pbr.normal_map.is_some_and(|id| !doc.images.contains_key(&id)) {
-                    return invalid("Invalid surface values or missing normal map image");
+                if !pbr.valid() || pbr.images().any(|id| !doc.images.contains_key(&id)) {
+                    return invalid("Invalid surface values or missing surface image");
                 }
                 let m =
                     doc.materials.get_mut(&material).ok_or_else(|| CommandError::Invalid("Missing material".into()))?;
@@ -1697,13 +1708,15 @@ fn check_material(doc: &Document, material: Option<MaterialId>) -> Result<(), Co
     }
 }
 
-fn drop_unused_photo(doc: &mut Document, previous: Option<ImageId>) {
+/// Image types an environment panorama can come in.
+pub const ENVIRONMENT_MIMES: [&str; 3] = ["image/vnd.radiance", "image/png", "image/jpeg"];
+
+/// Removes an image nothing uses any more.
+pub(super) fn drop_unused_image(doc: &mut Document, previous: Option<ImageId>) {
     if let Some(image) = previous
         && doc.photo_match.as_ref().is_none_or(|p| p.image != image)
-        && !doc
-            .materials
-            .values()
-            .any(|m| m.texture.is_some_and(|t| t.image == image) || m.pbr.normal_map == Some(image))
+        && !doc.materials.values().any(|m| m.images().any(|i| i == image))
+        && doc.style.environment_image != Some(image)
     {
         doc.images.remove(&image);
     }

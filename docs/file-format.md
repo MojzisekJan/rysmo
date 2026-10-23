@@ -4,7 +4,7 @@ A `.rysmo` file is UTF-8 JSON laid out with one element per line. People, script
 AI agents can read and change it with ordinary text tools, and a diff of two versions
 shows exactly which elements changed.
 
-The writer uses version 18. The reader also accepts versions 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 and 17; the example
+The writer uses version 19. The reader also accepts versions 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 and 18; the example
 below remains a valid version 2 file.
 
 ## Example
@@ -519,6 +519,26 @@ for imported GLB colour factors. Missing surface values default to roughness 0.8
 normal strength 1 and no normal map. Normal maps share face UVs and the colour
 texture's physical size; without a colour texture, UV units are metres. Images
 remain embedded and are remapped together with materials during clipboard import.
+
+## Version 19 compatibility
+
+Material `pbr` gains two optional fields. `metallic_roughness_map` names an
+embedded PNG or JPEG image read as linear data in the glTF layout: green scales
+roughness and blue scales metalness. `alpha_cutoff`, 0–1, turns a textured,
+otherwise opaque material into a cutout: texture pixels whose alpha falls below
+it are not drawn, which suits leaves, fences and decals. GLB import reads
+`alphaMode: MASK` with `alphaCutoff`, `metallicRoughnessTexture`, and
+`emissiveFactor` with `KHR_materials_emissive_strength` (a full factor is
+500 cd/m² of glow); GLB export writes the same.
+
+`style.environment_image` names an embedded equirectangular panorama, a Radiance
+HDR (`image/vnd.radiance`), PNG or JPEG image of at most 32 million pixels. With
+studio lighting it replaces the built-in environments: the model is lit and
+reflects it, scaled by `studio_intensity` and turned by `studio_rotation`.
+`style.environment_background`, default true, also shows it behind the model.
+Readers reject a missing image or another image type. Replacing or clearing the
+panorama removes its image when nothing else uses it. Scene lighting snapshots do
+not change the panorama.
 
 The optional top-level `photo_match` stores its embedded image id, pixel `size`,
 two pairs of perspective `guides` in image fractions, `origin`, `reference`, a

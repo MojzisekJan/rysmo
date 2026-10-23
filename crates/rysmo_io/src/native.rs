@@ -36,7 +36,8 @@ pub const FORMAT: &str = "rysmo";
 /// Version 16 adds independent volume units and precision.
 /// Version 17 adds studio lighting, exposure, texture quality and render scaling.
 /// Version 18 adds editable architectural component parameters.
-pub const VERSION: u32 = 18;
+/// Version 19 adds metallic-roughness maps, alpha cutout and panorama environments.
+pub const VERSION: u32 = 19;
 
 fn is_false(b: &bool) -> bool {
     !*b
@@ -513,8 +514,8 @@ pub fn load(text: &str) -> Result<Document, IoError> {
         if !m.glow.is_finite() || m.glow < 0.0 {
             return Err(IoError::Format(format!("material {} has an invalid glow", m.id)));
         }
-        if !m.pbr.valid() || m.pbr.normal_map.is_some_and(|id| !images.contains_key(&id)) {
-            return Err(IoError::Format("invalid material surface or missing normal map".into()));
+        if !m.pbr.valid() || m.pbr.images().any(|id| !images.contains_key(&id)) {
+            return Err(IoError::Format("invalid material surface or missing surface image".into()));
         }
         materials.insert(m.id, Material { name: m.name, color: m.color, texture: m.texture, glow: m.glow, pbr: m.pbr });
     }
@@ -630,8 +631,15 @@ pub fn load(text: &str) -> Result<Document, IoError> {
             return Err(IoError::Format("photograph size differs from calibration".into()));
         }
     }
-    for image in doc.materials.values().filter_map(|m| m.pbr.normal_map) {
+    for image in doc.materials.values().flat_map(|m| m.pbr.images()) {
         image_dimensions(&doc.images[&image].bytes)?;
+    }
+    if let Some(image) = doc.style.environment_image {
+        let image = doc.images.get(&image).ok_or_else(|| IoError::Format("the environment image is missing".into()))?;
+        if !rysmo_model::ENVIRONMENT_MIMES.contains(&image.mime.as_str()) {
+            return Err(IoError::Format("environments must be Radiance HDR, PNG or JPEG".into()));
+        }
+        environment_dimensions(&image.bytes)?;
     }
     doc.root.mesh = meshes.remove(&None).unwrap_or_default();
     for (id, d) in def_lines.iter() {
@@ -2411,6 +2419,20 @@ mod expansion_tests {
     }
 }
 
+fn environment_dimensions(bytes: &[u8]) -> Result<[u32; 2], IoError> {
+    let format = image::guess_format(bytes).map_err(|e| IoError::Format(e.to_string()))?;
+    if !matches!(format, image::ImageFormat::Hdr | image::ImageFormat::Png | image::ImageFormat::Jpeg) {
+        return Err(IoError::Format("environments must be Radiance HDR, PNG or JPEG".into()));
+    }
+    let (w, h) = image::ImageReader::with_format(std::io::Cursor::new(bytes), format)
+        .into_dimensions()
+        .map_err(|e| IoError::Format(e.to_string()))?;
+    if w < 8 || h < 4 || w as u64 * h as u64 > 33_554_432 {
+        return Err(IoError::Format("environments are limited to 32 million pixels".into()));
+    }
+    Ok([w, h])
+}
+
 fn image_dimensions(bytes: &[u8]) -> Result<[u32; 2], IoError> {
     let format = image::guess_format(bytes).map_err(|e| IoError::Format(e.to_string()))?;
     if !matches!(format, image::ImageFormat::Png | image::ImageFormat::Jpeg) {
@@ -2423,4 +2445,64 @@ fn image_dimensions(bytes: &[u8]) -> Result<[u32; 2], IoError> {
         return Err(IoError::Format("normal maps and photographs are limited to 16 million pixels".into()));
     }
     Ok([w, h])
+}
+
+#[cfg(test)]
+mod environment_tests {
+    use super::*;
+    use rysmo_model::{Command, Editor, Lighting};
+
+    fn hdr() -> Vec<u8> {
+        let image = image::Rgb32FImage::from_pixel(16, 8, image::Rgb([1.5, 1.2, 0.9]));
+        let mut out = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgb32F(image).write_to(&mut out, image::ImageFormat::Hdr).unwrap();
+        out.into_inner()
+    }
+
+    #[test]
+    fn panorama_environment_and_cutout_roundtrip_replace_and_release_their_images() {
+        let mut editor = Editor::new();
+        let first = editor
+            .apply(Command::SetEnvironment { name: "sky.hdr".into(), mime: "image/vnd.radiance".into(), data: hdr() })
+            .unwrap()
+            .image
+            .unwrap();
+        assert_eq!(editor.doc().style.lighting, Lighting::Studio);
+        let material = editor
+            .apply(Command::AddMaterial { name: "Leaf".into(), color: [0.3, 0.5, 0.2, 1.], texture: None })
+            .unwrap()
+            .material
+            .unwrap();
+        let mut pbr = editor.doc().materials[&material].pbr;
+        pbr.alpha_cutoff = Some(0.4);
+        editor.apply(Command::SetMaterialPbr { material, pbr }).unwrap();
+        let loaded = load(&save(editor.doc())).unwrap();
+        assert_eq!(loaded.style.environment_image, Some(first));
+        assert_eq!(loaded.images[&first].mime, "image/vnd.radiance");
+        assert_eq!(loaded.materials[&material].pbr.alpha_cutoff, Some(0.4));
+        // A new panorama replaces the old image; clearing it releases the image, undo restores it.
+        let second = editor
+            .apply(Command::SetEnvironment { name: "dusk.hdr".into(), mime: "image/vnd.radiance".into(), data: hdr() })
+            .unwrap()
+            .image
+            .unwrap();
+        assert!(!editor.doc().images.contains_key(&first));
+        let mut style = editor.doc().style;
+        style.environment_image = None;
+        editor.apply(Command::SetStyle { style }).unwrap();
+        assert!(!editor.doc().images.contains_key(&second));
+        editor.undo();
+        assert_eq!(editor.doc().style.environment_image, Some(second));
+        assert!(editor.doc().images.contains_key(&second));
+        assert!(
+            editor
+                .apply(Command::SetEnvironment { name: "x".into(), mime: "image/gif".into(), data: vec![1] })
+                .is_err()
+        );
+        let text = save(editor.doc()).replace("\"image/vnd.radiance\"", "\"image/gif\"");
+        assert!(load(&text).is_err());
+        let mut pbr = editor.doc().materials[&material].pbr;
+        pbr.alpha_cutoff = Some(1.5);
+        assert!(editor.apply(Command::SetMaterialPbr { material, pbr }).is_err());
+    }
 }

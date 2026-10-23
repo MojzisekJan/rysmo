@@ -28,6 +28,12 @@ pub struct Material {
     #[serde(default)]
     pub pbr: Pbr,
 }
+impl Material {
+    /// Every image the material reads.
+    pub fn images(&self) -> impl Iterator<Item = rysmo_mesh::ImageId> {
+        self.texture.map(|t| t.image).into_iter().chain(self.pbr.images())
+    }
+}
 
 /// Surface response in lit rendering. Normal maps use the face's texture coordinates.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -39,6 +45,12 @@ pub struct Pbr {
     pub normal_scale: f32,
     pub normal_flip_y: bool,
     pub tint_texture: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Linear image whose green channel scales roughness and blue channel metalness (glTF layout).
+    pub metallic_roughness_map: Option<rysmo_mesh::ImageId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Texture alpha below this hides the pixel outright, for leaves, fences and decals.
+    pub alpha_cutoff: Option<f32>,
 }
 impl Default for Pbr {
     fn default() -> Self {
@@ -49,10 +61,16 @@ impl Default for Pbr {
             normal_scale: 1.,
             normal_flip_y: false,
             tint_texture: false,
+            metallic_roughness_map: None,
+            alpha_cutoff: None,
         }
     }
 }
 impl Pbr {
+    /// Images the surface reads besides the colour texture.
+    pub fn images(&self) -> impl Iterator<Item = rysmo_mesh::ImageId> {
+        self.normal_map.into_iter().chain(self.metallic_roughness_map)
+    }
     pub fn valid(&self) -> bool {
         self.roughness.is_finite()
             && (0.0..=1.0).contains(&self.roughness)
@@ -60,6 +78,7 @@ impl Pbr {
             && (0.0..=1.0).contains(&self.metallic)
             && self.normal_scale.is_finite()
             && (0.0..=8.0).contains(&self.normal_scale)
+            && self.alpha_cutoff.is_none_or(|c| c.is_finite() && (0.0..=1.0).contains(&c))
     }
 }
 

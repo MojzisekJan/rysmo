@@ -82,6 +82,39 @@ fn glb_material_surface_and_normal_texture_uv_survive_exchange() {
 }
 
 #[test]
+fn glb_cutout_metallic_roughness_map_and_emission_survive_exchange() {
+    let mut editor = Editor::new();
+    editor
+        .apply(Command::DrawRectangle { corner: DVec3::ZERO, u: DVec3::X, v: DVec3::Y, facing: Some(DVec3::Z) })
+        .unwrap();
+    let face = editor.mesh().faces().next().unwrap().0;
+    let material = editor
+        .apply(Command::AddMaterial { name: "Leaf".into(), color: [0.2, 0.6, 0.1, 1.], texture: None })
+        .unwrap()
+        .material
+        .unwrap();
+    let png = include_bytes!("../../../rysmo_app/brand/icon-192.png").to_vec();
+    let image = editor
+        .apply(Command::AddImage { name: "Surface".into(), mime: "image/png".into(), data: png })
+        .unwrap()
+        .image
+        .unwrap();
+    let mut pbr = editor.doc().materials[&material].pbr;
+    pbr.metallic_roughness_map = Some(image);
+    pbr.alpha_cutoff = Some(0.3);
+    editor.apply(Command::SetMaterialPbr { material, pbr }).unwrap();
+    editor.apply(Command::SetMaterialGlow { material, glow: 1500. }).unwrap();
+    editor.apply(Command::Paint { faces: vec![face], material: Some(material), back: false }).unwrap();
+    let imported = read("leaf.glb", &crate::gltf::export(editor.doc()), Options::default()).unwrap();
+    let material = imported.document.materials.values().next().unwrap();
+    assert_eq!(material.pbr.alpha_cutoff, Some(0.3));
+    assert!(material.pbr.metallic_roughness_map.is_some_and(|id| imported.document.images.contains_key(&id)));
+    assert!((material.glow - 1500.).abs() < 0.5, "{}", material.glow);
+    assert!((material.color[1] - 0.6).abs() < 1e-3, "{:?}", material.color);
+    assert!(imported.warnings.iter().all(|w| !w.contains("Metallic")));
+}
+
+#[test]
 fn shared_hierarchy_expansion_is_bounded_before_preview_or_collection_installation() {
     use rysmo_math::DMat4;
     use rysmo_model::{Definition, DefinitionId, Instance, InstanceId};

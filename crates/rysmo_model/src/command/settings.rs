@@ -65,8 +65,13 @@ pub(super) fn set_style(doc: &mut Document, out: &mut Outcome, style: Style) -> 
     {
         return Err(CommandError::Invalid("invalid display settings".into()));
     }
+    if style.environment_image.is_some_and(|id| !doc.images.contains_key(&id)) {
+        return invalid("the environment image is missing");
+    }
     out.changed = doc.style != style;
+    let previous = doc.style.environment_image;
     doc.style = style;
+    super::execute::drop_unused_image(doc, previous);
     Ok(())
 }
 

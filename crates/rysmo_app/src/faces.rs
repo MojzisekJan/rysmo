@@ -60,6 +60,8 @@ struct FaceMeshes {
     /// Decoded images, by id, with the bytes they came from.
     images: HashMap<ImageId, CachedImage>,
     normals: HashMap<(ImageId, u32), CachedImage>,
+    /// Metallic-roughness images, decoded as linear data.
+    surfaces: HashMap<ImageId, CachedImage>,
 }
 
 /// An edge as the gizmos draw it: ends, the normals of its faces, a colour for
@@ -260,6 +262,7 @@ fn rebuild_faces(
     if state.texture_settings != Some((style.texture_limit, style.texture_anisotropy)) {
         state.images.clear();
         state.normals.clear();
+        state.surfaces.clear();
         state.texture_settings = Some((style.texture_limit, style.texture_anisotropy));
     }
     // Images: decode new ones, drop those gone.
@@ -303,6 +306,20 @@ fn rebuild_faces(
             }
             let handle = images.add(decoded);
             state.normals.insert(key, (image.bytes.clone(), handle));
+        }
+    }
+    let surface_images: BTreeSet<_> = doc.materials.values().filter_map(|m| m.pbr.metallic_roughness_map).collect();
+    state.surfaces.retain(|id, (bytes, _)| {
+        surface_images.contains(id) && doc.images.get(id).is_some_and(|i| Arc::ptr_eq(&i.bytes, bytes))
+    });
+    for id in surface_images {
+        if !state.surfaces.contains_key(&id)
+            && let Some(image) = doc.images.get(&id)
+            && let Some(mut decoded) = decode(&image.bytes, &image.mime, style.texture_limit, style.texture_anisotropy)
+        {
+            decoded.texture_descriptor.format = bevy::render::render_resource::TextureFormat::Rgba8Unorm;
+            let handle = images.add(decoded);
+            state.surfaces.insert(id, (image.bytes.clone(), handle));
         }
     }
     let highlighted: BTreeSet<FaceId> = preview.faces.iter().copied().collect();
@@ -395,7 +412,7 @@ fn rebuild_faces(
                         .and_then(rysmo_model::pin_mapping)
                         .is_some_and(|m| m.x_axis.z.abs() + m.y_axis.z.abs() > 1e-12);
                     let normal_map =
-                        material.and_then(|id| doc.materials.get(&id)).is_some_and(|m| m.pbr.normal_map.is_some());
+                        material.and_then(|id| doc.materials.get(&id)).is_some_and(|m| m.pbr.images().next().is_some());
                     let uv_size = texture.map(|t| t.size).or_else(|| {
                         normal_map.then(|| {
                             material
@@ -498,8 +515,15 @@ fn rebuild_faces(
                 .normal_map
                 .and_then(|id| state.normals.get(&(id, pbr.normal_scale.to_bits())).map(|(_, h)| h.clone())),
             flip_normal_map_y: pbr.normal_flip_y,
+            metallic_roughness_texture: pbr
+                .metallic_roughness_map
+                .and_then(|id| state.surfaces.get(&id).map(|(_, h)| h.clone())),
             reflectance: 0.2,
-            alpha_mode: if matches!(group, Group::SeeThrough(_)) { AlphaMode::Blend } else { AlphaMode::Opaque },
+            alpha_mode: match (group, pbr.alpha_cutoff) {
+                (Group::SeeThrough(_), _) => AlphaMode::Blend,
+                (Group::Textured(_) | Group::Glowing(_, Some(_)), Some(cutoff)) => AlphaMode::Mask(cutoff),
+                _ => AlphaMode::Opaque,
+            },
             // Each side is its own triangles, wound to face its way; culling shows one.
             ..default()
         });

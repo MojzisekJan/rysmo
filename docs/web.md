@@ -164,8 +164,11 @@ may suppress it without prior user interaction or during mobile process terminat
 
 ## Renderer quality controls
 
-Studio environment lighting uses small bundled procedural cubemaps rather than
-external HDR assets. Texture display copies use mipmaps and optional anisotropic
+Studio environment lighting uses small bundled procedural cubemaps unless the
+model carries an HDRI panorama. Panoramas are filtered into cube maps on the CPU
+(background, GGX-prefiltered reflections and spherical-harmonic diffuse light), so
+WebGL2 lights models the same way as the desktop renderer; on the web the panorama
+is first reduced to 2048 pixels wide and the cube maps are half the desktop size. Texture display copies use mipmaps and optional anisotropic
 filtering, falling back to trilinear where the GPU does not support anisotropy.
 Original image bytes remain available for saving/export. Display textures and
 scaled 3D targets are capped at 4096 pixels on web.

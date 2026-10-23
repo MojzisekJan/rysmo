@@ -6,6 +6,7 @@ pub enum Purpose {
     Collection,
     Photo,
     NormalMap(rysmo_model::MaterialId),
+    Environment,
 }
 impl Purpose {
     pub fn extensions(self) -> &'static [&'static str] {
@@ -13,6 +14,7 @@ impl Purpose {
             Self::Model => &["obj", "glb", "dxf", "rysmo"],
             Self::Collection => &["ryslib"],
             Self::Photo | Self::NormalMap(_) => &["png", "jpg", "jpeg"],
+            Self::Environment => &["hdr", "png", "jpg", "jpeg"],
         }
     }
 }
@@ -63,6 +65,30 @@ pub fn receive(app: &mut App3d, purpose: Purpose, name: String, bytes: Vec<u8>) 
                         mime: if format == image::ImageFormat::Png { "image/png" } else { "image/jpeg" }.into(),
                         data: bytes,
                     })
+                    .map_err(|e| e.to_string())?;
+                Ok(())
+            })();
+            if let Err(error) = result {
+                app.message = Some(error);
+            }
+        }
+        Purpose::Environment => {
+            let result = (|| -> Result<(), String> {
+                let format = image::guess_format(&bytes).map_err(|e| e.to_string())?;
+                let mime = match format {
+                    image::ImageFormat::Hdr => "image/vnd.radiance",
+                    image::ImageFormat::Png => "image/png",
+                    image::ImageFormat::Jpeg => "image/jpeg",
+                    _ => return Err("Choose a Radiance HDR, PNG or JPEG panorama.".into()),
+                };
+                let (width, height) = image::ImageReader::with_format(std::io::Cursor::new(&bytes), format)
+                    .into_dimensions()
+                    .map_err(|e| e.to_string())?;
+                if width < 8 || height < 4 || width as u64 * height as u64 > 33_554_432 {
+                    return Err("Panoramas are limited to 32 million pixels.".into());
+                }
+                app.editor
+                    .apply(rysmo_model::Command::SetEnvironment { name, mime: mime.into(), data: bytes })
                     .map_err(|e| e.to_string())?;
                 Ok(())
             })();

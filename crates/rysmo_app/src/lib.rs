@@ -20,6 +20,7 @@ mod command_search;
 mod component_panel;
 mod detail_tool;
 mod drape_tool;
+mod environment;
 mod faces;
 mod features;
 mod files;

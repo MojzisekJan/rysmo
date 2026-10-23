@@ -62,6 +62,9 @@ pub fn offscreen(app: &App3d) -> bool {
     (app.editor.doc().style.render_scale - 1.).abs() > 0.001 || app.features.photo.active || needs_hdr(app)
 }
 
+/// Luminance, in cd/m², of a studio environment map value of one.
+const STUDIO_NITS: f32 = 2000.;
+
 pub fn plugin(app: &mut App) {
     app.add_systems(Startup, (setup, crate::studio::setup))
         .add_systems(PostUpdate, (apply_style.in_set(ApplyStyle), follow_camera).before(TransformSystems::Propagate));
@@ -158,7 +161,8 @@ fn paint_sky(image: &mut Image, sky: [f32; 3]) {
 fn apply_style(
     mut commands: Commands,
     app: Res<App3d>,
-    mut last: Local<Option<(Style, bool)>>,
+    mut last: Local<Option<(Style, bool, Option<usize>)>>,
+    mut panoramas: Local<crate::environment::Cache>,
     studio: Option<Res<crate::studio::StudioMaps>>,
     mut clear: ResMut<ClearColor>,
     mut ambient: ResMut<GlobalAmbientLight>,
@@ -178,19 +182,31 @@ fn apply_style(
         style.fog = false;
     }
     let glowing = app.editor.doc().materials.values().any(|m| m.glow > 0.0);
-    if last.as_ref() == Some(&(style, glowing)) {
-        return;
-    }
-    let repaint = last.is_none_or(|(l, _)| l.sky_color != style.sky_color);
-    *last = Some((style, glowing));
     let sun_lit = style.lighting == Lighting::Sun;
     let studio_lit = style.lighting == Lighting::Studio;
+    let panorama = style
+        .environment_image
+        .filter(|_| studio_lit)
+        .and_then(|id| app.editor.doc().images.get(&id))
+        .map(|image| image.bytes.clone());
+    let panorama_key = panorama.as_ref().map(|bytes| std::sync::Arc::as_ptr(bytes) as usize);
+    if last.as_ref() == Some(&(style, glowing, panorama_key)) {
+        return;
+    }
+    let repaint = last.is_none_or(|(l, _, _)| l.sky_color != style.sky_color);
+    *last = Some((style, glowing, panorama_key));
+    let panorama = match (&panorama, images.as_mut()) {
+        (Some(bytes), Some(images)) => panoramas.get(bytes, images),
+        _ => None,
+    };
+    let studio_rotation = Quat::from_rotation_y(style.studio_rotation.to_radians());
     let atmosphere = style.atmosphere && sun_lit && ADVANCED;
     let (horizon, _) = sky_gradient(style.sky_color);
     // On the desktop renderer the sky itself lights a sunlit model: soft light in the
     // shade and reflections in glass and water. Elsewhere a flat ambient light stands in.
     let sky_light = sun_lit && ADVANCED && (atmosphere || style.sky);
-    clear.0 = if atmosphere {
+    let backdrop = panorama.filter(|_| style.environment_background).map(|maps| maps.background.clone());
+    clear.0 = if atmosphere || backdrop.is_some() {
         Color::BLACK
     } else if style.sky {
         srgb(horizon)
@@ -231,6 +247,11 @@ fn apply_style(
     let ev100 = base - if style.lighting == Lighting::Flat { 0. } else { style.exposure };
     e.insert(bevy::camera::Exposure { ev100 });
     match &sky_cube {
+        _ if backdrop.is_some() => {
+            // The panorama in the same units as the light it gives.
+            let brightness = STUDIO_NITS * style.studio_intensity;
+            e.insert(Skybox { image: backdrop.clone(), brightness, rotation: studio_rotation });
+        }
         Some(cube) if style.sky && !atmosphere => {
             if repaint && let Some(mut image) = images.as_mut().and_then(|i| i.get_mut(&cube.0)) {
                 paint_sky(&mut image, style.sky_color);
@@ -282,16 +303,19 @@ fn apply_style(
         }
     }
     if studio_lit && let Some(studio) = studio {
-        let maps = if style.studio_environment == rysmo_model::StudioEnvironment::Warm {
-            &studio.warm
+        let maps = if let Some(maps) = panorama {
+            [maps.diffuse.clone(), maps.specular.clone()]
+        } else if style.studio_environment == rysmo_model::StudioEnvironment::Warm {
+            studio.warm.clone()
         } else {
-            &studio.neutral
+            studio.neutral.clone()
         };
+        let [diffuse_map, specular_map] = maps;
         e.insert(bevy::light::EnvironmentMapLight {
-            diffuse_map: maps[0].clone(),
-            specular_map: maps[1].clone(),
-            intensity: 2000. * style.studio_intensity,
-            rotation: Quat::from_rotation_y(style.studio_rotation.to_radians()),
+            diffuse_map,
+            specular_map,
+            intensity: STUDIO_NITS * style.studio_intensity,
+            rotation: studio_rotation,
             ..default()
         });
     } else {

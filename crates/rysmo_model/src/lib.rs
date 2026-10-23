@@ -43,7 +43,7 @@ pub use rysmo_mesh::{
     TextId, VertexId,
 };
 
-pub use command::{Command, CommandError, MAX_GLOW, Outcome};
+pub use command::{Command, CommandError, ENVIRONMENT_MIMES, MAX_GLOW, Outcome};
 pub use context::ContextError;
 pub use document::{Definition, Document, Guide, Instance, Material, Occurrence, Pbr, Tag, corners};
 pub use editor::{Editor, UNDO_LIMIT};

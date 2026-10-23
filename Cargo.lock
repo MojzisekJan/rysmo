@@ -4967,6 +4967,7 @@ dependencies = [
  "egui-phosphor",
  "egui_native_look",
  "getrandom 0.3.4",
+ "half",
  "image",
  "js-sys",
  "png",

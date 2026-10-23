@@ -172,10 +172,7 @@ pub fn place_external(
     preserve_origin: bool,
 ) -> Result<(), String> {
     if let Some(photo) = document.photo_match.take()
-        && !document
-            .materials
-            .values()
-            .any(|m| m.texture.is_some_and(|t| t.image == photo.image) || m.pbr.normal_map == Some(photo.image))
+        && !document.materials.values().any(|m| m.images().any(|i| i == photo.image))
     {
         document.images.remove(&photo.image);
     }

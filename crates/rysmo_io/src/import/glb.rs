@@ -22,6 +22,9 @@ fn list<'a>(root: &'a Value, field: &str) -> Result<&'a [Value]> {
 fn item<'a>(root: &'a Value, field: &str, index: usize) -> Result<&'a Value> {
     list(root, field)?.get(index).ok_or_else(|| ImportError(format!("Missing GLB {field}[{index}].")))
 }
+/// Luminance, in cd/m², of a glTF emitter at full factor and strength 1.
+const EMISSION_NITS: f64 = 500.;
+
 fn floats<const N: usize>(value: Option<&Value>, default: [f64; N]) -> Result<[f64; N]> {
     let Some(value) = value else { return Ok(default) };
     let values =
@@ -363,43 +366,31 @@ pub(super) fn read(bytes: &[u8], options: Options) -> Result<Imported> {
         for v in &mut color[..3] {
             *v = if *v <= 0.0031308 { *v * 12.92 } else { 1.055 * v.powf(1. / 2.4) - 0.055 };
         }
-        if material["alphaMode"].as_str().unwrap_or("OPAQUE") != "BLEND" {
+        let alpha_mode = material["alphaMode"].as_str().unwrap_or("OPAQUE");
+        if alpha_mode != "BLEND" {
             color[3] = 1.;
         }
-        let texture = if let Some(info) = pbr.get("baseColorTexture") {
+        let image_of = |key: &str, info: Option<&Value>| -> Result<Option<ImageId>> {
+            let Some(info) = info else { return Ok(None) };
             if integer(info, "texCoord", 0)? != 0 {
-                return error("Only GLB texture coordinate set 0 is supported.");
+                return error(format!("Only GLB texture coordinate set 0 is supported ({key})."));
             }
             let texture = item(&root, "textures", integer(info, "index", usize::MAX)?)?;
-            let image = *images
+            images
                 .get(integer(texture, "source", usize::MAX)?)
-                .ok_or_else(|| ImportError("Missing GLB texture image.".into()))?;
-            Some(Texture { image, size: [1., 1.] })
-        } else {
-            None
+                .copied()
+                .map(Some)
+                .ok_or_else(|| ImportError(format!("Missing GLB {key} image.")))
         };
-        let normal_map = if let Some(info) = material.get("normalTexture") {
-            if integer(info, "texCoord", 0)? != 0 {
-                return error("Only normal map coordinate set 0 is supported.");
-            }
-            let texture = item(&root, "textures", integer(info, "index", usize::MAX)?)?;
-            Some(
-                *images
-                    .get(integer(texture, "source", usize::MAX)?)
-                    .ok_or_else(|| ImportError("Missing normal map image".into()))?,
-            )
-        } else {
-            None
+        let texture =
+            image_of("baseColorTexture", pbr.get("baseColorTexture"))?.map(|image| Texture { image, size: [1., 1.] });
+        let normal_map = image_of("normalTexture", material.get("normalTexture"))?;
+        let factor = |key: &str| {
+            pbr.get(key).map_or(Ok(1.), |v| v.as_f64().ok_or_else(|| ImportError(format!("Invalid {key}"))))
         };
         let surface = rysmo_model::Pbr {
-            roughness: pbr
-                .get("roughnessFactor")
-                .map_or(Ok(1.), |v| v.as_f64().ok_or_else(|| ImportError("Invalid roughness".into())))?
-                as f32,
-            metallic: pbr
-                .get("metallicFactor")
-                .map_or(Ok(1.), |v| v.as_f64().ok_or_else(|| ImportError("Invalid metallic".into())))?
-                as f32,
+            roughness: factor("roughnessFactor")? as f32,
+            metallic: factor("metallicFactor")? as f32,
             normal_map,
             normal_scale: material
                 .get("normalTexture")
@@ -408,13 +399,31 @@ pub(super) fn read(bytes: &[u8], options: Options) -> Result<Imported> {
                 as f32,
             normal_flip_y: false,
             tint_texture: true,
+            metallic_roughness_map: image_of("metallicRoughnessTexture", pbr.get("metallicRoughnessTexture"))?,
+            alpha_cutoff: (alpha_mode == "MASK")
+                .then(|| {
+                    material
+                        .get("alphaCutoff")
+                        .map_or(Ok(0.5), |v| v.as_f64().ok_or_else(|| ImportError("Invalid alpha cutoff".into())))
+                })
+                .transpose()?
+                .map(|v| v as f32),
         };
         if !surface.valid() {
             return error("Unsupported material surface values.");
         }
-        if pbr.get("metallicRoughnessTexture").is_some() {
-            warnings.push("Metallic/roughness image channels are not loaded; scalar factors are retained.".into());
+        // Emission: glTF factors are relative, so a full-strength emitter becomes a bright lamp.
+        let emissive = floats(material.get("emissiveFactor"), [0.; 3])?;
+        let strength = material
+            .get("extensions")
+            .and_then(|e| e.get("KHR_materials_emissive_strength"))
+            .and_then(|e| e.get("emissiveStrength"))
+            .map_or(Ok(1.), |v| v.as_f64().ok_or_else(|| ImportError("Invalid emissive strength".into())))?;
+        let glow = (emissive.into_iter().fold(0., f64::max) * strength * EMISSION_NITS) as f32;
+        if !glow.is_finite() || glow < 0. {
+            return error("Invalid GLB emission.");
         }
+        let glow = glow.min(rysmo_model::MAX_GLOW);
         let id = MaterialId(document.reserve_id());
         document.materials.insert(
             id,
@@ -422,7 +431,7 @@ pub(super) fn read(bytes: &[u8], options: Options) -> Result<Imported> {
                 name: material["name"].as_str().unwrap_or("Imported material").into(),
                 color,
                 texture,
-                glow: 0.,
+                glow,
                 pbr: surface,
             },
         );

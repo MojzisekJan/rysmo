@@ -48,7 +48,7 @@ pub fn export(doc: &Document) -> Vec<u8> {
                     prim.normals.push(n);
                     let uv_size = texture.map(|t| t.size).or_else(|| {
                         mat.and_then(|id| doc.materials.get(&id))
-                            .filter(|m| m.pbr.normal_map.is_some())
+                            .filter(|m| m.pbr.images().next().is_some())
                             .map(|_| [1., 1.])
                     });
                     let uv = uv_size
@@ -70,15 +70,17 @@ pub fn export(doc: &Document) -> Vec<u8> {
     let mut images = Vec::new();
     let mut textures = Vec::new();
     let mut texture_index: BTreeMap<rysmo_mesh::ImageId, usize> = BTreeMap::new();
+    let mut emissive_strength = false;
     let mut normal_texture_index: BTreeMap<(rysmo_mesh::ImageId, bool), Option<usize>> = BTreeMap::new();
     for (mat, prim) in &prims {
         let texture = mat
             .and_then(|m| doc.materials.get(&m))
             .and_then(|m| m.texture)
             .filter(|t| doc.images.contains_key(&t.image));
-        let tex_index = texture.map(|t| {
-            *texture_index.entry(t.image).or_insert_with(|| {
-                let img = &doc.images[&t.image];
+        let surface = mat.and_then(|id| doc.materials.get(&id)).map(|m| m.pbr).unwrap_or_default();
+        let mut embed = |id: rysmo_mesh::ImageId| {
+            *texture_index.entry(id).or_insert_with(|| {
+                let img = &doc.images[&id];
                 while !bin.len().is_multiple_of(4) {
                     bin.push(0);
                 }
@@ -90,8 +92,9 @@ pub fn export(doc: &Document) -> Vec<u8> {
                 textures.push(json!({"source": images.len() - 1, "sampler": 0}));
                 textures.len() - 1
             })
-        });
-        let surface = mat.and_then(|id| doc.materials.get(&id)).map(|m| m.pbr).unwrap_or_default();
+        };
+        let tex_index = texture.map(|t| embed(t.image));
+        let surface_index = surface.metallic_roughness_map.filter(|id| doc.images.contains_key(id)).map(&mut embed);
         let normal_index = surface.normal_map.and_then(|id| {
             let key = (id, surface.normal_flip_y);
             if let Some(index) = normal_texture_index.get(&key) {
@@ -145,12 +148,30 @@ pub fn export(doc: &Document) -> Vec<u8> {
             if let Some(ti) = tex_index {
                 pbr["baseColorTexture"] = json!({"index": ti});
             }
+            if let Some(index) = surface_index {
+                pbr["metallicRoughnessTexture"] = json!({"index": index});
+            }
             let mut m = json!({"name": name, "doubleSided": true, "pbrMetallicRoughness": pbr});
             if let Some(index) = normal_index {
                 m["normalTexture"] = json!({"index":index,"scale":surface.normal_scale});
             }
             if color[3] < 1.0 {
                 m["alphaMode"] = json!("BLEND");
+            } else if let Some(cutoff) = surface.alpha_cutoff {
+                m["alphaMode"] = json!("MASK");
+                m["alphaCutoff"] = json!(cutoff);
+            }
+            if let Some(glow) = mat.and_then(|m| doc.materials.get(&m)).map(|m| m.glow).filter(|g| *g > 0.) {
+                // The importer reads a full emissive factor as 500 cd/m²; the colour peaks at one.
+                let strength = glow / 500.;
+                let linear = [lin(color[0]), lin(color[1]), lin(color[2])];
+                let peak = linear.into_iter().fold(1e-6, f32::max);
+                let f = strength.min(1.) / peak;
+                m["emissiveFactor"] = json!(linear.map(|c| c * f));
+                if strength > 1. {
+                    emissive_strength = true;
+                    m["extensions"] = json!({"KHR_materials_emissive_strength": {"emissiveStrength": strength}});
+                }
             }
             materials.push(m);
             materials.len() - 1
@@ -188,7 +209,7 @@ pub fn export(doc: &Document) -> Vec<u8> {
         accessors.push(json!({"bufferView": iv, "componentType": 5125, "count": prim.indices.len(), "type": "SCALAR"}));
         let ia = accessors.len() - 1;
         let mut attributes = json!({"POSITION": pa, "NORMAL": na});
-        if tex_index.is_some() || normal_index.is_some() {
+        if tex_index.is_some() || normal_index.is_some() || surface_index.is_some() {
             let uv_bytes: Vec<u8> = prim.uvs.iter().flatten().flat_map(|f| f.to_le_bytes()).collect();
             let uvv = push_view(&uv_bytes, 34962);
             accessors.push(json!({"bufferView": uvv, "componentType": 5126, "count": count, "type": "VEC2"}));
@@ -214,6 +235,9 @@ pub fn export(doc: &Document) -> Vec<u8> {
         "bufferViews": views,
         "buffers": [{"byteLength": bin.len()}]
     });
+    if emissive_strength {
+        gltf["extensionsUsed"] = json!(["KHR_materials_emissive_strength"]);
+    }
     if textures_empty(&gltf) {
         for key in ["images", "textures", "samplers"] {
             gltf.as_object_mut().expect("object").remove(key);

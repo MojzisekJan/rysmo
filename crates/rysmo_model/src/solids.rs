@@ -168,7 +168,7 @@ fn leaf_polygons(doc: &Document, leaf: &Leaf<'_>, shift: DVec3) -> Result<Vec<Po
                 [appearance.material, appearance.back_material]
                     .into_iter()
                     .flatten()
-                    .find_map(|id| doc.materials.get(&id).filter(|m| m.pbr.normal_map.is_some()).map(|_| [1., 1.]))
+                    .find_map(|id| doc.materials.get(&id).filter(|m| m.pbr.images().next().is_some()).map(|_| [1., 1.]))
             });
         if let Some(size) = size {
             appearance.uv = Some(
