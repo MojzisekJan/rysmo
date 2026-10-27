@@ -17,6 +17,18 @@ struct Topic {
 }
 static TOPICS: &[Topic] = &[
     Topic {
+        title: "Select Similar", category: "Selection", icon: Some(Icon::Action(Action::SelectSimilar)),
+        body: "Select one reference edge, face, group or component, then use Edit > Selection > Select Similar, the context menu or command search. Match assigned materials, edge length or the same component definition. Only the same entity kind is selected, in the current editing context; nested children are not traversed. Faces use their assigned front material, including Default, rather than inherited appearance. Edge lengths include the editing context's scale. The larger of relative and absolute tolerances applies. Review the match count and confirm Select Similar. Include hidden geometry and tags also considers softened edges. This does not change visibility settings or document geometry, and adds no Undo step. Escape cancels. Queries are limited to 200000 entities.",
+    },
+    Topic {
+        title: "Paste on Face", category: "Modelling", icon: Some(Icon::Action(Action::PasteOnFace)),
+        body: "Copy a component or other geometry, then choose Edit > Paste on Face or command search. Alternatively enable Align to model face in the Paste preview, including imported components and library assets. Move over a visible face and click to lock its insertion point. Set Rotation, Offset in project units and Reverse face normal, then Place or Enter. Pick another face unlocks the position. Escape or Cancel discards the preview. A single component uses its insertion origin and local Z-normal; other clipboard geometry uses the clipboard origin and axes. World-space size and shape are retained even inside scaled editing contexts. Hidden and section-clipped faces are not picked. Alignment does not glue the component, cut openings or create a persistent attachment. One Undo removes placement. Changing the model or project invalidates the preview.",
+    },
+    Topic {
+        title: "Solid Check", category: "Modelling", icon: Some(Icon::Action(Action::SolidCheck)),
+        body: "Model > Faces & Edges > Solid Check inspects a selected group/component hierarchy, or geometry in the current context. Choose a mesh from the list. Orange edges mark open boundaries, red edges or points non-manifold joins, magenta edges inconsistent orientation and blue edges loose linework. Detailed validation also reports self-intersections and shell nesting, even when no single edge can be marked. It checks individual meshes, not a Boolean union of their occurrences. Enter the chosen geometry to select marked edges or repair it. Shared component edits affect all copies; use Make Unique first to isolate one. Remove loose edges deletes only edges belonging to no face. Repair closed-shell orientation rejects holes and ambiguous joins, then orients shells outward and cavities inward while retaining physical material sides. Repairs are one Undo step and do not fill holes. Hidden faces must be revealed before orientation repair. Hierarchy, geometry and detailed validation limits are reported explicitly. Escape closes the check.",
+    },
+    Topic {
         title: "Weld Edges", category: "Modelling", icon: Some(Icon::Action(Action::WeldEdges)),
         body: "Select at least two connected edges and choose Model > Faces & Edges > Weld Edges, the context menu or command search. One open chain or closed loop becomes a single selectable polyline. Branches and disconnected selections are rejected. Existing curves must be selected in full; their analytic shape remains unchanged geometrically, but joining multiple curves replaces their analytic descriptors with one polyline. Welding an already complete single curve does nothing. Edge styles, face paint and UV placement are retained. The operation has one Undo step and accepts up to 8192 edges in the active editing context. It groups edges; it does not merge nearby endpoints or heal gaps.",
     },
@@ -558,7 +570,13 @@ fn matches(topic: &Topic, query: &str) -> bool {
 pub fn open_current(app: &mut App3d) {
     app.help.open = true;
     app.help.query.clear();
-    let current = if app.divide.is_some() {
+    let current = if crate::object_clipboard::surface_active(app) {
+        "Paste on Face"
+    } else if app.similar.is_some() {
+        "Select Similar"
+    } else if app.solid_check.is_some() {
+        "Solid Check"
+    } else if app.divide.is_some() {
         "Divide Edges"
     } else if app.paste_place.is_some() {
         "Copy, paste and history"
@@ -776,6 +794,9 @@ mod tests {
             Action::WeldEdges,
             Action::ExplodeCurves,
             Action::OrientFaces,
+            Action::SelectSimilar,
+            Action::PasteOnFace,
+            Action::SolidCheck,
         ] {
             assert!(TOPICS.iter().any(|topic| matches!(topic.icon, Some(Icon::Action(a)) if a == action)));
         }

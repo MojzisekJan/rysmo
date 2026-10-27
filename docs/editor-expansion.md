@@ -142,3 +142,74 @@ and shared component definitions. Make Unique first to isolate one component cop
 No-op welding/orientation does not create an Undo step. Component-opening
 boundaries are protected. Curve grouping accepts at most 8192 input/member edges;
 orientation is limited to 100000 context faces and 500000 boundary steps.
+
+## Select Similar
+
+Select one edge, face, group or component and open Edit → Selection → Select
+Similar, the context menu or command search. The preview counts matches in the
+current editing context and replaces the selection on confirmation, without a
+model edit or Undo entry. Escape or Cancel discards it. Nested child geometry is
+not traversed.
+
+Assigned material compares material IDs on entities of the same kind. Faces use
+front paint; inherited appearance is not substituted for an unpainted entity.
+Default matches Default. Instance definition compares the actual shared definition,
+including groups if they share one. Edge length uses world-space dimensions,
+including nonuniform scale of the editing context. The larger relative/absolute
+length tolerance applies, with model tolerance as the lower bound. Absolute input
+uses project units and accepts explicit suffixes. Include hidden also includes
+softened edges and hidden tags, without changing display settings. Queries are
+bounded to 200000 entities; invalid tolerances are reported.
+
+## Paste on Face
+
+Copy an object and choose Edit → Paste on Face, the context menu or command
+search. Align to model face is also available in ordinary Paste previews, so
+imported models and component-library assets can use it. Move over a visible face
+and click to lock the point. Adjust rotation, offset in project units or Reverse
+face normal, then Place or Enter. Pick another face unlocks the point. Escape,
+Cancel or changing tools leaves the model unchanged. Model/project/context
+changes invalidate the preview.
+
+A single component uses its insertion origin and local Z-normal. Other clipboard
+geometry uses its clipboard origin and axes. A rigid world-space rotation retains
+size and shape even inside a mirrored or nonuniformly scaled editing context.
+Hidden and section-clipped surfaces are excluded by the normal model surface
+picker. Alignment is a one-time placement, without persistent gluing or opening
+cuts. Placement uses the existing transactional Paste operation and one Undo.
+
+## Solid Check and repairs
+
+Model → Faces & Edges → Solid Check inspects a selected group/component hierarchy,
+or geometry in the active context. Choose the individual mesh to inspect; nested
+meshes are not Boolean-unioned. Orange edges show open boundaries, red edges or
+points show non-manifold joins, magenta shows orientation conflicts and blue shows
+loose linework. The diagnostic also reports detailed intersection and shell-nesting
+failures that cannot always be mapped to one edge. Hidden occurrences/faces are
+reported separately. A geometrically valid mesh does not by itself prove that an
+entire hierarchy satisfies Solid Tools' annotation/glue/visibility restrictions.
+
+Enter this geometry follows the selected occurrence path into its editing context.
+Select problem geometry selects edges in the chosen category, or incident faces
+for a non-manifold vertex. Shared component edits affect all copies; Make Unique
+first to isolate one. Reports are invalidated after edits, context or project
+changes and can be closed with Escape.
+
+Remove loose edges deletes only edges referenced by no face. Repair closed-shell
+orientation requires closed, visible manifold geometry without stray edges. It
+first makes each shell consistent, validates contacts/intersections and derives
+nesting, then turns outer shells outward and cavity shells inward. An island
+inside a cavity faces outward again. Physical material sides are retained. Each
+repair is one Undo step; failed or unnecessary repairs leave document/history
+unchanged. Holes and ambiguous topology are not automatically filled or merged.
+
+Limits: 4096 hierarchy occurrences, 32 relative hierarchy levels, 100000 edges,
+20000 faces and 100000 boundary steps per inspected mesh. Detailed diagnostic
+intersection checks are limited to 4096 estimated triangles; larger meshes still
+receive topology diagnostics with an explicit validation-limit message. Shell
+repair is limited to 64 components and the existing solid-validator work budgets.
+
+The diagnostic overlay draws at most 10000 markers and reports truncation. Counts
+and problem selection remain complete. Select Similar caches unchanged queries
+instead of scanning the context on each UI frame. Validation is recorded in
+`docs/verification/selection-placement-solid-check-2026-10-27.md`.

@@ -10,20 +10,55 @@ pub struct Contents {
     pub snapshot: Arc<Clipboard>,
     generation: Option<u64>,
 }
+struct Surface {
+    hit: Option<rysmo_model::SurfaceHit>,
+    locked: bool,
+    angle: f64,
+    offset: f64,
+    flip: bool,
+}
 pub struct Placement {
     contents: Contents,
     origin: DVec3,
     revision: u64,
+    generation: u64,
+    surface: Option<Surface>,
     context: Vec<InstanceId>,
 }
 impl Placement {
-    fn valid(&self, app: &App3d) -> bool {
-        self.revision == app.editor.revision() && self.context == app.editor.context()
+    pub fn status(&self) -> &'static str {
+        if self.surface.is_some() {
+            "Paste on Face: pick a surface, set rotation and offset, then Place. Escape cancels."
+        } else {
+            "Paste: click to place the preview. Escape cancels."
+        }
     }
-    fn transform(&self, app: &App3d) -> DMat4 {
+    fn valid(&self, app: &App3d) -> bool {
+        self.revision == app.editor.revision()
+            && self.generation == app.document_generation
+            && self.context == app.editor.context()
+    }
+    fn transform(&self, app: &App3d) -> Result<DMat4, String> {
+        if let Some(surface) = &self.surface {
+            let hit = surface.hit.ok_or("Pick a visible model face before placing the object.")?;
+            let root = &self.contents.snapshot.document.root;
+            let anchor = if root.mesh.vertex_count() == 0 && root.instances.len() == 1 {
+                root.instances.values().next().expect("one instance").transform
+            } else {
+                DMat4::IDENTITY
+            };
+            return rysmo_model::surface_placement::SurfacePlacement {
+                point: hit.point,
+                normal: hit.normal,
+                angle_degrees: surface.angle,
+                offset: surface.offset,
+                flip: surface.flip,
+            }
+            .transform(self.contents.snapshot.source_transform, app.editor.context_transform(), anchor);
+        }
         let mut axes = app.editor.context_transform().inverse() * self.contents.snapshot.source_transform;
         axes.w_axis = DVec4::W;
-        DMat4::from_translation(self.origin) * axes
+        Ok(DMat4::from_translation(self.origin) * axes)
     }
 }
 pub fn copy(app: &mut App3d, cut: bool) {
@@ -67,11 +102,101 @@ pub fn duplicate(app: &mut App3d) {
 fn begin(app: &mut App3d, contents: Contents) {
     app.set_tool(ToolKind::Select);
     let origin = app.editor.context_transform().inverse().transform_point3(app.camera.target);
-    app.paste_place =
-        Some(Placement { contents, origin, revision: app.editor.revision(), context: app.editor.context().to_vec() });
+    app.paste_place = Some(Placement {
+        contents,
+        origin,
+        revision: app.editor.revision(),
+        generation: app.document_generation,
+        surface: None,
+        context: app.editor.context().to_vec(),
+    });
     app.message = Some("Paste: click to place objects. Enter places at the preview; Escape cancels.".into());
     if let Some(cursor) = app.cursor {
         pointer(app, cursor, Pointer::Move);
+    }
+}
+pub fn surface_active(app: &App3d) -> bool {
+    app.paste_place.as_ref().is_some_and(|p| p.surface.is_some())
+}
+pub fn paste_on_face(app: &mut App3d) {
+    let Some(contents) = app.object_clipboard.clone() else {
+        app.message = Some("Copy a component or other geometry before Paste on Face.".into());
+        return;
+    };
+    begin(app, contents);
+    if let Some(p) = app.paste_place.as_mut() {
+        p.surface = Some(Surface { hit: None, locked: false, angle: 0., offset: 0., flip: false });
+    }
+    app.message = Some("Paste on Face: pick a visible face, adjust rotation, then Place. Escape cancels.".into());
+    if let Some(cursor) = app.cursor {
+        pointer(app, cursor, Pointer::Move);
+    }
+}
+pub fn panel(ctx: &egui::Context, app: &mut App3d) {
+    let Some(mut placement) = app.paste_place.take() else { return };
+    if !placement.valid(app) {
+        return;
+    }
+    let mut open = true;
+    let mut finish_now = false;
+    let mut cancel = false;
+    let mut align = placement.surface.is_some();
+    let window = crate::theme::window("Paste")
+        .vscroll(true)
+        .default_size(egui::vec2(340., 380.))
+        .beside_model()
+        .open(&mut open)
+        .default_width(340.);
+    window.show(ctx, |ui| {
+        if ui.checkbox(&mut align, "Align to model face").changed() {
+            placement.surface =
+                align.then_some(Surface { hit: None, locked: false, angle: 0., offset: 0., flip: false });
+        }
+        if let Some(surface) = placement.surface.as_mut() {
+            if surface.locked {
+                ui.label("Position locked. Adjust the preview, then Place.");
+            } else {
+                ui.label("Move over a visible face. Click to lock the insertion point.");
+            }
+            ui.horizontal(|ui| {
+                ui.label("Rotation (°)");
+                ui.add(crate::widgets::Number::new(&mut surface.angle).range(-3600. ..=3600.));
+            });
+            let units = app.editor.doc().units;
+            let mut offset = surface.offset * units.per_metre();
+            ui.horizontal(|ui| {
+                ui.label(format!("Offset ({})", units.suffix()));
+                let control = crate::widgets::Number::new(&mut offset)
+                    .speed(0.01 * units.per_metre())
+                    .range(-10000. * units.per_metre()..=10000. * units.per_metre());
+                if ui.add(control).changed() {
+                    surface.offset = offset / units.per_metre();
+                }
+            });
+            ui.checkbox(&mut surface.flip, "Reverse face normal");
+            if surface.locked && ui.button("Pick another face").clicked() {
+                surface.locked = false;
+                surface.hit = None;
+            }
+            ui.small("Uses a component's insertion axes and origin, or the clipboard origin for other geometry.");
+            ui.small("Alignment does not glue the object or cut the target face.");
+        } else {
+            ui.label("Click in the model to place, or enable face alignment.");
+        }
+        let transform = placement.transform(app);
+        if let Err(error) = &transform {
+            ui.weak(error);
+        }
+        ui.horizontal(|ui| {
+            finish_now = ui.add_enabled(transform.is_ok(), egui::Button::new("Place")).clicked();
+            cancel = ui.button("Cancel").clicked();
+        });
+    });
+    if open && !cancel {
+        app.paste_place = Some(placement);
+        if finish_now {
+            finish(app);
+        }
     }
 }
 fn commit(app: &mut App3d, contents: Contents, transform: DMat4) {
@@ -95,12 +220,28 @@ pub fn finish(app: &mut App3d) {
         app.message = Some("The model changed. Paste again.".into());
         return;
     }
-    let transform = p.transform(app);
-    commit(app, p.contents, transform);
+    match p.transform(app) {
+        Ok(transform) => commit(app, p.contents, transform),
+        Err(error) => {
+            app.message = Some(error);
+            app.paste_place = Some(p);
+        }
+    }
 }
 pub fn pointer(app: &mut App3d, at: DVec2, event: Pointer) {
     if !app.paste_place.as_ref().is_some_and(|p| p.valid(app)) {
         app.paste_place = None;
+        return;
+    }
+    if app.paste_place.as_ref().is_some_and(|p| p.surface.is_some()) {
+        let hit = app.editor.doc().ray_surface(app.view().ray(at));
+        let surface = app.paste_place.as_mut().and_then(|p| p.surface.as_mut()).expect("surface placement");
+        if !surface.locked {
+            surface.hit = hit;
+            if matches!(event, Pointer::Down { .. }) && hit.is_some() {
+                surface.locked = true;
+            }
+        }
         return;
     }
     app.with_ctx(at, |tools, editor, ctx| tools.pointer(editor, ctx, Pointer::Move));
@@ -115,6 +256,7 @@ pub fn draw(painter: &egui::Painter, app: &App3d) {
     let Some(p) = app.paste_place.as_ref().filter(|p| p.valid(app)) else {
         return;
     };
+    let Ok(placement_transform) = p.transform(app) else { return };
     fn visit(painter: &egui::Painter, app: &App3d, contents: &Contents, def: &Definition, t: DMat4, depth: usize) {
         if depth > 64 {
             return;
@@ -148,7 +290,7 @@ pub fn draw(painter: &egui::Painter, app: &App3d) {
         app,
         &p.contents,
         &p.contents.snapshot.document.root,
-        app.editor.context_transform() * p.transform(app),
+        app.editor.context_transform() * placement_transform,
         0,
     );
 }
@@ -298,5 +440,79 @@ mod tests {
         paste(&mut app, true);
         let p = app.editor.context_transform().inverse().transform_point3(DVec3::new(2.5, 3.5, 1.));
         assert!(app.editor.mesh().faces().any(|(f, _)| app.editor.mesh().face_contains(f, p)));
+    }
+}
+
+#[cfg(test)]
+mod surface_tests {
+    use super::*;
+    use rysmo_model::{Editor, Element};
+    fn fixture() -> App3d {
+        let mut editor = Editor::new();
+        let out = editor
+            .apply(Command::DrawRectangle { corner: DVec3::ZERO, u: DVec3::X, v: DVec3::Y, facing: Some(DVec3::Z) })
+            .unwrap();
+        let component =
+            editor.apply(Command::MakeComponent { elements: out.created, name: Some("Panel".into()) }).unwrap().created
+                [0];
+        editor.set_selection([component]);
+        let mut app = App3d::new(editor);
+        copy(&mut app, false);
+        app.editor
+            .apply(Command::DrawRectangle {
+                corner: DVec3::new(-2., 3., -2.),
+                u: DVec3::X * 4.,
+                v: DVec3::Z * 4.,
+                facing: Some(-DVec3::Y),
+            })
+            .unwrap();
+        app.viewport = DVec2::new(800., 600.);
+        app.camera.target = DVec3::new(0., 3., 0.);
+        app.camera.yaw = -std::f64::consts::FRAC_PI_2;
+        app.camera.pitch = 0.;
+        app.camera.distance = 8.;
+        app
+    }
+    #[test]
+    fn surface_pick_locks_then_places_a_shared_component_in_one_undo() {
+        let mut app = fixture();
+        let before = app.editor.doc().clone();
+        let depth = app.editor.undo_depth();
+        paste_on_face(&mut app);
+        let cursor = app.view().project(DVec3::new(0., 3., 0.)).unwrap();
+        pointer(&mut app, cursor, Pointer::Move);
+        assert!(app.paste_place.as_ref().unwrap().surface.as_ref().unwrap().hit.is_some());
+        pointer(&mut app, cursor, Pointer::Down { clicks: 1 });
+        assert!(app.paste_place.as_ref().unwrap().surface.as_ref().unwrap().locked);
+        assert_eq!(app.editor.doc(), &before);
+        app.paste_place.as_mut().unwrap().surface.as_mut().unwrap().angle = 30.;
+        finish(&mut app);
+        assert!(app.paste_place.is_none());
+        assert_eq!(app.editor.undo_depth(), depth + 1);
+        let selected = app.editor.selected();
+        let [Element::Instance(id)] = selected.as_slice() else { panic!() };
+        let instance = &app.editor.active().instances[id];
+        assert!(instance.transform.w_axis.truncate().distance(DVec3::new(0., 3., 0.)) < 1e-9);
+        assert!(
+            instance.transform.inverse().transpose().transform_vector3(DVec3::Z).normalize().dot(-DVec3::Y) > 0.999
+        );
+        assert!(app.editor.undo());
+        assert_eq!(app.editor.doc(), &before);
+    }
+    #[test]
+    fn absent_surface_escape_and_new_project_do_not_commit() {
+        let mut app = fixture();
+        let before = app.editor.doc().clone();
+        paste_on_face(&mut app);
+        finish(&mut app);
+        assert!(app.paste_place.is_some());
+        assert_eq!(app.editor.doc(), &before);
+        crate::input::tool_key(&mut app, rysmo_tools::Key::Escape);
+        assert!(app.paste_place.is_none());
+        paste_on_face(&mut app);
+        app.document_generation += 1;
+        finish(&mut app);
+        assert!(app.paste_place.is_none());
+        assert_eq!(app.editor.doc(), &before);
     }
 }

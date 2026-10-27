@@ -59,6 +59,7 @@ impl Command {
             Command::DivideEdges { .. } => "Divide Edges",
             Command::WeldEdges { .. } => "Weld Edges",
             Command::ExplodeCurves { .. } => "Explode Curve",
+            Command::RepairSolid { .. } => "Repair Solid",
             Command::OrientFaces { .. } => "Orient Faces",
             Command::ReverseFaces { .. } => "Reverse Faces",
             Command::SetEdges { .. } => "Edge Style",

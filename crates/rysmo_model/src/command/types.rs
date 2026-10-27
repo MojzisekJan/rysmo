@@ -328,6 +328,9 @@ pub enum Command {
     ExplodeCurves {
         edges: Vec<EdgeId>,
     },
+    RepairSolid {
+        repair: crate::solid_check::Repair,
+    },
     OrientFaces {
         seed: FaceId,
     },

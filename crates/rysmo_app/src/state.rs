@@ -36,6 +36,8 @@ pub struct App3d {
     pub mirror: Option<crate::mirror::Draft>,
     pub divide: Option<crate::divide::Draft>,
     pub fillet: Option<crate::fillet::Draft>,
+    pub similar: Option<crate::similar::Draft>,
+    pub solid_check: Option<crate::solid_check::Dialog>,
     pub solid_tools: Option<crate::solid_tools::Draft>,
     pub print_check: Option<crate::print_check::Dialog>,
     pub smoove: Option<crate::smoove_tool::Draft>,
@@ -167,6 +169,8 @@ impl App3d {
             flip: None,
             mirror: None,
             solid_tools: None,
+            similar: None,
+            solid_check: None,
             print_check: None,
             fillet: None,
             divide: None,
@@ -326,6 +330,8 @@ impl App3d {
         self.flip = None;
         self.mirror = None;
         self.solid_tools = None;
+        self.similar = None;
+        self.solid_check = None;
         self.fillet = None;
         self.divide = None;
         self.smoove = None;
@@ -356,7 +362,13 @@ impl App3d {
             chars.next().map(|c| c.to_uppercase().chain(chars).collect()).unwrap_or_default()
         };
         self.message.as_ref().map(sentence).unwrap_or_else(|| {
-            let mut s = if self.divide.is_some() {
+            let mut s = if let Some(placement) = &self.paste_place {
+                placement.status()
+            } else if self.similar.is_some() {
+                "Select Similar: choose a criterion and review matches before selecting. Escape cancels."
+            } else if self.solid_check.is_some() {
+                "Solid Check: inspect marked problems or enter the chosen component to repair it. Escape closes."
+            } else if self.divide.is_some() {
                 "Divide Edges: choose the segment count, then Divide. Escape cancels."
             } else if self.fillet.is_some() {
                 "Fillet: set the radius and segments, then Apply. Escape cancels."

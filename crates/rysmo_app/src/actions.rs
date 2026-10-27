@@ -14,6 +14,9 @@ pub enum Action {
     IntersectModel,
     IntersectSelection,
     SolidTools,
+    SolidCheck,
+    SelectSimilar,
+    PasteOnFace,
     Fillet,
     DivideEdges,
     WeldEdges,
@@ -70,6 +73,7 @@ impl Action {
             | Self::OrientFaces
             | Self::DivideEdges
             | Self::Fillet
+            | Self::SolidCheck
             | Self::SolidTools
             | Self::SoftenEdges
             | Self::UnsoftenEdges => 2,
@@ -88,7 +92,7 @@ impl Action {
             | Self::FromContours
             | Self::TerrainGrid => 4,
             Self::SectionPlane | Self::Text3d | Self::DeleteGuides => 5,
-            Self::SelectAll | Self::SelectNone => 6,
+            Self::SelectAll | Self::SelectNone | Self::SelectSimilar => 6,
             _ => 0,
         }
     }
@@ -103,6 +107,9 @@ impl Action {
             Self::ReverseFaces => g::ARROWS_CLOCKWISE,
             Self::IntersectModel | Self::IntersectSelection | Self::SolidTools => g::INTERSECT,
             Self::Fillet => g::ARROWS_CLOCKWISE,
+            Self::SolidCheck => g::CUBE,
+            Self::SelectSimilar => g::SELECTION_ALL,
+            Self::PasteOnFace => g::CLIPBOARD,
             Self::DivideEdges => g::LINE_SEGMENT,
             Self::WeldEdges => g::LINK,
             Self::ExplodeCurves => g::LINK_BREAK,
@@ -127,6 +134,9 @@ impl Action {
             Action::IntersectModel => "Intersect Faces with Model",
             Action::IntersectSelection => "Intersect Faces with Selection",
             Action::SolidTools => "Solid Tools...",
+            Action::SolidCheck => "Solid Check...",
+            Action::SelectSimilar => "Select Similar...",
+            Action::PasteOnFace => "Paste on Face...",
             Action::Fillet => "Fillet...",
             Action::DivideEdges => "Divide Edges...",
             Action::WeldEdges => "Weld Edges",
@@ -219,6 +229,9 @@ pub fn run(app: &mut App3d, action: Action) {
     let sel = app.editor.selected();
     match action {
         Action::SolidTools => crate::solid_tools::begin(app),
+        Action::SolidCheck => crate::solid_check::begin(app),
+        Action::SelectSimilar => crate::similar::begin(app),
+        Action::PasteOnFace => crate::object_clipboard::paste_on_face(app),
         Action::Fillet => crate::fillet::begin(app),
         Action::DivideEdges => crate::divide::begin(app),
         Action::WeldEdges | Action::ExplodeCurves => {
@@ -417,6 +430,9 @@ pub fn available(app: &App3d) -> Vec<(Action, bool)> {
         (Action::ReverseFaces, has_faces),
         (Action::IntersectModel, has_faces || has_inst),
         (Action::IntersectSelection, has_faces || has_inst),
+        (Action::SolidCheck, has_inst || app.editor.mesh().edge_count() > 0 || app.editor.mesh().face_count() > 0),
+        (Action::SelectSimilar, crate::similar::available(app)),
+        (Action::PasteOnFace, app.object_clipboard.is_some()),
         (Action::SolidTools, app.editor.selection().len() == 2 && selected_instances(app).len() == 2),
         (Action::Fillet, app.editor.selection().len() == 2 && selected_edges(app).len() == 2),
         (Action::DivideEdges, crate::divide::available(app)),

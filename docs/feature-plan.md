@@ -42,3 +42,13 @@ verification boundary is documented in the record.
 Checks and verification boundaries are recorded in
 `docs/verification/edge-divisions-2026-10-27.md` and
 `docs/verification/topology-tools-2026-10-27.md`.
+
+## Selection, surface placement and solid inspection
+
+- [x] Select Similar by assigned material, world-space edge length or shared
+  component definition, with preview count, tolerances and visibility control.
+- [x] Paste on Face with picked insertion point, rotation/normal/offset preview,
+  shared clipboard/import placement and one Undo step.
+- [x] Addressable solid diagnostics across component occurrences, selection of
+  problem geometry, loose-edge removal and validated closed-shell orientation
+  repair that retains cavities and refuses ambiguous topology.

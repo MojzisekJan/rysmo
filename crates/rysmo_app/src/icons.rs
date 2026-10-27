@@ -353,6 +353,22 @@ fn draw(ui: &egui::Ui, rect: Rect, icon: Icon, color: Color32) {
             action.bezier([(18.4, 18.5), (18.4, 21.3), (22.6, 21.3), (22.6, 18.5)]);
             action.bezier([(22.6, 18.5), (22.6, 17.), (21., 16.), (20.5, 14.)]);
         }
+        Icon::Action(Action::SelectSimilar) => {
+            p.rounded_rect((3., 4.), (10., 11.), 1.);
+            p.rounded_rect((14., 13.), (21., 20.), 1.);
+            action.line(&[(13., 6.), (21., 6.)]);
+            action.line(&[(13., 9.), (21., 9.)]);
+        }
+        Icon::Action(Action::PasteOnFace) => {
+            guide.line(&[(3., 18.), (12., 13.), (22., 18.), (12., 23.), (3., 18.)]);
+            p.rounded_rect((8., 2.), (16., 10.), 1.);
+            action.line(&[(12., 11.), (12., 17.), (9., 14.)]);
+            action.line(&[(12., 17.), (15., 14.)]);
+        }
+        Icon::Action(Action::SolidCheck) => {
+            p.cube();
+            action.line(&[(13., 17.), (16., 20.), (22., 12.)]);
+        }
         Icon::Action(Action::WeldEdges) => {
             guide.line(&[(3., 17.), (10., 7.)]);
             guide.line(&[(10., 7.), (21., 15.)]);

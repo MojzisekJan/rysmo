@@ -70,3 +70,8 @@ mod divide_tests;
 
 #[cfg(test)]
 mod topology_tools_tests;
+
+pub mod similar;
+pub mod surface_placement;
+
+pub mod solid_check;

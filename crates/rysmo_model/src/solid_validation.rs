@@ -28,6 +28,12 @@ pub(super) fn validate(mesh: &Mesh, single: bool) -> Result<f64, String> {
     Ok(result.volume)
 }
 pub(super) fn analyse(mesh: &Mesh) -> Result<Analysis, String> {
+    analyse_impl(mesh, true)
+}
+pub(super) fn analyse_shell_nesting(mesh: &Mesh) -> Result<Analysis, String> {
+    analyse_impl(mesh, false)
+}
+fn analyse_impl(mesh: &Mesh, require_orientation: bool) -> Result<Analysis, String> {
     mesh.validate().map_err(|e| e.to_string())?;
     if mesh.face_count() == 0 {
         return Err("No closed surface".into());
@@ -187,12 +193,12 @@ pub(super) fn analyse(mesh: &Mesh) -> Result<Analysis, String> {
     for (shell, depth) in shells.iter_mut().zip(depths) {
         shell.depth = depth;
         let sign = shell.volume.signum() * if depth % 2 == 0 { 1. } else { -1. };
-        if orientation.is_some_and(|old| old != sign) {
+        if require_orientation && orientation.is_some_and(|old| old != sign) {
             return Err("Shell orientation does not match cavity nesting".into());
         }
         orientation = Some(sign);
     }
-    if !total.is_finite() || total.signum() != orientation.unwrap_or(0.) {
+    if !total.is_finite() || (require_orientation && total.signum() != orientation.unwrap_or(0.)) {
         return Err("Invalid combined solid volume".into());
     }
     Ok(Analysis { volume: total, shells })

@@ -218,6 +218,11 @@ pub fn tool_pointer(app: &mut App3d, at: DVec2, ev: Pointer) {
 }
 
 pub fn tool_key(app: &mut App3d, key: Key) {
+    if key == Key::Escape && (app.similar.is_some() || app.solid_check.is_some()) {
+        app.similar = None;
+        app.solid_check = None;
+        return;
+    }
     if app.divide.is_some() && key == Key::Escape {
         app.divide = None;
         return;

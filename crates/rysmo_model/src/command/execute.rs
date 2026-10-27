@@ -1112,6 +1112,9 @@ impl Command {
             Command::ExplodeCurves { edges: selected } => {
                 out.created = mesh_op(doc, &mut |m| m.explode_curves(&selected).map(&edges))?;
             }
+            Command::RepairSolid { repair } => {
+                out.changed = doc.with_mesh(def, |mesh| crate::solid_check::repair(mesh, repair)).expect("checked")?;
+            }
             Command::OrientFaces { seed } => {
                 let flipped = doc.with_mesh(def, |m| m.orient_faces(seed)).expect("checked")?;
                 out.changed = !flipped.is_empty();
