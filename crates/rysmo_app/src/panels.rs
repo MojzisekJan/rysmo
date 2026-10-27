@@ -1364,8 +1364,8 @@ pub fn entity_info_ui(ui: &mut egui::Ui, app: &mut App3d) {
         if let Some((id, curve)) = curve {
             ui.separator();
             if curve.kind == rysmo_mesh::CurveKind::Polyline {
-                ui.label(format!("Deformed curve: {} segments", curve.segments));
-                ui.weak("Part of it was moved, so its segments and radius are fixed.");
+                ui.label(format!("Polyline: {} segments", curve.segments));
+                ui.weak("Use Explode Curve to edit individual segments.");
             } else {
                 ui.label(format!("{:?}: {} segments", curve.kind, curve.segments));
                 let mut segments = curve.segments;

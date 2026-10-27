@@ -1105,6 +1105,18 @@ impl Command {
             Command::DivideEdges { edges: selected, segments } => {
                 out.created = mesh_op(doc, &mut |mesh| mesh.divide_edges(&selected, segments).map(&edges))?;
             }
+            Command::WeldEdges { edges: selected } => {
+                out.changed = doc.with_mesh(def, |m| m.weld_edges(&selected)).expect("checked")?;
+                out.created = edges(selected.into_iter().collect::<BTreeSet<_>>().into_iter().collect());
+            }
+            Command::ExplodeCurves { edges: selected } => {
+                out.created = mesh_op(doc, &mut |m| m.explode_curves(&selected).map(&edges))?;
+            }
+            Command::OrientFaces { seed } => {
+                let flipped = doc.with_mesh(def, |m| m.orient_faces(seed)).expect("checked")?;
+                out.changed = !flipped.is_empty();
+                out.created = flipped.into_iter().map(Element::Face).collect();
+            }
             Command::ReverseFaces { faces } => {
                 doc.with_mesh(def, |m| m.reverse_faces(&faces));
             }

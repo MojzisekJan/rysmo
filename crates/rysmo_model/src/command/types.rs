@@ -322,6 +322,15 @@ pub enum Command {
         edges: Vec<EdgeId>,
         segments: u32,
     },
+    WeldEdges {
+        edges: Vec<EdgeId>,
+    },
+    ExplodeCurves {
+        edges: Vec<EdgeId>,
+    },
+    OrientFaces {
+        seed: FaceId,
+    },
     ReverseFaces {
         faces: Vec<FaceId>,
     },

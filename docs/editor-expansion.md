@@ -114,3 +114,31 @@ are counted once. Missing edges, curve members, evaluated component-opening
 boundaries and divisions below model tolerance are rejected without partial edits.
 Use Properties segment settings for intact arcs and circles. Divided straight
 edges remain separate edges rather than becoming an analytic curve.
+
+## Curve grouping and face orientation
+
+Model → Faces & Edges, the context menu and command search expose three operations:
+
+- Weld Edges groups one connected open chain or closed loop into a selectable
+  polyline. Select at least two edges, including every member of any existing
+  curves being joined. Branches, gaps and disconnected selections are rejected;
+  nearby endpoints are not merged. Positions, faces and edge styles stay unchanged.
+  An already complete single curve is a no-op. Joining multiple curves retains
+  their polygonal geometry but replaces their analytic descriptors with a polyline.
+- Explode Curve removes grouping from every curve touched by the selected edges.
+  Even a partial member selection explodes the whole curve. Individual segments
+  remain selected, with their geometry, styles and faces retained. Undo restores
+  the original curve descriptors, including circle and arc parameters.
+- Orient Faces uses exactly one selected reference face and makes its visible
+  connected neighbours consistent. The reference direction stays unchanged;
+  Reverse Faces can change it first. This does not infer a solid's outside.
+  Hidden faces act as barriers and disconnected surfaces are untouched. Reversed
+  faces swap front/back paint to preserve physical sides; face IDs and UV placement
+  remain unchanged. Non-manifold edges and contradictory orientation constraints
+  reject the entire operation without partial changes.
+
+Each operation is one Undo step in the active editing context, including groups
+and shared component definitions. Make Unique first to isolate one component copy.
+No-op welding/orientation does not create an Undo step. Component-opening
+boundaries are protected. Curve grouping accepts at most 8192 input/member edges;
+orientation is limited to 100000 context faces and 500000 boundary steps.

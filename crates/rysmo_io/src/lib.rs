@@ -69,3 +69,6 @@ mod divide_tests {
         assert_eq!(loaded.root.mesh.face_count(), 1);
     }
 }
+
+#[cfg(test)]
+mod topology_tools_tests;

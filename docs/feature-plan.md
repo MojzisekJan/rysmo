@@ -28,3 +28,17 @@ The seven workflows are implemented. Tests and actual format limits are recorded
 in `docs/verification/editor-expansion-2026-10-22.md` and
 `docs/editor-expansion.md`. The optimized web package and its static module/asset checks pass; the browser
 verification boundary is documented in the record.
+
+## Additional topology tools
+
+- [x] Equal straight-edge divisions with endpoint preview and transactional Undo.
+- [x] Weld one connected edge chain/loop into a selectable polyline without moving
+  geometry; protect incomplete existing curves and reject branches or gaps.
+- [x] Explode complete curve groupings while retaining geometry and restoring
+  analytic descriptors through Undo.
+- [x] Orient visible connected faces from one reference, preserving physical paint
+  sides and rejecting conflicting/non-manifold topology atomically.
+
+Checks and verification boundaries are recorded in
+`docs/verification/edge-divisions-2026-10-27.md` and
+`docs/verification/topology-tools-2026-10-27.md`.

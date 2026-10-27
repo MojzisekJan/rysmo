@@ -1146,3 +1146,40 @@ fn drawing_facing_uses_the_offset_canvas_centre() {
     let expected = r.view.view.inverse().transform_vector3(DVec3::Z).normalize();
     assert!(crate::tools::ToolBox::facing(&ctx).distance(expected) < 1e-9);
 }
+
+#[test]
+fn welded_curve_selects_together_and_exploded_edges_select_independently() {
+    let mut rig = Rig::new(ToolKind::Select);
+    rig.editor
+        .apply(rysmo_model::Command::DrawLines {
+            lines: vec![[DVec3::ZERO, DVec3::X], [DVec3::X, DVec3::X + DVec3::Y]],
+            facing: None,
+        })
+        .unwrap();
+    let edges: Vec<_> = rig.editor.mesh().edges().map(|(id, _)| id).collect();
+    rig.editor.apply(rysmo_model::Command::WeldEdges { edges: edges.clone() }).unwrap();
+    let cursor = rig.px(DVec3::X * 0.5);
+    let ctx = Ctx { view: &rig.view, cursor, modifiers: rig.mods, scale: 1. };
+    rig.tools.pointer_with_pick(
+        &mut rig.editor,
+        &ctx,
+        Pointer::Down { clicks: 1 },
+        rysmo_infer::Pick::Element(Element::Edge(edges[0])),
+    );
+    assert_eq!(rig.editor.selection().len(), 2);
+    rig.tools.pointer_with_pick(
+        &mut rig.editor,
+        &ctx,
+        Pointer::Up,
+        rysmo_infer::Pick::Element(Element::Edge(edges[0])),
+    );
+    rig.editor.apply(rysmo_model::Command::ExplodeCurves { edges: vec![edges[0]] }).unwrap();
+    rig.editor.clear_selection();
+    rig.tools.pointer_with_pick(
+        &mut rig.editor,
+        &ctx,
+        Pointer::Down { clicks: 1 },
+        rysmo_infer::Pick::Element(Element::Edge(edges[0])),
+    );
+    assert_eq!(rig.editor.selected(), vec![Element::Edge(edges[0])]);
+}

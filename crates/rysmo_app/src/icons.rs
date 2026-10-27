@@ -353,6 +353,23 @@ fn draw(ui: &egui::Ui, rect: Rect, icon: Icon, color: Color32) {
             action.bezier([(18.4, 18.5), (18.4, 21.3), (22.6, 21.3), (22.6, 18.5)]);
             action.bezier([(22.6, 18.5), (22.6, 17.), (21., 16.), (20.5, 14.)]);
         }
+        Icon::Action(Action::WeldEdges) => {
+            guide.line(&[(3., 17.), (10., 7.)]);
+            guide.line(&[(10., 7.), (21., 15.)]);
+            action.ring(10., 7., 3.);
+        }
+        Icon::Action(Action::ExplodeCurves) => {
+            guide.line(&[(3., 18.), (8., 11.)]);
+            guide.line(&[(14., 7.), (22., 14.)]);
+            action.line(&[(9., 4.), (12., 1.)]);
+            action.line(&[(13., 12.), (16., 15.)]);
+        }
+        Icon::Action(Action::OrientFaces) => {
+            p.line(&[(3., 18.), (3., 8.), (10., 4.), (10., 14.), (3., 18.)]);
+            p.line(&[(13., 18.), (13., 8.), (20., 4.), (20., 14.), (13., 18.)]);
+            action.line(&[(6., 11.), (10., 8.)]);
+            action.line(&[(16., 11.), (20., 8.)]);
+        }
         Icon::Action(Action::DivideEdges) => {
             p.line(&[(3., 12.), (21., 12.)]);
             for x in [3., 9., 15., 21.] {

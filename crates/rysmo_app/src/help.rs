@@ -17,6 +17,18 @@ struct Topic {
 }
 static TOPICS: &[Topic] = &[
     Topic {
+        title: "Weld Edges", category: "Modelling", icon: Some(Icon::Action(Action::WeldEdges)),
+        body: "Select at least two connected edges and choose Model > Faces & Edges > Weld Edges, the context menu or command search. One open chain or closed loop becomes a single selectable polyline. Branches and disconnected selections are rejected. Existing curves must be selected in full; their analytic shape remains unchanged geometrically, but joining multiple curves replaces their analytic descriptors with one polyline. Welding an already complete single curve does nothing. Edge styles, face paint and UV placement are retained. The operation has one Undo step and accepts up to 8192 edges in the active editing context. It groups edges; it does not merge nearby endpoints or heal gaps.",
+    },
+    Topic {
+        title: "Explode Curve", category: "Modelling", icon: Some(Icon::Action(Action::ExplodeCurves)),
+        body: "Select a curve and choose Model > Faces & Edges > Explode Curve, the context menu or command search. All edges of the selected curve become independently selectable segments. Positions, faces, paint, texture placement and edge styles remain unchanged. A selection containing only part of a curve still explodes the whole curve. The result keeps the segment edges selected. Undo restores the curve including any original circle or arc parameters. Curves inside other groups are unchanged; enter a group or component to work on its geometry. At most 8192 member edges can be exploded in one operation.",
+    },
+    Topic {
+        title: "Orient Faces", category: "Modelling", icon: Some(Icon::Action(Action::OrientFaces)),
+        body: "Select exactly one correctly facing reference face, then choose Model > Faces & Edges > Orient Faces, the context menu or command search. Visible connected neighbours are made consistent with the reference; the reference itself keeps its direction. Use Reverse Faces on the reference first if needed. This command does not guess the outside of a closed object. Hidden faces and disconnected surfaces are left alone. Front/back paint is swapped on reversed faces to retain its physical side; UV placement and face IDs remain unchanged. Non-manifold edges, conflicting orientation constraints and component-opening boundaries reject the operation without partial edits. One Undo restores all changed faces. Limits are 100000 model faces and 500000 boundary steps in the active context.",
+    },
+    Topic {
         title: "Divide Edges",
         category: "Modelling",
         icon: Some(Icon::Action(Action::DivideEdges)),
@@ -761,6 +773,9 @@ mod tests {
             Action::FlipEdge,
             Action::Fillet,
             Action::DivideEdges,
+            Action::WeldEdges,
+            Action::ExplodeCurves,
+            Action::OrientFaces,
         ] {
             assert!(TOPICS.iter().any(|topic| matches!(topic.icon, Some(Icon::Action(a)) if a == action)));
         }

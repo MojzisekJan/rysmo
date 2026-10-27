@@ -16,6 +16,9 @@ pub enum Action {
     SolidTools,
     Fillet,
     DivideEdges,
+    WeldEdges,
+    ExplodeCurves,
+    OrientFaces,
     Drape,
     Stamp,
     AddDetail,
@@ -62,6 +65,9 @@ impl Action {
             Self::ReverseFaces
             | Self::IntersectModel
             | Self::IntersectSelection
+            | Self::WeldEdges
+            | Self::ExplodeCurves
+            | Self::OrientFaces
             | Self::DivideEdges
             | Self::Fillet
             | Self::SolidTools
@@ -98,6 +104,9 @@ impl Action {
             Self::IntersectModel | Self::IntersectSelection | Self::SolidTools => g::INTERSECT,
             Self::Fillet => g::ARROWS_CLOCKWISE,
             Self::DivideEdges => g::LINE_SEGMENT,
+            Self::WeldEdges => g::LINK,
+            Self::ExplodeCurves => g::LINK_BREAK,
+            Self::OrientFaces => g::ARROWS_CLOCKWISE,
             Self::SoftenEdges | Self::UnsoftenEdges => g::LINE_SEGMENT,
             Self::SectionPlane => g::SQUARE_SPLIT_VERTICAL,
             Self::Text3d => g::TEXT_T,
@@ -120,6 +129,9 @@ impl Action {
             Action::SolidTools => "Solid Tools...",
             Action::Fillet => "Fillet...",
             Action::DivideEdges => "Divide Edges...",
+            Action::WeldEdges => "Weld Edges",
+            Action::ExplodeCurves => "Explode Curve",
+            Action::OrientFaces => "Orient Faces",
             Action::Drape => "Drape",
             Action::Stamp => "Stamp",
             Action::AddDetail => "Add Detail",
@@ -183,6 +195,15 @@ fn selected_edges(app: &App3d) -> Vec<EdgeId> {
     out
 }
 
+fn only_editable_edges(app: &App3d) -> bool {
+    !app.editor.selection().is_empty()
+        && app.editor.selection().len() <= 8192
+        && app.editor.selection().iter().all(|element| {
+            let Element::Edge(id) = element else { return false };
+            app.editor.mesh().edge(*id).is_some_and(|edge| !edge.procedural)
+        })
+}
+
 fn apply(app: &mut App3d, cmd: Command) {
     match app.editor.apply(cmd) {
         Ok(out) => {
@@ -200,6 +221,49 @@ pub fn run(app: &mut App3d, action: Action) {
         Action::SolidTools => crate::solid_tools::begin(app),
         Action::Fillet => crate::fillet::begin(app),
         Action::DivideEdges => crate::divide::begin(app),
+        Action::WeldEdges | Action::ExplodeCurves => {
+            let selected = app.editor.selected();
+            if selected.iter().any(|element| !matches!(element, Element::Edge(_))) {
+                app.message = Some("Select only edges or curves for this operation.".into());
+                return;
+            }
+            let edges = selected_edges(app);
+            let command = if action == Action::WeldEdges {
+                Command::WeldEdges { edges }
+            } else {
+                Command::ExplodeCurves { edges }
+            };
+            match app.editor.apply(command) {
+                Ok(out) => {
+                    app.editor.set_selection(out.created);
+                    app.message = Some(
+                        if out.changed {
+                            "Curve grouping updated. Undo restores the previous grouping."
+                        } else {
+                            "The selection is already one curve."
+                        }
+                        .into(),
+                    );
+                }
+                Err(error) => app.message = Some(error.to_string()),
+            }
+        }
+        Action::OrientFaces => {
+            let [Element::Face(seed)] = sel.as_slice() else {
+                app.message = Some("Select exactly one reference face to orient its neighbours.".into());
+                return;
+            };
+            match app.editor.apply(Command::OrientFaces { seed: *seed }) {
+                Ok(out) => {
+                    app.message = Some(if out.changed {
+                        format!("Reoriented {} faces. The reference face is unchanged.", out.created.len())
+                    } else {
+                        "Connected face orientations are already consistent.".into()
+                    })
+                }
+                Err(error) => app.message = Some(error.to_string()),
+            }
+        }
         Action::IntersectModel | Action::IntersectSelection => {
             let context = app.editor.context().to_vec();
             apply(
@@ -356,6 +420,11 @@ pub fn available(app: &App3d) -> Vec<(Action, bool)> {
         (Action::SolidTools, app.editor.selection().len() == 2 && selected_instances(app).len() == 2),
         (Action::Fillet, app.editor.selection().len() == 2 && selected_edges(app).len() == 2),
         (Action::DivideEdges, crate::divide::available(app)),
+        (Action::WeldEdges, app.editor.selection().len() >= 2 && only_editable_edges(app)),
+        (Action::ExplodeCurves, only_editable_edges(app) && app.editor.selection().iter().any(|element| {
+            matches!(element, Element::Edge(id) if app.editor.mesh().edge(*id).is_some_and(|edge| edge.curve.is_some()))
+        })),
+        (Action::OrientFaces, app.editor.selection().len() == 1 && has_faces),
         (Action::SoftenEdges, has_edges),
         (Action::UnsoftenEdges, has_edges),
         (
@@ -592,5 +661,56 @@ mod geometry_visibility_tests {
         assert!(app.editor.mesh().face(faces[1]).unwrap().hidden);
         app.editor.undo();
         assert!(app.editor.mesh().faces().all(|(_, f)| f.hidden));
+    }
+}
+
+#[cfg(test)]
+mod topology_tests {
+    use super::*;
+    use rysmo_math::DVec3;
+    #[test]
+    fn curve_actions_preserve_selection_and_have_one_undo() {
+        let mut app = App3d::new(rysmo_model::Editor::new());
+        let out = app
+            .editor
+            .apply(Command::DrawLines {
+                lines: vec![[DVec3::ZERO, DVec3::X], [DVec3::X, DVec3::X + DVec3::Y]],
+                facing: None,
+            })
+            .unwrap();
+        app.editor.set_selection(out.created);
+        assert!(available(&app).contains(&(Action::WeldEdges, true)));
+        assert!(available(&app).contains(&(Action::ExplodeCurves, false)));
+        run(&mut app, Action::WeldEdges);
+        assert_eq!(app.editor.mesh().curves().count(), 1);
+        assert_eq!(app.editor.selection().len(), 2);
+        assert!(available(&app).contains(&(Action::ExplodeCurves, true)));
+        let before = app.editor.doc().clone();
+        let depth = app.editor.undo_depth();
+        run(&mut app, Action::ExplodeCurves);
+        assert_eq!(app.editor.mesh().curves().count(), 0);
+        assert_eq!(app.editor.selection().len(), 2);
+        assert_eq!(app.editor.undo_depth(), depth + 1);
+        assert!(app.editor.undo());
+        assert_eq!(app.editor.doc(), &before);
+    }
+    #[test]
+    fn orient_requires_one_face_and_retains_its_selection() {
+        let mut app = App3d::new(rysmo_model::Editor::new());
+        app.editor
+            .apply(Command::DrawRectangle { corner: DVec3::ZERO, u: DVec3::X, v: DVec3::Y, facing: Some(DVec3::Z) })
+            .unwrap();
+        let face = app.editor.mesh().faces().next().unwrap().0;
+        app.editor.apply(Command::PushPull { face, distance: 2., keep_base: false }).unwrap();
+        let faces: Vec<_> = app.editor.mesh().faces().map(|(id, _)| id).collect();
+        app.editor.apply(Command::ReverseFaces { faces: vec![faces[1]] }).unwrap();
+        app.editor.set_selection([Element::Face(faces[0])]);
+        assert!(available(&app).contains(&(Action::OrientFaces, true)));
+        assert!(available(&app).contains(&(Action::WeldEdges, false)));
+        run(&mut app, Action::OrientFaces);
+        assert_eq!(app.editor.selected(), vec![Element::Face(faces[0])]);
+        assert!(app.editor.mesh().orientation_plan(faces[0]).unwrap().is_empty());
+        app.editor.set_selection(faces.into_iter().map(Element::Face));
+        assert!(available(&app).contains(&(Action::OrientFaces, false)));
     }
 }

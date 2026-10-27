@@ -35,6 +35,7 @@ mod offset;
 mod ops;
 mod region;
 mod terrain_edit;
+mod topology_tools;
 mod transform;
 mod triangulate;
 

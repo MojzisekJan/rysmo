@@ -67,3 +67,6 @@ mod tests2;
 
 #[cfg(test)]
 mod divide_tests;
+
+#[cfg(test)]
+mod topology_tools_tests;
