@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate and package the current Trunk output for an itch.io HTML5 upload."""
+"""Validate and package the current Trunk output for static web hosting."""
 import base64
 import gzip
 import hashlib
@@ -99,7 +99,7 @@ def main():
         if url.startswith(("https:", "http:", "data:", "#")):
             continue
         if url.startswith("/"):
-            raise SystemExit(f"Absolute asset path is unsafe for an itch.io subdirectory: {url}")
+            raise SystemExit(f"Absolute asset path is unsafe for hosting under a subdirectory: {url}")
         path = DIST / url.split("?", 1)[0]
         if not path.is_file():
             raise SystemExit(f"Missing page asset: {url}")
@@ -132,7 +132,7 @@ def main():
     assets = {str(p.relative_to(DIST)): {"bytes": p.stat().st_size, "sha256": hashlib.sha256(p.read_bytes()).hexdigest()} for p in published_files() if p.name != "build-info.json"}
     manifest = {"revision": revision, "tracked_changes": dirty, "assets": assets}
     (DIST / "build-info.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    target = OUT / "rysmo-itch.zip"
+    target = OUT / "rysmo-web.zip"
     with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for path in published_files():
             archive.write(path, path.relative_to(DIST).as_posix())

@@ -93,7 +93,7 @@ were checked against these values before interactive verification.
 
 The current optimized web build started successfully in the in-app browser, with
 actual 3D rendering. Interactive verification then used a temporary same-origin
-iframe wrapper to exercise the embedded file-input path used by itch.io. The
+iframe wrapper to exercise the embedded editor's file-input path. The
 standalone page's native File System Access chooser could not be driven through
 the browser filechooser API. The embedded chooser eventually loaded the fixture,
 but its automation transfer was unexpectedly slow.
@@ -124,7 +124,7 @@ coordinate display was included before the application crate compiled; native
 and WASM Clippy were rerun successfully afterward. No release code changed after
 this build.
 
-The ZIP is `target/web/rysmo-itch.zip`. It includes corresponding source and
+The ZIP is `target/web/rysmo-web.zip`. It includes corresponding source and
 licences; the larger source archive is a separate downloadable asset and is not
 loaded to start the editor. `scripts/check-web-dist.mjs` validates generated
 modules, imports, assets, source metadata and archive consistency. The temporary

@@ -238,7 +238,7 @@ interaction test described above.
 The full `web-release` build completed with the recovery fixes from `1905d67`,
 including linking, wasm-bindgen and `wasm-opt`. The optimized WASM is 28,462,234
 bytes, about 27.1 MiB, or 9.8 MiB with gzip. The upload package is
-`target/web/rysmo-itch.zip`, with `index.html` at its root, the GPL source archive
+`target/web/rysmo-web.zip`, with `index.html` at its root, the GPL source archive
 and build metadata. Its exact size and revision are in `target/web/build-report.json`.
 No upload or publication was performed.
 

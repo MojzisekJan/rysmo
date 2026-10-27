@@ -51,4 +51,4 @@ containment depth so cavities and inner islands keep the correct orientation.
 The existing strict CSG validator continues to require correct shell orientation.
 
 No dependency or persistence-version change was needed. No release linking,
-new itch.io package, push or external publication was performed in this change.
+new web package, push or external publication was performed in this change.

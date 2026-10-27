@@ -48,7 +48,7 @@ Clippy; the full GPU-linked application test binary is not executed here.
 The offline optimized web build completed successfully from code commit
 `ea26b0c`. Cargo release compilation took 7 min 11 s; the subsequent optimizer and
 packager completed successfully. The final archive is
-`target/web/rysmo-itch.zip` (approximately 13.6 MB, including corresponding source).
+`target/web/rysmo-web.zip` (approximately 13.6 MB, including corresponding source).
 
 - Optimized WASM: 28,889,773 bytes.
 - Gzip WASM: 10,366,262 bytes; +1.34% against the previous 10,228,712-byte build.
