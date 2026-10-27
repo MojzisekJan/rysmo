@@ -12,7 +12,8 @@ have a stable stored order; Swap operands reverses it.
 Create live component replaces the selected inputs in one Undo transaction.
 Update parameters regenerates from the stored inputs. Edit source inputs opens
 the editable input geometry; Finish inputs and regenerate saves those changes.
-Cancel input changes restores the previous inputs and output. Convert visible
+When editing nested source components, return to the live component context before
+finishing its inputs. Cancel input changes restores the previous inputs and output. Convert visible
 geometry to ordinary component removes the recipe and retains whatever is visible.
 During input editing this retains the inputs. Otherwise it retains the output.
 
@@ -56,7 +57,8 @@ one Undo step. It uses the face as a target; it does not cut a wall opening.
 With the window open, select a parametric occurrence to expose dimension grips.
 Drag a grip to preview its dimensions and release to regenerate once. Escape
 cancels. Shared copies update together; Make Unique first to edit one copy.
-Numeric dimension fields remain available for exact values. Regeneration retains
+Numeric dimension fields remain available for exact values. Edit selected component
+loads the current selected dimensions into the parameter draft. Regeneration retains
 front/back paint, UVs and hidden state on matching generated parts. New parts use
 default paint unless the previous component had uniform paint. Ambiguous changes
 to individually painted stair steps are rejected. Manual geometry changes remain
