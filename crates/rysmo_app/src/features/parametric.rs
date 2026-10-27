@@ -36,7 +36,7 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
         let face = app.editor.selection().iter().find_map(|e| if let Element::Face(id) = e { Some(*id) } else { None });
         instance.zip(face).filter(|_| instances.next().is_none() && app.editor.selection().len() == 2)
     };
-    let response=crate::theme::window("Parametric components").open(&mut state.open).default_width(400.).resizable(true).show(ctx,|ui| {
+    let response=crate::theme::window("Parametric components").vscroll(true).beside_model().open(&mut state.open).default_size(egui::vec2(420.,520.)).resizable(true).show(ctx,|ui| {
         ui.horizontal_wrapped(|ui| {
             for (label,spec) in [("Window",Spec::default()),("Door",Spec::Door{width:0.9,height:2.1,depth:0.12,frame:0.06,opening:0.}), ("Stairs",Spec::Stairs{width:1.,rise:0.18,tread:0.28,steps:12})] {
                 if ui.selectable_label(state.spec.name()==label,label).clicked() {state.spec=spec;state.editing=None;state.error=None;}
@@ -206,6 +206,9 @@ pub fn grips(ctx: &egui::Context, app: &mut App3d) {
         let Some(at) = app.view().project(world) else {
             continue;
         };
+        if app.over_panel(at) && !app.features.parametric.resize.as_ref().is_some_and(|resize| resize.axis == axis) {
+            continue;
+        }
         let Some(step) = app.view().project(transform.transform_point3(point + axes[axis])) else {
             continue;
         };
