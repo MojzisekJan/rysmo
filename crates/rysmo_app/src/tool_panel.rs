@@ -33,10 +33,6 @@ pub fn panel(ui: &mut egui::Ui, app: &mut App3d) {
     }
     ui.horizontal_wrapped(|ui| {
         ui.strong(tool.name());
-        if ui.small_button("Help").clicked() {
-            crate::help::open_current(app);
-        }
-
         ui.separator();
         match tool {
             T::Circle | T::Polygon | T::Arc | T::ThreePointArc | T::CenterArc | T::Pie => {
