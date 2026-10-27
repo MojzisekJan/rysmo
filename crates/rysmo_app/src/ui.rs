@@ -955,6 +955,9 @@ fn overlay(mut contexts: EguiContexts, mut app: ResMut<App3d>) -> Result {
     if app.welcome {
         return Ok(());
     }
+    // Every panel rectangle is now known, so model handles cannot cover a later dialog.
+    crate::features::parametric::grips(ctx, &mut app);
+    crate::features::component_data::markers(ctx, &app);
     let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Background, egui::Id::unique("overlay")));
     app.dimension_text_sizes = draw_dimensions(&painter, &app);
     app.text_sizes = draw_texts(&painter, &app);

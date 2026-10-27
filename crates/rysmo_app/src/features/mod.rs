@@ -28,12 +28,10 @@ pub fn panels(ctx: &bevy_egui::egui::Context, app: &mut crate::state::App3d) {
     imports::panel(ctx, app);
     library::panel(ctx, app);
     parametric::panel(ctx, app);
-    parametric::grips(ctx, app);
     drawing::panel(ctx, app);
     photo::panel(ctx, app);
     report::panel(ctx, app);
     component_data::panel(ctx, app);
-    component_data::markers(ctx, app);
     hatches::refresh(app);
     procedures::panel(ctx, app);
     sheets::panel(ctx, app);

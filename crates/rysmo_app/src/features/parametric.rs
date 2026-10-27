@@ -138,7 +138,8 @@ fn resized(spec: &Spec, axis: usize, delta: f64) -> Spec {
 }
 /// Screen handles preview dimensions and commit one regeneration on release.
 pub fn grips(ctx: &egui::Context, app: &mut App3d) {
-    if !app.features.parametric.open {
+    if !app.features.parametric.open || app.unsaved.active() || app.command_search.open || app.portable_files.is_some()
+    {
         app.features.parametric.resize = None;
         return;
     }
