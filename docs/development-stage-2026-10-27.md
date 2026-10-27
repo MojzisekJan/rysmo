@@ -20,16 +20,20 @@ and Git author/committer Jan Mojzisek <mojzisekjan@gmail.com>.
   stated units, hierarchical transforms, visible-only option and explicit volume
   availability. Bounded traversal, stable ordering, CSV quoting and safe text
   cells. Browser and native exports use the same report implementation.
-- [ ] Validate new and preceding workflows: headless regressions, strict native
+- [x] Validate new and preceding workflows: headless regressions, strict native
   and WASM checks, persistence and cancellation. Attempt interactive browser
   verification when the available browser tools permit access; record blockers
   without bypassing them or claiming screenshots/FPS that were not measured.
-- [ ] Build and validate one current optimized web package after related fixes.
+- [x] Build and validate one current optimized web package after related fixes.
   Check source revision, loader/assets, ZIP and corresponding source contents.
   Keep build outputs ignored and report the actual package location and size.
-- [ ] Update the English guide, workflow documentation and a verification record;
+- [x] Update the English guide, workflow documentation and a verification record;
   finish with clean, reviewable local commits and a clear remaining-work list.
 
 External upload/publication is not part of this stage. Scene animation and
 spatial decorative freehand remain excluded. Do not introduce speculative formats
 or vendor integrations merely to expand scope.
+
+Completed implementation and verification are recorded in
+`docs/verification/path-points-report-2026-10-27.md`, including the browser
+download-artifact limitation. The optimized package is built from the current code.

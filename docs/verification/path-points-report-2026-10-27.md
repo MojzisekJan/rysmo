@@ -66,3 +66,69 @@ cyclic report rejection and native persistence of exact point edits.
 
 Application tests for dialog cancellation and stale project generations are
 type-checked. The GPU-linked application test binary was not executed.
+
+## Replay fixture
+
+`testdata/path-points-report.rysmo` contains one scaled Block component and a
+connected two-edge polyline. Its definition has a 0.2 m cube scaled three times:
+occurrence edge length 7.2 m, face area 2.16 m² and volume 0.216 m³. The open root
+path adds 4 m of linework. Therefore the overall report has length 11.2 m and
+area 2.16 m²; its total volume is unavailable because root linework has no closed
+surface. The component volume remains available separately.
+
+To replay the workflows in the web editor:
+
+1. Open the fixture and select all. Search for Array Along Path with Shift+S.
+   Review the preview, create copies, then Undo and Redo.
+2. Undo the array and select only the polyline. Search for Edit Curve Points.
+   Change one local coordinate, review the green preview and Apply point. Undo
+   restores the original point.
+3. Export Model report (CSV) from File > Export. Check the quantities above,
+   definition summaries and the reason for the blank total volume.
+
+The fixture was also loaded through the built native codec and its quantities
+were checked against these values before interactive verification.
+
+## Browser verification and web package
+
+The current optimized web build started successfully in the in-app browser, with
+actual 3D rendering. Interactive verification then used a temporary same-origin
+iframe wrapper to exercise the embedded file-input path used by itch.io. The
+standalone page's native File System Access chooser could not be driven through
+the browser filechooser API. The embedded chooser eventually loaded the fixture,
+but its automation transfer was unexpectedly slow.
+
+Executed in the embedded editor:
+
+- Select all and launch Array Along Path through command search. Set four new
+  occurrences, inspect the four green bounding boxes, create the array, then
+  verify one Undo removes all copies and Redo restores them.
+- Select the polyline, open Edit Curve Points and set its first point's Z to 1 m.
+  Inspect the read-only preview, shrink the dialog and confirm its text/fields
+  resize without overlap. Apply, close and Undo restore the original point.
+  A second pending edit was discarded with Escape.
+- Open Model Report through command search and trigger Export CSV. The application
+  reported `Downloaded model-report.csv`, with no browser warning/error logs.
+  The automation download event timed out, so downloaded bytes were not inspected.
+  CSV contents and expected fixture quantities are covered by the native codec
+  smoke check and executed I/O tests rather than a claimed browser-download check.
+
+Visual evidence is saved as `path-array-preview-2026-10-27.jpg`,
+`curve-point-preview-2026-10-27.jpg` and `model-report-dialog-2026-10-27.jpg` in this
+directory. No FPS, browser memory or mobile-device benchmark is claimed.
+
+`RYSMO_WEB_OFFLINE=true CARGO_BUILD_JOBS=1 bash scripts/build-web.sh` completed a
+fresh optimized build after the dependency update. Cargo's cold release phase took
+18m 21s, followed by wasm-bindgen/wasm-opt and packaging. The final compact exact
+coordinate display was included before the application crate compiled; native
+and WASM Clippy were rerun successfully afterward. No release code changed after
+this build.
+
+The ZIP is `target/web/rysmo-itch.zip`. It includes corresponding source and
+licences; the larger source archive is a separate downloadable asset and is not
+loaded to start the editor. `scripts/check-web-dist.mjs` validates generated
+modules, imports, assets, source metadata and archive consistency. The temporary
+iframe wrapper is removed before final packaging. See `target/web/build-report.json`
+for final package size and revision. Upload and publication are outside this stage.
+
+Optimized WASM: 28439344 bytes. SHA-256: `aa7679bee6f5c32d98627b50ea717f4d13e664a1400fb0fc78050763ce0a87ef`.

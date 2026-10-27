@@ -21,7 +21,7 @@ impl Draft {
             && self.context == app.editor.context()
     }
     fn load(&mut self, app: &App3d) {
-        self.coordinates = app.editor.mesh().pos(self.vertices[self.index]).to_array().map(|n| format!("{n:.17}m"));
+        self.coordinates = app.editor.mesh().pos(self.vertices[self.index]).to_array().map(|n| format!("{n}m"));
     }
     fn position(&self, app: &App3d) -> Result<DVec3, String> {
         let mut values = [0.; 3];
