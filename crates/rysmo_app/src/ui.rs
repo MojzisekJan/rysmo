@@ -318,7 +318,7 @@ fn panels(
             rects.push(tabs.response.rect);
         }
 
-        if app.preferences.tool_panel {
+        if app.preferences.tool_panel && crate::tool_panel::has_options(&app) {
             let options = egui::Panel::top("tool-options")
                 .show_separator_line(false)
                 .frame(chrome_frame(&root, 10, 4))

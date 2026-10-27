@@ -2,35 +2,25 @@
 use crate::{state::App3d, theme};
 use bevy_egui::egui;
 use rysmo_tools::ToolKind as T;
+pub fn has_options(app: &App3d) -> bool {
+    matches!(
+        app.tools.active(),
+        T::Circle | T::Polygon | T::Arc | T::ThreePointArc | T::CenterArc | T::Pie | T::PaintBucket
+    ) && app.text3d.is_none()
+        && app.fillet.is_none()
+        && app.terrain.is_none()
+        && app.smoove.is_none()
+        && app.stamp.is_none()
+        && app.drape.is_none()
+        && app.mirror.is_none()
+        && app.solid_tools.is_none()
+}
+
 pub fn panel(ui: &mut egui::Ui, app: &mut App3d) {
-    let tool = app.tools.active();
-    let special = if app.text3d.is_some() {
-        Some("3D Text")
-    } else if app.fillet.is_some() {
-        Some("Fillet")
-    } else if app.terrain.is_some() {
-        Some("Terrain grid")
-    } else if app.smoove.is_some() {
-        Some("Smoove")
-    } else if app.stamp.is_some() {
-        Some("Stamp")
-    } else if app.drape.is_some() {
-        Some("Drape")
-    } else if app.mirror.is_some() {
-        Some("Flip")
-    } else if app.solid_tools.is_some() {
-        Some("Solid tools")
-    } else {
-        None
-    };
-    if let Some(label) = special {
-        ui.horizontal_wrapped(|ui| {
-            ui.strong(label);
-            ui.separator();
-            ui.label(app.status());
-        });
+    if !has_options(app) {
         return;
     }
+    let tool = app.tools.active();
     ui.horizontal_wrapped(|ui| {
         ui.strong(tool.name());
         ui.separator();
@@ -55,25 +45,7 @@ pub fn panel(ui: &mut egui::Ui, app: &mut App3d) {
                     app.show_materials = true;
                 }
             }
-            T::PushPull => {
-                ui.weak(if app.modifiers().ctrl {
-                    "New starting face · Ctrl to toggle"
-                } else {
-                    "Ctrl creates a new starting face"
-                });
-            }
-            T::Move | T::Rotate => {
-                ui.weak(if app.modifiers().ctrl { "Copy mode on · Ctrl to toggle" } else { "Ctrl toggles copy mode" });
-            }
-            T::TapeMeasure | T::Protractor => {
-                ui.weak("Ctrl toggles guides · type an exact value in Measurements");
-            }
-            T::Select => {
-                ui.weak("Shift toggles selection · double-click to edit a group");
-            }
-            _ => {
-                ui.add(egui::Label::new(app.tools.status()).truncate());
-            }
+            _ => {}
         }
     });
 }
