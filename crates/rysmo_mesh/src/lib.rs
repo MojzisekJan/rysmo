@@ -24,6 +24,7 @@
 #![forbid(unsafe_code)]
 
 mod curves;
+mod divide;
 mod fillet;
 mod flags;
 mod follow;
@@ -43,6 +44,7 @@ mod tests;
 mod tests2;
 
 pub use curves::{Curve, CurveKind};
+pub use divide::EdgeDivision;
 pub use fillet::Fillet;
 pub use ids::{
     CurveId, DefinitionId, DimensionId, EdgeId, Element, FaceId, GuideId, ImageId, InstanceId, MaterialId, TagId,

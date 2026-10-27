@@ -43,3 +43,29 @@ pub enum IoError {
 pub(crate) fn y_up(p: rysmo_math::DVec3) -> [f32; 3] {
     [p.x as f32, p.z as f32, -p.y as f32]
 }
+
+#[cfg(test)]
+mod divide_tests {
+    #[test]
+    fn divided_boundaries_survive_native_round_trip() {
+        use rysmo_math::DVec3;
+        use rysmo_model::{Command, Editor};
+        let mut editor = Editor::new();
+        editor
+            .apply(Command::DrawRectangle {
+                corner: DVec3::ZERO,
+                u: DVec3::X * 8.,
+                v: DVec3::Y * 4.,
+                facing: Some(DVec3::Z),
+            })
+            .unwrap();
+        let edge = editor.mesh().edges().next().unwrap().0;
+        editor.apply(Command::DivideEdges { edges: vec![edge], segments: 7 }).unwrap();
+        let source = crate::save(editor.doc());
+        let loaded = crate::load(&source).unwrap();
+        assert_eq!(crate::save(&loaded), source);
+        loaded.root.mesh.validate().unwrap();
+        assert_eq!(loaded.root.mesh.edge_count(), 10);
+        assert_eq!(loaded.root.mesh.face_count(), 1);
+    }
+}

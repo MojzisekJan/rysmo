@@ -353,6 +353,12 @@ fn draw(ui: &egui::Ui, rect: Rect, icon: Icon, color: Color32) {
             action.bezier([(18.4, 18.5), (18.4, 21.3), (22.6, 21.3), (22.6, 18.5)]);
             action.bezier([(22.6, 18.5), (22.6, 17.), (21., 16.), (20.5, 14.)]);
         }
+        Icon::Action(Action::DivideEdges) => {
+            p.line(&[(3., 12.), (21., 12.)]);
+            for x in [3., 9., 15., 21.] {
+                guide.line(&[(x, 8.), (x, 16.)]);
+            }
+        }
         Icon::Action(Action::Fillet) => {
             guide.line(&[(3., 3.), (3., 21.), (21., 21.)]);
             action.line(&[(7., 3.), (7., 11.)]);

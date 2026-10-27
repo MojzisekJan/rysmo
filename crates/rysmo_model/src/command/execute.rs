@@ -1102,6 +1102,9 @@ impl Command {
                     }
                 }
             }
+            Command::DivideEdges { edges: selected, segments } => {
+                out.created = mesh_op(doc, &mut |mesh| mesh.divide_edges(&selected, segments).map(&edges))?;
+            }
             Command::ReverseFaces { faces } => {
                 doc.with_mesh(def, |m| m.reverse_faces(&faces));
             }

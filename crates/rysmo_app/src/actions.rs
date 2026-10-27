@@ -15,6 +15,7 @@ pub enum Action {
     IntersectSelection,
     SolidTools,
     Fillet,
+    DivideEdges,
     Drape,
     Stamp,
     AddDetail,
@@ -61,6 +62,7 @@ impl Action {
             Self::ReverseFaces
             | Self::IntersectModel
             | Self::IntersectSelection
+            | Self::DivideEdges
             | Self::Fillet
             | Self::SolidTools
             | Self::SoftenEdges
@@ -95,6 +97,7 @@ impl Action {
             Self::ReverseFaces => g::ARROWS_CLOCKWISE,
             Self::IntersectModel | Self::IntersectSelection | Self::SolidTools => g::INTERSECT,
             Self::Fillet => g::ARROWS_CLOCKWISE,
+            Self::DivideEdges => g::LINE_SEGMENT,
             Self::SoftenEdges | Self::UnsoftenEdges => g::LINE_SEGMENT,
             Self::SectionPlane => g::SQUARE_SPLIT_VERTICAL,
             Self::Text3d => g::TEXT_T,
@@ -116,6 +119,7 @@ impl Action {
             Action::IntersectSelection => "Intersect Faces with Selection",
             Action::SolidTools => "Solid Tools...",
             Action::Fillet => "Fillet...",
+            Action::DivideEdges => "Divide Edges...",
             Action::Drape => "Drape",
             Action::Stamp => "Stamp",
             Action::AddDetail => "Add Detail",
@@ -195,6 +199,7 @@ pub fn run(app: &mut App3d, action: Action) {
     match action {
         Action::SolidTools => crate::solid_tools::begin(app),
         Action::Fillet => crate::fillet::begin(app),
+        Action::DivideEdges => crate::divide::begin(app),
         Action::IntersectModel | Action::IntersectSelection => {
             let context = app.editor.context().to_vec();
             apply(
@@ -350,6 +355,7 @@ pub fn available(app: &App3d) -> Vec<(Action, bool)> {
         (Action::IntersectSelection, has_faces || has_inst),
         (Action::SolidTools, app.editor.selection().len() == 2 && selected_instances(app).len() == 2),
         (Action::Fillet, app.editor.selection().len() == 2 && selected_edges(app).len() == 2),
+        (Action::DivideEdges, crate::divide::available(app)),
         (Action::SoftenEdges, has_edges),
         (Action::UnsoftenEdges, has_edges),
         (

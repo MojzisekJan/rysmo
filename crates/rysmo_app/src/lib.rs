@@ -19,6 +19,7 @@ mod brand;
 mod command_search;
 mod component_panel;
 mod detail_tool;
+mod divide;
 mod drape_tool;
 mod environment;
 mod faces;

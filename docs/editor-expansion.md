@@ -98,3 +98,19 @@ Limits are 4096 estimated triangles / 16384 vertices per operand, 4096 occurrenc
 32 hierarchy levels and a shared clipping budget. Result welding, stitching,
 intersection validation and edge-style matching also have bounded budgets. Invalid
 or excessive operations fail atomically and leave the document and Undo unchanged.
+
+## Equal edge divisions
+
+Select straight edges and choose Model → Faces & Edges → Divide Edges, or the
+same command in the context menu or command search. Set 2–512 segments per edge.
+Green points preview the new endpoints; a single selected edge also reports its
+segment length in project units. Divide creates joined segments, retains adjacent
+faces and their front/back paint and UV placement, and commits one Undo step.
+Cancel, Escape or switching tools discards the preview. Changing the document,
+project generation or editing context invalidates it.
+
+The operation accepts at most 8192 resulting segments. Duplicate input edge IDs
+are counted once. Missing edges, curve members, evaluated component-opening
+boundaries and divisions below model tolerance are rejected without partial edits.
+Use Properties segment settings for intact arcs and circles. Divided straight
+edges remain separate edges rather than becoming an analytic curve.

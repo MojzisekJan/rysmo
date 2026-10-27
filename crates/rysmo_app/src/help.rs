@@ -17,6 +17,12 @@ struct Topic {
 }
 static TOPICS: &[Topic] = &[
     Topic {
+        title: "Divide Edges",
+        category: "Modelling",
+        icon: Some(Icon::Action(Action::DivideEdges)),
+        body: "Select straight edges and choose Model > Faces & Edges > Divide Edges, or use the context menu. Set Segments per edge from 2 to 512. Green preview points mark new endpoints; a single edge also shows the resulting segment length in project units. Divide commits all selected edges in one Undo step. Cancel, Escape or switching tools discards the preview. Changes to the document or editing context invalidate it. Adjacent faces, materials and texture placement are retained. Curves and component-opening boundaries cannot be divided this way; select an arc or circle and use its segment settings in Properties instead. At most 8192 output segments are allowed; subdivisions below model tolerance are rejected.",
+    },
+    Topic {
         title: "Import and component collections",
         category: "Files",
         icon: None,
@@ -540,7 +546,9 @@ fn matches(topic: &Topic, query: &str) -> bool {
 pub fn open_current(app: &mut App3d) {
     app.help.open = true;
     app.help.query.clear();
-    let current = if app.paste_place.is_some() {
+    let current = if app.divide.is_some() {
+        "Divide Edges"
+    } else if app.paste_place.is_some() {
         "Copy, paste and history"
     } else if app.texture_session.is_some() {
         "Materials and texture position"
@@ -752,6 +760,7 @@ mod tests {
             Action::AddDetail,
             Action::FlipEdge,
             Action::Fillet,
+            Action::DivideEdges,
         ] {
             assert!(TOPICS.iter().any(|topic| matches!(topic.icon, Some(Icon::Action(a)) if a == action)));
         }

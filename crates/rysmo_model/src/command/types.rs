@@ -317,6 +317,11 @@ pub enum Command {
     Erase {
         elements: Vec<Element>,
     },
+    /// Divides each selected straight edge into equal segments.
+    DivideEdges {
+        edges: Vec<EdgeId>,
+        segments: u32,
+    },
     ReverseFaces {
         faces: Vec<FaceId>,
     },

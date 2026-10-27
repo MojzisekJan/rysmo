@@ -56,6 +56,7 @@ impl Command {
             Command::OffsetFace { .. } | Command::OffsetEdges { .. } => "Offset",
             Command::FollowMe { .. } => "Follow Me",
             Command::Erase { .. } => "Erase",
+            Command::DivideEdges { .. } => "Divide Edges",
             Command::ReverseFaces { .. } => "Reverse Faces",
             Command::SetEdges { .. } => "Edge Style",
             Command::SoftenEdges { .. } => "Soften Edges",

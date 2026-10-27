@@ -589,6 +589,7 @@ fn panels(
     crate::features::panels(ctx, &mut app);
     crate::print_check::panel(ctx, &mut app);
     crate::fillet::panel(ctx, &mut app);
+    crate::divide::panel(ctx, &mut app);
     panels::materials(ctx, &mut app);
     panels::tags(ctx, &mut app);
     panels::settings(ctx, &mut app);
@@ -952,6 +953,7 @@ fn overlay(mut contexts: EguiContexts, mut app: ResMut<App3d>) -> Result {
     crate::solid_tools::draw(&painter, &app);
     crate::print_check::draw(&painter, &app);
     crate::fillet::draw(&painter, &app);
+    crate::divide::draw(&painter, &app);
     crate::terrain_tool::draw(&painter, &app);
     crate::smoove_tool::draw(&painter, &app);
     crate::flip_tool::draw(&painter, &app);

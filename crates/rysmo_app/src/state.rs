@@ -34,6 +34,7 @@ pub struct App3d {
     pub detail: Option<crate::detail_tool::Draft>,
     pub flip: Option<crate::flip_tool::State>,
     pub mirror: Option<crate::mirror::Draft>,
+    pub divide: Option<crate::divide::Draft>,
     pub fillet: Option<crate::fillet::Draft>,
     pub solid_tools: Option<crate::solid_tools::Draft>,
     pub print_check: Option<crate::print_check::Dialog>,
@@ -168,6 +169,7 @@ impl App3d {
             solid_tools: None,
             print_check: None,
             fillet: None,
+            divide: None,
             smoove: None,
             smoove_radius: 3.048,
             terrain_last: None,
@@ -325,6 +327,7 @@ impl App3d {
         self.mirror = None;
         self.solid_tools = None;
         self.fillet = None;
+        self.divide = None;
         self.smoove = None;
         self.terrain_last = None;
         self.terrain = None;
@@ -353,7 +356,9 @@ impl App3d {
             chars.next().map(|c| c.to_uppercase().chain(chars).collect()).unwrap_or_default()
         };
         self.message.as_ref().map(sentence).unwrap_or_else(|| {
-            let mut s = if self.fillet.is_some() {
+            let mut s = if self.divide.is_some() {
+                "Divide Edges: choose the segment count, then Divide. Escape cancels."
+            } else if self.fillet.is_some() {
                 "Fillet: set the radius and segments, then Apply. Escape cancels."
             } else if self.solid_tools.is_some() {
                 "Solid Tools: choose an operation and confirm Apply. Escape cancels."

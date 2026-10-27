@@ -202,6 +202,7 @@ fn matches(entry: &Entry, query: &str) -> bool {
         Command::Tool(ToolKind::RotatedRectangle) => "three point tilt plane",
         Command::Action(Action::ZoomExtents) => "fit model camera",
         Command::Action(Action::SolidTools) => "boolean solids group component",
+        Command::Action(Action::DivideEdges) => "split equal segments subdivide endpoints division",
         Command::Action(Action::Fillet) => "round corner radius tangent fillet",
         Command::Solid(rysmo_model::solids::BooleanOp::Trim | rysmo_model::solids::BooleanOp::Subtract) => {
             "boolean solid difference cut"
