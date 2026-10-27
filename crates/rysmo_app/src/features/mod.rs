@@ -5,6 +5,7 @@ pub mod imports;
 pub mod library;
 pub mod parametric;
 pub mod photo;
+pub mod report;
 
 #[derive(Default)]
 pub struct State {
@@ -13,6 +14,7 @@ pub struct State {
     pub parametric: parametric::State,
     pub drawing: drawing::State,
     pub photo: photo::State,
+    pub report: report::State,
 }
 pub fn panels(ctx: &bevy_egui::egui::Context, app: &mut crate::state::App3d) {
     imports::panel(ctx, app);
@@ -20,6 +22,7 @@ pub fn panels(ctx: &bevy_egui::egui::Context, app: &mut crate::state::App3d) {
     parametric::panel(ctx, app);
     drawing::panel(ctx, app);
     photo::panel(ctx, app);
+    report::panel(ctx, app);
 }
 pub fn remember<R>(app: &mut crate::state::App3d, response: &Option<bevy_egui::egui::InnerResponse<Option<R>>>) {
     if let Some(response) = response {

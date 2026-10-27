@@ -386,6 +386,19 @@ fn draw(ui: &egui::Ui, rect: Rect, icon: Icon, color: Color32) {
             action.line(&[(6., 11.), (10., 8.)]);
             action.line(&[(16., 11.), (20., 8.)]);
         }
+        Icon::Action(Action::EditCurvePoints) => {
+            p.line(&[(3., 18.), (10., 7.), (21., 12.)]);
+            for (x, y) in [(3., 18.), (10., 7.), (21., 12.)] {
+                guide.ring(x, y, 2.);
+            }
+            action.line(&[(14., 3.), (18., 3.), (18., 7.)]);
+        }
+        Icon::Action(Action::ArrayAlongPath) => {
+            guide.bezier([(2., 20.), (10., 20.), (14., 6.), (22., 6.)]);
+            for (x, y) in [(3., 15.), (11., 10.), (18., 2.)] {
+                p.line(&[(x, y), (x + 4., y), (x + 4., y + 4.), (x, y + 4.), (x, y)]);
+            }
+        }
         Icon::Action(Action::DivideEdges) => {
             p.line(&[(3., 12.), (21., 12.)]);
             for x in [3., 9., 15., 21.] {

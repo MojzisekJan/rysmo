@@ -75,3 +75,8 @@ pub mod similar;
 pub mod surface_placement;
 
 pub mod solid_check;
+
+pub mod curve_points;
+pub mod path_array;
+
+pub use volume::mesh_volume;

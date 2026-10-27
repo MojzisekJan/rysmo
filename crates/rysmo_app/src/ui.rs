@@ -590,6 +590,8 @@ fn panels(
     crate::print_check::panel(ctx, &mut app);
     crate::fillet::panel(ctx, &mut app);
     crate::divide::panel(ctx, &mut app);
+    crate::path_array::panel(ctx, &mut app);
+    crate::curve_points::panel(ctx, &mut app);
     crate::similar::panel(ctx, &mut app);
     crate::solid_check::panel(ctx, &mut app);
     crate::object_clipboard::panel(ctx, &mut app);
@@ -770,6 +772,9 @@ pub fn menus(ui: &mut egui::Ui, app: &mut App3d) {
             app.features.library.open = true;
         }
         menu::submenu(ui, g::EXPORT, "Export", |ui| {
+            if menu::button(ui, g::EXPORT, "Model report (CSV)...", "").clicked() {
+                app.features.report.open = true;
+            }
             for (label, action) in [
                 ("Wavefront OBJ...", files::export_obj as fn(&mut App3d)),
                 ("glTF (.glb)...", files::export_glb),
@@ -957,6 +962,8 @@ fn overlay(mut contexts: EguiContexts, mut app: ResMut<App3d>) -> Result {
     crate::print_check::draw(&painter, &app);
     crate::fillet::draw(&painter, &app);
     crate::divide::draw(&painter, &app);
+    crate::path_array::draw(&painter, &app);
+    crate::curve_points::draw(&painter, &app);
     crate::solid_check::draw(&painter, &app);
     crate::terrain_tool::draw(&painter, &app);
     crate::smoove_tool::draw(&painter, &app);

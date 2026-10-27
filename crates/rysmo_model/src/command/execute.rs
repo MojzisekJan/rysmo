@@ -1112,6 +1112,14 @@ impl Command {
             Command::ExplodeCurves { edges: selected } => {
                 out.created = mesh_op(doc, &mut |m| m.explode_curves(&selected).map(&edges))?;
             }
+            Command::ArrayAlongPath { source, path, options, context } => {
+                out.created = crate::path_array::apply(doc, def, context, source, &path, options)?;
+            }
+            Command::SetCurvePoint { curve, vertex, position } => {
+                out.changed = doc
+                    .with_mesh(def, |mesh| crate::curve_points::apply(mesh, curve, vertex, position))
+                    .expect("checked")?;
+            }
             Command::RepairSolid { repair } => {
                 out.changed = doc.with_mesh(def, |mesh| crate::solid_check::repair(mesh, repair)).expect("checked")?;
             }

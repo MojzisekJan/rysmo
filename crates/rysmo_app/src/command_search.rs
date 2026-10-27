@@ -38,6 +38,7 @@ enum File {
     Dxf,
     Stl,
     ThreeMf,
+    Report,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Command {
@@ -109,6 +110,7 @@ fn entries(app: &App3d) -> Vec<Entry> {
         (File::Dxf, "Export DXF (.dxf)...", ""),
         (File::Stl, "Export STL for 3D printing...", ""),
         (File::ThreeMf, "Export 3MF for 3D printing...", ""),
+        (File::Report, "Model report (CSV)...", ""),
     ] {
         result.push(Entry {
             command: Command::File(file),
@@ -208,6 +210,8 @@ fn matches(entry: &Entry, query: &str) -> bool {
         Command::Action(Action::WeldEdges) => "join connected edges polyline chain weld curve",
         Command::Action(Action::ExplodeCurves) => "ungroup separate segments explode curve",
         Command::Action(Action::OrientFaces) => "normals consistent facing reverse repair orientation",
+        Command::Action(Action::ArrayAlongPath) => "component copies distribution spacing tangent chain curve",
+        Command::Action(Action::EditCurvePoints) => "polyline vertex coordinates points",
         Command::Action(Action::DivideEdges) => "split equal segments subdivide endpoints division",
         Command::Action(Action::Fillet) => "round corner radius tangent fillet",
         Command::Solid(rysmo_model::solids::BooleanOp::Trim | rysmo_model::solids::BooleanOp::Subtract) => {
@@ -223,6 +227,7 @@ fn matches(entry: &Entry, query: &str) -> bool {
         Command::File(File::Dae) => "collada dae export textures",
         Command::File(File::Dxf) => "autocad dxf cad export",
         Command::File(File::Stl) => "stl 3d print printing slicer export",
+        Command::File(File::Report) => "csv quantities count volume area length spreadsheet bill materials",
         Command::File(File::ThreeMf) => "3mf 3d print printing slicer export",
         _ => "",
     };
@@ -284,6 +289,7 @@ fn execute(app: &mut App3d, command: Command) {
             File::Dxf => crate::files::export_dxf(app),
             File::Stl => crate::files::export_for_print(app, crate::print_check::Format::Stl),
             File::ThreeMf => crate::files::export_for_print(app, crate::print_check::Format::ThreeMf),
+            File::Report => app.features.report.open = true,
         },
         Command::Copy => {
             crate::object_clipboard::copy(app, false);

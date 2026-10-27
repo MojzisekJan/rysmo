@@ -213,3 +213,58 @@ The diagnostic overlay draws at most 10000 markers and reports truncation. Count
 and problem selection remain complete. Select Similar caches unchanged queries
 instead of scanning the context on each UI frame. Validation is recorded in
 `docs/verification/selection-placement-solid-check-2026-10-27.md`.
+
+## Component path arrays
+
+Select one component occurrence together with connected edge linework. Edit >
+Groups & Components > Array Along Path creates new occurrences along the path,
+with a count or measured spacing, start offset, reverse direction and optional
+local X-axis tangent alignment. The original occurrence stays in place. Count
+means new occurrences, including the start, which can overlap the source. Open
+count arrays span both endpoints. Closed arrays avoid a duplicate seam and wrap
+an offset around the loop. Spacing arrays keep the requested distance and may
+leave a shorter final interval. Distances include the editing context's world
+scale. The preview shows at most 256 bounding boxes; confirmation creates the
+complete array in one Undo step. Cancel and Escape do not change the model.
+
+A path is one unbranched connected chain or loop, at most 2048 edges. An array is
+limited to 1024 new occurrences, 100000 expanded occurrences, one million vertices
+and 500000 faces. Groups, protected opening boundaries, disconnected paths and
+invalid transforms are rejected. Definitions, instance paint and tags are shared;
+existing glue attachments are not copied.
+
+## Exact polyline points
+
+Select a grouped polyline and open Model > Faces & Edges > Edit Curve Points.
+Choose an ordered point and enter local X/Y/Z coordinates. Explicit unit suffixes
+are accepted. The green model preview is read-only until Apply point. Each Apply
+has one Undo step; the window stays open for another point. Vertex and curve IDs,
+edge properties, face paint and UV data remain attached to the same entities.
+
+This editor preserves topology. It refuses vertex merging, unjoined edge crossings,
+overlaps, non-planar or collapsed faces, other attached curves and evaluated opening
+boundaries. Limits are 2048 curve edges, 50000 context vertices and two million
+edge intersection comparisons. Analytic arcs and circles use existing radius and
+segment controls. Explode and Weld can convert them to an editable polyline.
+
+## CSV quantities
+
+File > Export > Model report (CSV) exports hierarchy paths, component occurrence
+counts, own edge lengths in metres, face areas in square metres and available solid
+volumes in cubic metres. Visible-only filtering is optional. Mirrored and nonuniform
+parent transforms are included. Section planes do not trim quantities; soft edges
+are included. Each assembly lists its own geometry, with children
+in separate rows, so totals do not count nested geometry twice. Optional component
+summaries are excluded from the total. The occurrence count excludes the root.
+
+An unavailable volume is blank with a reason. Excluded hidden geometry makes volume
+unavailable. Single-shell quantities use the closed, consistent topology check used
+by Properties; use Solid Check for geometric self-intersection diagnostics. Compound
+shells also require validated nesting. Quantities are not a Boolean union of
+intersecting occurrences. Empty assemblies have no own volume.
+
+CSV has deterministic ordering, CRLF records, quoted text and escaped spreadsheet
+formula prefixes. Export does not change the model, its Save destination or Undo
+history. Traversal is limited to 32 hierarchy levels, 100000 occurrences and two
+million evaluated geometry elements/boundary steps; excessive or cyclic reports
+fail without a partial download.

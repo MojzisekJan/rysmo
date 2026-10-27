@@ -18,18 +18,24 @@ impl Document {
         if !scale.is_finite() || scale == 0. {
             return Err("Degenerate instance transform");
         }
-        let local = match shell_volume(&def.mesh) {
-            Ok(volume) => volume,
-            Err("Multiple shells: volume is not summed") => crate::solid_validation::validate(&def.mesh, false)
-                .map_err(|_| "Invalid or over-complex compound solid")?
-                .abs(),
-            Err(error) => return Err(error),
-        };
+        let local = mesh_volume(&def.mesh)?;
         let volume = local * scale;
         if !volume.is_finite() || volume <= 0. {
             return Err("Degenerate volume");
         }
         Ok(volume)
+    }
+}
+
+/// Local cubic metres from a closed mesh; compound shells use nesting validation.
+/// Single-shell reporting is topology-based, as in the Properties inspector.
+pub fn mesh_volume(mesh: &Mesh) -> Result<f64, &'static str> {
+    match shell_volume(mesh) {
+        Ok(volume) => Ok(volume),
+        Err("Multiple shells: volume is not summed") => crate::solid_validation::validate(mesh, false)
+            .map(f64::abs)
+            .map_err(|_| "Invalid or over-complex compound solid"),
+        Err(error) => Err(error),
     }
 }
 

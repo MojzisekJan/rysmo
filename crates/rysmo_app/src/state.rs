@@ -35,6 +35,8 @@ pub struct App3d {
     pub flip: Option<crate::flip_tool::State>,
     pub mirror: Option<crate::mirror::Draft>,
     pub divide: Option<crate::divide::Draft>,
+    pub path_array: Option<crate::path_array::Draft>,
+    pub curve_points: Option<crate::curve_points::Draft>,
     pub fillet: Option<crate::fillet::Draft>,
     pub similar: Option<crate::similar::Draft>,
     pub solid_check: Option<crate::solid_check::Dialog>,
@@ -174,6 +176,8 @@ impl App3d {
             print_check: None,
             fillet: None,
             divide: None,
+            path_array: None,
+            curve_points: None,
             smoove: None,
             smoove_radius: 3.048,
             terrain_last: None,
@@ -334,6 +338,8 @@ impl App3d {
         self.solid_check = None;
         self.fillet = None;
         self.divide = None;
+        self.path_array = None;
+        self.curve_points = None;
         self.smoove = None;
         self.terrain_last = None;
         self.terrain = None;
@@ -368,6 +374,10 @@ impl App3d {
                 "Select Similar: choose a criterion and review matches before selecting. Escape cancels."
             } else if self.solid_check.is_some() {
                 "Solid Check: inspect marked problems or enter the chosen component to repair it. Escape closes."
+            } else if self.path_array.is_some() {
+                "Array Along Path: review spacing and alignment, then create the array. Escape cancels."
+            } else if self.curve_points.is_some() {
+                "Edit Curve Points: choose a point and enter exact coordinates. Escape cancels the pending preview."
             } else if self.divide.is_some() {
                 "Divide Edges: choose the segment count, then Divide. Escape cancels."
             } else if self.fillet.is_some() {

@@ -328,6 +328,17 @@ pub enum Command {
     ExplodeCurves {
         edges: Vec<EdgeId>,
     },
+    ArrayAlongPath {
+        source: InstanceId,
+        path: Vec<EdgeId>,
+        options: crate::path_array::Options,
+        context: DMat4,
+    },
+    SetCurvePoint {
+        curve: rysmo_mesh::CurveId,
+        vertex: rysmo_mesh::VertexId,
+        position: DVec3,
+    },
     RepairSolid {
         repair: crate::solid_check::Repair,
     },

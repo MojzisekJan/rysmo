@@ -223,8 +223,10 @@ pub fn tool_key(app: &mut App3d, key: Key) {
         app.solid_check = None;
         return;
     }
-    if app.divide.is_some() && key == Key::Escape {
+    if key == Key::Escape && (app.divide.is_some() || app.path_array.is_some() || app.curve_points.is_some()) {
         app.divide = None;
+        app.path_array = None;
+        app.curve_points = None;
         return;
     }
     if app.fillet.is_some() && key == Key::Escape {

@@ -19,6 +19,8 @@ pub enum Action {
     PasteOnFace,
     Fillet,
     DivideEdges,
+    ArrayAlongPath,
+    EditCurvePoints,
     WeldEdges,
     ExplodeCurves,
     OrientFaces,
@@ -64,7 +66,8 @@ impl Action {
             | Self::CloseGroup
             | Self::Explode
             | Self::MakeUnique
-            | Self::Unglue => 1,
+            | Self::Unglue
+            | Self::ArrayAlongPath => 1,
             Self::ReverseFaces
             | Self::IntersectModel
             | Self::IntersectSelection
@@ -72,6 +75,7 @@ impl Action {
             | Self::ExplodeCurves
             | Self::OrientFaces
             | Self::DivideEdges
+            | Self::EditCurvePoints
             | Self::Fillet
             | Self::SolidCheck
             | Self::SolidTools
@@ -110,7 +114,8 @@ impl Action {
             Self::SolidCheck => g::CUBE,
             Self::SelectSimilar => g::SELECTION_ALL,
             Self::PasteOnFace => g::CLIPBOARD,
-            Self::DivideEdges => g::LINE_SEGMENT,
+            Self::DivideEdges | Self::EditCurvePoints => g::LINE_SEGMENT,
+            Self::ArrayAlongPath => g::CUBE_FOCUS,
             Self::WeldEdges => g::LINK,
             Self::ExplodeCurves => g::LINK_BREAK,
             Self::OrientFaces => g::ARROWS_CLOCKWISE,
@@ -139,6 +144,8 @@ impl Action {
             Action::PasteOnFace => "Paste on Face...",
             Action::Fillet => "Fillet...",
             Action::DivideEdges => "Divide Edges...",
+            Action::ArrayAlongPath => "Array Along Path...",
+            Action::EditCurvePoints => "Edit Curve Points...",
             Action::WeldEdges => "Weld Edges",
             Action::ExplodeCurves => "Explode Curve",
             Action::OrientFaces => "Orient Faces",
@@ -234,6 +241,8 @@ pub fn run(app: &mut App3d, action: Action) {
         Action::PasteOnFace => crate::object_clipboard::paste_on_face(app),
         Action::Fillet => crate::fillet::begin(app),
         Action::DivideEdges => crate::divide::begin(app),
+        Action::ArrayAlongPath => crate::path_array::begin(app),
+        Action::EditCurvePoints => crate::curve_points::begin(app),
         Action::WeldEdges | Action::ExplodeCurves => {
             let selected = app.editor.selected();
             if selected.iter().any(|element| !matches!(element, Element::Edge(_))) {
@@ -436,6 +445,8 @@ pub fn available(app: &App3d) -> Vec<(Action, bool)> {
         (Action::SolidTools, app.editor.selection().len() == 2 && selected_instances(app).len() == 2),
         (Action::Fillet, app.editor.selection().len() == 2 && selected_edges(app).len() == 2),
         (Action::DivideEdges, crate::divide::available(app)),
+        (Action::ArrayAlongPath, crate::path_array::available(app)),
+        (Action::EditCurvePoints, crate::curve_points::available(app)),
         (Action::WeldEdges, app.editor.selection().len() >= 2 && only_editable_edges(app)),
         (Action::ExplodeCurves, only_editable_edges(app) && app.editor.selection().iter().any(|element| {
             matches!(element, Element::Edge(id) if app.editor.mesh().edge(*id).is_some_and(|edge| edge.curve.is_some()))

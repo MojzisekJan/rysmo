@@ -52,3 +52,16 @@ Checks and verification boundaries are recorded in
 - [x] Addressable solid diagnostics across component occurrences, selection of
   problem geometry, loose-edge removal and validated closed-shell orientation
   repair that retains cavities and refuses ambiguous topology.
+
+## Path arrays, polyline points and quantities
+
+- [x] Component arrays along open or closed edge paths, measured count/spacing,
+  tangent alignment, reverse direction, start offset and a bounded preview.
+- [x] Exact point coordinates for grouped polylines, stable IDs, preview and
+  topology-preserving edits that refuse ambiguous crossings or bent faces.
+- [x] Portable CSV quantities with transformed geometry, occurrence paths/counts,
+  visibility filters, definition summaries and spreadsheet-safe text.
+
+The autonomous stage and acceptance checks are in
+`docs/development-stage-2026-10-27.md`. Detailed behaviour and limits are in
+`docs/editor-expansion.md` and the English application guide.

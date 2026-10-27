@@ -16,6 +16,10 @@ struct Topic {
     body: &'static str,
 }
 static TOPICS: &[Topic] = &[
+    Topic { title: "Array Along Path", category: "Modelling", icon: Some(Icon::Action(Action::ArrayAlongPath)), body: "Select one component and connected edge path, then Edit > Groups & Components > Array Along Path. Set the number of new occurrences or measured spacing, start offset, tangent alignment and reverse direction. The source remains in place. Open paths include both ends in Count mode; closed loops do not duplicate the seam. Tangent alignment uses the component X axis. Distances use world metres including parent scale. Preview shows up to 256 bounding boxes. Cancel, Escape or a tool change discards the preview; Create array commits one Undo step. Branches, disconnected paths and excessive arrays are refused." },
+    Topic { title: "Edit Curve Points", category: "Modelling", icon: Some(Icon::Action(Action::EditCurvePoints)), body: "Select edges belonging to one grouped polyline, then Model > Faces & Edges > Edit Curve Points. Choose an ordered point and enter X, Y and Z in the current editing context, using project units or explicit suffixes. The green preview is read-only. Apply point preserves vertex and curve IDs and creates one Undo step; the dialog remains open for the next edit. Merging vertices, bending faces and changing protected opening boundaries are refused. Analytic arcs and circles retain their existing radius/segment controls; explode and weld them to convert to a polyline. Escape cancels the pending preview." },
+    Topic { title: "Model Report", category: "Files", icon: None, body: "File > Export > Model report (CSV) exports occurrence paths, component counts, own edge length in metres, own face area in square metres and available solid volume in cubic metres. Choose visible-only geometry and optional definition summaries. Parent transforms and nonuniform or mirrored scales are included. Assemblies list their own geometry separately from children; summary rows are excluded from the total. Open geometry or excluded hidden geometry has no volume and includes a reason. Section planes do not trim quantities. Soft edges are included. Single-shell volume requires closed consistently oriented geometry; use Solid Check for geometric diagnostics. CSV text is quoted and spreadsheet formula prefixes are escaped. Export does not change the current model Save destination." },
+
     Topic {
         title: "Select Similar", category: "Selection", icon: Some(Icon::Action(Action::SelectSimilar)),
         body: "Select one reference edge, face, group or component, then use Edit > Selection > Select Similar, the context menu or command search. Match assigned materials, edge length or the same component definition. Only the same entity kind is selected, in the current editing context; nested children are not traversed. Faces use their assigned front material, including Default, rather than inherited appearance. Edge lengths include the editing context's scale. The larger of relative and absolute tolerances applies. Review the match count and confirm Select Similar. Include hidden geometry and tags also considers softened edges. This does not change visibility settings or document geometry, and adds no Undo step. Escape cancels. Queries are limited to 200000 entities.",
@@ -576,6 +580,12 @@ pub fn open_current(app: &mut App3d) {
         "Select Similar"
     } else if app.solid_check.is_some() {
         "Solid Check"
+    } else if app.path_array.is_some() {
+        "Array Along Path"
+    } else if app.curve_points.is_some() {
+        "Edit Curve Points"
+    } else if app.features.report.open {
+        "Model Report"
     } else if app.divide.is_some() {
         "Divide Edges"
     } else if app.paste_place.is_some() {
@@ -791,6 +801,8 @@ mod tests {
             Action::FlipEdge,
             Action::Fillet,
             Action::DivideEdges,
+            Action::ArrayAlongPath,
+            Action::EditCurvePoints,
             Action::WeldEdges,
             Action::ExplodeCurves,
             Action::OrientFaces,
