@@ -4,7 +4,7 @@ A `.rysmo` file is UTF-8 JSON laid out with one element per line. People, script
 AI agents can read and change it with ordinary text tools, and a diff of two versions
 shows exactly which elements changed.
 
-The writer uses version 19. The reader also accepts versions 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 and 18; the example
+The writer uses version 20. The reader also accepts versions 1 through 19; the example
 below remains a valid version 2 file.
 
 ## Example
@@ -548,3 +548,33 @@ metric `reference_length` and direction flips. The origin and reference endpoint
 lie on the model's XY ground plane. A source length unit also scales the reference
 length. Camera `roll` is in radians and defaults to zero for older files. Invalid
 camera values, image references and photo parameters are rejected on loading.
+
+## Editable workflows in version 20
+
+Component settings add `connections`, a map of names to orthonormal local frames,
+and `attributes`, a map of names to typed values. Each attribute has `value` with
+`type` and `value` fields, plus a short `unit` string. Types are `text`, `number`
+and `boolean`. Occurrences add their own `attributes` map. An occurrence value
+overrides a definition value with the same name. Connection origins use the
+file's declared source length unit; direction vectors are unitless.
+
+Definitions optionally contain `procedure` with an operation, a self-contained
+clipboard input document and `editing`. Operation kinds are `array`, `sweep` and
+`solid`. Input documents have their own ID namespace and use metres, independent
+of the outer file's source units. Their geometry and settings are validated with
+shared geometry and nesting budgets. The visible definition is saved as well as
+the inputs. `editing: true` means the visible geometry is the editable input state;
+finishing it updates the stored inputs and replaces the visible generated output.
+Older readers reject version 20 rather than losing these inputs.
+
+The root, definitions and materials optionally contain `section_hatch` with
+`angle` in degrees, `spacing` in source length units and `cross`. Absence means
+inherit; component overrides take priority over whole-occurrence material hatches,
+then the model default. Hatch spacing is evaluated in world coordinates.
+
+Top-level `sheets` stores paper layouts. Page sizes, viewport rectangles, note
+positions and note text sizes use millimetres, independently of model source units.
+Each viewport stores a projection, scale denominator, visibility options and an
+optional scene ID. Sheets store title-block text and paper notes. Geometry is
+regenerated from the current model at export; generated SVG/PDF data is not saved.
+See [editable workflow controls and limits](editable-workflows.md).

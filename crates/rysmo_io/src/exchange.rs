@@ -114,6 +114,7 @@ mod tests {
             material: None,
             hidden: false,
             glued_to: None,
+            attributes: Default::default(),
         };
         doc.root_mut().instances.insert(InstanceId(501), instance.clone());
         doc.root_mut().instances.insert(InstanceId(502), Instance { hidden: true, ..instance });

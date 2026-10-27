@@ -359,6 +359,7 @@ pub fn place_external(
             tag: None,
             hidden: false,
             glued_to: None,
+            attributes: Default::default(),
         },
     );
     begin(

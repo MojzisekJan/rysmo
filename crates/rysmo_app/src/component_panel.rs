@@ -646,6 +646,8 @@ mod tests {
                 definition,
                 name: "Panel".into(),
                 settings: rysmo_model::components::ComponentSettings {
+                    connections: Default::default(),
+                    attributes: Default::default(),
                     glue: Default::default(),
                     cut_opening: false,
                     description: String::new(),

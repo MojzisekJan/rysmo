@@ -133,6 +133,7 @@ fn shared_hierarchy_expansion_is_bounded_before_preview_or_collection_installati
                         material: None,
                         hidden: false,
                         glued_to: None,
+                        attributes: Default::default(),
                     },
                 );
             }
@@ -149,6 +150,7 @@ fn shared_hierarchy_expansion_is_bounded_before_preview_or_collection_installati
             material: None,
             hidden: false,
             glued_to: None,
+            attributes: Default::default(),
         },
     );
     assert!(validate_expansion(&doc).is_err());

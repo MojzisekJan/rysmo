@@ -288,6 +288,7 @@ fn glyph_button(ui: &mut egui::Ui, glyph: &str, selected: bool, enabled: bool) -
 }
 
 fn header(ui: &mut egui::Ui, app: &mut App3d, st: &mut State) {
+    crate::documents::panel(ui, app);
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 6.;
         let menu = egui::RichText::new(g::LIST).family(egui::FontFamily::Name("phosphor".into())).size(22.);

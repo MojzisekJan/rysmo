@@ -1,11 +1,15 @@
 //! Editor workflows built on the headless model and I/O codecs.
+pub mod component_data;
 pub mod data_files;
 pub mod drawing;
+pub mod hatches;
 pub mod imports;
 pub mod library;
 pub mod parametric;
 pub mod photo;
+pub mod procedures;
 pub mod report;
+pub mod sheets;
 
 #[derive(Default)]
 pub struct State {
@@ -15,14 +19,24 @@ pub struct State {
     pub drawing: drawing::State,
     pub photo: photo::State,
     pub report: report::State,
+    pub component_data: component_data::State,
+    pub hatches: hatches::State,
+    pub procedures: procedures::State,
+    pub sheets: sheets::State,
 }
 pub fn panels(ctx: &bevy_egui::egui::Context, app: &mut crate::state::App3d) {
     imports::panel(ctx, app);
     library::panel(ctx, app);
     parametric::panel(ctx, app);
+    parametric::grips(ctx, app);
     drawing::panel(ctx, app);
     photo::panel(ctx, app);
     report::panel(ctx, app);
+    component_data::panel(ctx, app);
+    component_data::markers(ctx, app);
+    hatches::refresh(app);
+    procedures::panel(ctx, app);
+    sheets::panel(ctx, app);
 }
 pub fn remember<R>(app: &mut crate::state::App3d, response: &Option<bevy_egui::egui::InnerResponse<Option<R>>>) {
     if let Some(response) = response {

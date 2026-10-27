@@ -79,12 +79,12 @@ pub struct EdgeInfo {
 /// can be found every frame without searching for faces.
 #[derive(Resource, Default)]
 pub struct EdgeCache {
-    revision: Option<u64>,
+    revision: Option<(u64, u64)>,
     pub defs: HashMap<Option<DefinitionId>, Vec<EdgeInfo>>,
 }
 
 pub fn update_edge_cache(app: Res<App3d>, mut cache: ResMut<EdgeCache>) {
-    let revision = app.editor.revision();
+    let revision = (app.document_generation, app.editor.revision());
     if cache.revision == Some(revision) {
         return;
     }

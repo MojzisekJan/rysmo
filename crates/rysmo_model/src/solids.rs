@@ -403,6 +403,7 @@ pub(crate) fn run(
                 material: None,
                 hidden: false,
                 glued_to: None,
+                attributes: Default::default(),
             },
         );
         created.push(Element::Instance(id));
@@ -436,6 +437,7 @@ mod tests {
                 tag: None,
                 hidden: false,
                 glued_to: None,
+                attributes: Default::default(),
             },
         );
         *editor = Editor::with_document(doc);
@@ -729,6 +731,7 @@ mod tests {
                 texture: None,
                 glow: 0.0,
                 pbr: Default::default(),
+                section_hatch: None,
             },
         );
         e = Editor::with_document(doc);

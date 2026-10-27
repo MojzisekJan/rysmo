@@ -252,6 +252,9 @@ fn draw_gizmos(
     let eye = app.camera.eye();
     let forward = (app.camera.target - eye).normalize();
     let mut active_seen = false;
+    for [a, b] in &app.features.hatches.lines {
+        section_lines.line(to_bevy(*a), to_bevy(*b), color3(doc.style.section_color));
+    }
     for occ in doc.occurrences(editor.context()) {
         let Some(def) = doc.def(occ.definition) else { continue };
         let is_active = occ.in_context && !active_seen;

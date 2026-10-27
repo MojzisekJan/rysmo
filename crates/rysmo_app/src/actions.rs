@@ -20,6 +20,8 @@ pub enum Action {
     Fillet,
     DivideEdges,
     ArrayAlongPath,
+    ComponentData,
+    LiveOperations,
     EditCurvePoints,
     WeldEdges,
     ExplodeCurves,
@@ -67,7 +69,9 @@ impl Action {
             | Self::Explode
             | Self::MakeUnique
             | Self::Unglue
-            | Self::ArrayAlongPath => 1,
+            | Self::ArrayAlongPath
+            | Self::ComponentData
+            | Self::LiveOperations => 1,
             Self::ReverseFaces
             | Self::IntersectModel
             | Self::IntersectSelection
@@ -115,7 +119,7 @@ impl Action {
             Self::SelectSimilar => g::SELECTION_ALL,
             Self::PasteOnFace => g::CLIPBOARD,
             Self::DivideEdges | Self::EditCurvePoints => g::LINE_SEGMENT,
-            Self::ArrayAlongPath => g::CUBE_FOCUS,
+            Self::ArrayAlongPath | Self::ComponentData | Self::LiveOperations => g::CUBE_FOCUS,
             Self::WeldEdges => g::LINK,
             Self::ExplodeCurves => g::LINK_BREAK,
             Self::OrientFaces => g::ARROWS_CLOCKWISE,
@@ -145,6 +149,8 @@ impl Action {
             Action::Fillet => "Fillet...",
             Action::DivideEdges => "Divide Edges...",
             Action::ArrayAlongPath => "Array Along Path...",
+            Action::ComponentData => "Component Data & Connections...",
+            Action::LiveOperations => "Live Operations...",
             Action::EditCurvePoints => "Edit Curve Points...",
             Action::WeldEdges => "Weld Edges",
             Action::ExplodeCurves => "Explode Curve",
@@ -242,6 +248,8 @@ pub fn run(app: &mut App3d, action: Action) {
         Action::Fillet => crate::fillet::begin(app),
         Action::DivideEdges => crate::divide::begin(app),
         Action::ArrayAlongPath => crate::path_array::begin(app),
+        Action::ComponentData => app.features.component_data.open = true,
+        Action::LiveOperations => app.features.procedures.open = true,
         Action::EditCurvePoints => crate::curve_points::begin(app),
         Action::WeldEdges | Action::ExplodeCurves => {
             let selected = app.editor.selected();
@@ -446,6 +454,8 @@ pub fn available(app: &App3d) -> Vec<(Action, bool)> {
         (Action::Fillet, app.editor.selection().len() == 2 && selected_edges(app).len() == 2),
         (Action::DivideEdges, crate::divide::available(app)),
         (Action::ArrayAlongPath, crate::path_array::available(app)),
+        (Action::LiveOperations,true),
+        (Action::ComponentData, app.editor.selection().iter().any(|e|matches!(e,Element::Instance(_)))),
         (Action::EditCurvePoints, crate::curve_points::available(app)),
         (Action::WeldEdges, app.editor.selection().len() >= 2 && only_editable_edges(app)),
         (Action::ExplodeCurves, only_editable_edges(app) && app.editor.selection().iter().any(|element| {

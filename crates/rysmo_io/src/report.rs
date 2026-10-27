@@ -2,14 +2,15 @@
 use rysmo_math::DMat4;
 use rysmo_model::{DefinitionId, Document, InstanceId, Mesh};
 use std::collections::{BTreeMap, BTreeSet};
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct Options {
     pub visible_only: bool,
     pub summaries: bool,
+    pub group_attribute: Option<String>,
 }
 impl Default for Options {
     fn default() -> Self {
-        Self { visible_only: true, summaries: true }
+        Self { visible_only: true, summaries: true, group_attribute: None }
     }
 }
 #[derive(Clone, Default)]
@@ -25,6 +26,7 @@ pub struct Row {
     pub area: f64,
     pub volume: Option<f64>,
     pub note: String,
+    pub attributes: rysmo_model::component_data::Attributes,
 }
 pub struct Report {
     pub rows: Vec<Row>,
@@ -46,7 +48,9 @@ impl Builder<'_> {
         transform: DMat4,
         path: Vec<InstanceId>,
         name: String,
+        attributes: rysmo_model::component_data::Attributes,
     ) -> Result<(), String> {
+        rysmo_model::component_data::validate_attributes(&attributes).map_err(|error| error.to_string())?;
         self.remaining = self.remaining.checked_sub(1).ok_or("Report exceeds 100000 occurrences")?;
         if path.len() > 32 || !transform.is_finite() || !transform.inverse().is_finite() {
             return Err("Report hierarchy is too deep or contains invalid transforms".into());
@@ -77,6 +81,7 @@ impl Builder<'_> {
                 format!("/{}", path.iter().map(|id| id.0.to_string()).collect::<Vec<_>>().join("/"))
             },
             name,
+            attributes,
             definition: owner.map(|id| id.0.to_string()).unwrap_or_default(),
             count: 1,
             ..Default::default()
@@ -151,7 +156,13 @@ impl Builder<'_> {
             } else {
                 instance.name.clone()
             };
-            self.visit(Some(instance.definition), transform * instance.transform, child, name)?;
+            self.visit(
+                Some(instance.definition),
+                transform * instance.transform,
+                child,
+                name,
+                rysmo_model::component_data::attributes(self.doc, instance),
+            )?;
             self.path.remove(&instance.definition);
         }
         Ok(())
@@ -160,7 +171,7 @@ impl Builder<'_> {
 pub fn build(doc: &Document, options: Options) -> Result<Report, String> {
     let mut builder = Builder {
         doc,
-        options,
+        options: options.clone(),
         rows: Vec::new(),
         path: BTreeSet::new(),
         remaining: 100_000,
@@ -168,7 +179,7 @@ pub fn build(doc: &Document, options: Options) -> Result<Report, String> {
         meshes: BTreeMap::new(),
         volumes: BTreeMap::new(),
     };
-    builder.visit(None, DMat4::IDENTITY, Vec::new(), "Model".into())?;
+    builder.visit(None, DMat4::IDENTITY, Vec::new(), "Model".into(), Default::default())?;
     let mut summaries: BTreeMap<String, Row> = BTreeMap::new();
     let mut total = Row {
         kind: "total".into(),
@@ -194,17 +205,71 @@ pub fn build(doc: &Document, options: Options) -> Result<Report, String> {
         }
     }
     builder.rows.extend(summaries.into_values());
+    if let Some(key) = &options.group_attribute {
+        let mut groups: BTreeMap<String, Row> = BTreeMap::new();
+        for row in builder.rows.iter().filter(|r| matches!(r.kind.as_str(), "component" | "group")) {
+            let label = row.attributes.get(key).map(attribute_text).unwrap_or_else(|| "(unset)".into());
+            let identity = row
+                .attributes
+                .get(key)
+                .map(|attribute| serde_json::to_string(attribute).expect("validated report attribute"))
+                .unwrap_or_default();
+            let group = groups.entry(identity).or_insert_with(|| Row {
+                kind: "attribute_summary".into(),
+                name: format!("{key}: {label}"),
+                volume: Some(0.),
+                ..Default::default()
+            });
+            add(group, row);
+        }
+        builder.rows.extend(groups.into_values());
+    }
     builder.rows.push(total);
-    if builder
-        .rows
-        .iter()
-        .any(|row| !row.length.is_finite() || !row.area.is_finite() || row.volume.is_some_and(|v| !v.is_finite()))
-    {
+    if builder.rows.iter().any(|row| {
+        !row.length.is_finite()
+            || !row.area.is_finite()
+            || row.volume.is_some_and(|v| !v.is_finite())
+            || row
+                .attributes
+                .values()
+                .any(|a| matches!(a.value,rysmo_model::component_data::Value::Number(n) if !n.is_finite()))
+    }) {
         return Err("Non-finite report totals".into());
     }
     Ok(Report { rows: builder.rows })
 }
 fn add(target: &mut Row, row: &Row) {
+    use rysmo_model::component_data::{Attribute, Value};
+    for (key, value) in &row.attributes {
+        use std::collections::btree_map::Entry;
+        match target.attributes.entry(key.clone()) {
+            Entry::Vacant(entry) => {
+                entry.insert(value.clone());
+            }
+            Entry::Occupied(mut entry) => {
+                let previous = entry.get_mut();
+                let equal = previous == value;
+                match (&mut previous.value, &value.value) {
+                    (Value::Number(total), Value::Number(n)) if previous.unit == value.unit => {
+                        let sum = *total + n;
+                        if sum.is_finite() {
+                            *total = sum;
+                        } else {
+                            previous.value = Value::Text("Total exceeds numeric range".into());
+                            previous.unit.clear();
+                        }
+                    }
+                    _ if equal => {}
+                    _ => {
+                        *previous = Attribute {
+                            value: Value::Text("Mixed values or units; total unavailable".into()),
+                            unit: String::new(),
+                        };
+                    }
+                }
+            }
+        }
+    }
     target.count += usize::from(row.kind != "root") * row.count;
     target.edges += row.edges;
     target.faces += row.faces;
@@ -217,6 +282,14 @@ fn add(target: &mut Row, row: &Row) {
         target.note = "Some own geometry has no available volume; nested assemblies are not double-counted".into();
     }
 }
+fn attribute_text(attribute: &rysmo_model::component_data::Attribute) -> String {
+    use rysmo_model::component_data::Value;
+    match &attribute.value {
+        Value::Text(text) => text.clone(),
+        Value::Number(n) => n.to_string(),
+        Value::Boolean(v) => v.to_string(),
+    }
+}
 fn cell(text: &str) -> String {
     let start = text.trim_start_matches(|c: char| c.is_whitespace() || c == '\u{feff}');
     let text = if start.starts_with(['=', '+', '-', '@']) { format!("'{text}") } else { text.into() };
@@ -227,6 +300,17 @@ impl Report {
         let mut csv = String::from(
             "kind,path,name,definition_id,occurrence_count,own_edge_count,own_face_count,own_edge_length_m,own_face_area_m2,own_volume_m3,note\r\n",
         );
+        let keys: BTreeSet<_> = self.rows.iter().flat_map(|row| row.attributes.keys().cloned()).collect();
+        if !keys.is_empty() {
+            csv.truncate(csv.len() - 2);
+            for key in &keys {
+                csv.push(',');
+                csv.push_str(&cell(&format!("attribute:{key}")));
+                csv.push(',');
+                csv.push_str(&cell(&format!("unit:{key}")));
+            }
+            csv.push_str("\r\n");
+        }
         for row in &self.rows {
             let volume = row.volume.map(|v| format!("{v:.9}")).unwrap_or_default();
             csv.push_str(&format!(
@@ -243,6 +327,21 @@ impl Report {
                 volume,
                 cell(&row.note)
             ));
+            if !keys.is_empty() {
+                csv.truncate(csv.len() - 2);
+                for key in &keys {
+                    csv.push(',');
+                    match row.attributes.get(key) {
+                        Some(attribute) if matches!(attribute.value, rysmo_model::component_data::Value::Number(_)) => {
+                            csv.push_str(&attribute_text(attribute))
+                        }
+                        value => csv.push_str(&cell(&value.map(attribute_text).unwrap_or_default())),
+                    }
+                    csv.push(',');
+                    csv.push_str(&cell(row.attributes.get(key).map(|a| a.unit.as_str()).unwrap_or("")));
+                }
+                csv.push_str("\r\n");
+            }
         }
         csv
     }
@@ -332,7 +431,10 @@ mod tests {
         assert!(report.rows[0].volume.is_none());
         assert!(report.rows[0].note.contains("hidden"));
         assert!(
-            (build(e.doc(), Options { visible_only: false, summaries: true }).unwrap().rows[0].volume.unwrap() - 1.)
+            (build(e.doc(), Options { visible_only: false, summaries: true, group_attribute: None }).unwrap().rows[0]
+                .volume
+                .unwrap()
+                - 1.)
                 .abs()
                 < 1e-8
         );
@@ -355,5 +457,30 @@ mod tests {
             .instances
             .insert(child, instance);
         assert!(build(&doc, Options::default()).err().unwrap().contains("Cyclic"));
+    }
+    #[test]
+    fn typed_attributes_override_defaults_and_totals_reject_mixed_units() {
+        use rysmo_model::component_data::{Attribute, Value};
+        let doc = rysmo_model::parametric::Spec::default().document().unwrap();
+        let mut doc = doc;
+        let id = *doc.root.instances.keys().next().unwrap();
+        let definition = doc.root.instances[&id].definition;
+        let value = |n, unit: &str| Attribute { value: Value::Number(n), unit: unit.into() };
+        doc.def_mut(Some(definition)).unwrap().component.attributes.insert("Cost".into(), value(10., "EUR"));
+        doc.root_mut().instances.get_mut(&id).unwrap().attributes.insert("Cost".into(), value(-3., "EUR"));
+        let second = rysmo_model::InstanceId(doc.reserve_id());
+        let mut copy = doc.root.instances[&id].clone();
+        copy.attributes.clear();
+        doc.root_mut().instances.insert(second, copy);
+        let options = Options { group_attribute: Some("Cost".into()), ..Default::default() };
+        let report = build(&doc, options.clone()).unwrap();
+        let total = report.rows.iter().find(|r| r.kind == "total").unwrap();
+        assert_eq!(total.attributes["Cost"], value(7., "EUR"));
+        assert!(report.csv().contains(",-3,\"EUR\""));
+        assert_eq!(report.rows.iter().filter(|r| r.kind == "attribute_summary").count(), 2);
+        doc.root_mut().instances.get_mut(&second).unwrap().attributes.insert("Cost".into(), value(5., "USD"));
+        let report = build(&doc, options).unwrap();
+        let total = report.rows.iter().find(|r| r.kind == "total").unwrap();
+        assert!(matches!(&total.attributes["Cost"].value,Value::Text(text) if text.contains("unavailable")));
     }
 }

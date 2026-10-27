@@ -37,7 +37,8 @@ pub const FORMAT: &str = "rysmo";
 /// Version 17 adds studio lighting, exposure, texture quality and render scaling.
 /// Version 18 adds editable architectural component parameters.
 /// Version 19 adds metallic-roughness maps, alpha cutout and panorama environments.
-pub const VERSION: u32 = 19;
+/// Version 20 adds editable workflows, connection frames and component attributes.
+pub const VERSION: u32 = 20;
 
 fn is_false(b: &bool) -> bool {
     !*b
@@ -54,6 +55,8 @@ struct MaterialLine {
     glow: f32,
     #[serde(default)]
     pbr: rysmo_model::Pbr,
+    #[serde(default)]
+    section_hatch: Option<rysmo_model::section_hatching::Hatch>,
 }
 
 fn is_zero(v: &f32) -> bool {
@@ -93,6 +96,10 @@ struct DefinitionLine {
     component: rysmo_model::components::ComponentSettings,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     parametric: Option<rysmo_model::parametric::Spec>,
+    #[serde(default)]
+    procedure: Option<Box<rysmo_model::procedures::Procedure>>,
+    #[serde(default)]
+    section_hatch: Option<rysmo_model::section_hatching::Hatch>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -165,6 +172,8 @@ struct InstanceLine {
     hidden: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     glued_to: Option<FaceId>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    attributes: rysmo_model::component_data::Attributes,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -216,6 +225,10 @@ struct FileIn {
     section_planes: Vec<SectionLine>,
     #[serde(default)]
     scenes: Vec<rysmo_model::scenes::Scene>,
+    #[serde(default)]
+    sheets: Vec<rysmo_model::sheets::Sheet>,
+    #[serde(default)]
+    section_hatch: Option<rysmo_model::section_hatching::Hatch>,
     #[serde(default)]
     style: Option<Style>,
     #[serde(default)]
@@ -327,6 +340,8 @@ pub fn save(doc: &Document) -> String {
     if doc.style != Style::default() {
         out.push_str(&format!("\"style\": {},\n", serde_json::to_string(&doc.style).expect("style serialises")));
     }
+    out.push_str(&format!("\"section_hatch\": {},\n", serde_json::to_string(&doc.root.section_hatch).expect("hatch")));
+    out.push_str(&format!("\"sheets\": {},\n", serde_json::to_string(&doc.sheets).expect("sheets")));
     section(&mut out, "scenes", doc.scenes.iter(), false);
     section(
         &mut out,
@@ -349,6 +364,7 @@ pub fn save(doc: &Document) -> String {
             texture: m.texture,
             glow: m.glow,
             pbr: m.pbr,
+            section_hatch: m.section_hatch,
         }),
         false,
     );
@@ -368,6 +384,8 @@ pub fn save(doc: &Document) -> String {
             axes: d.axes,
             component: d.component.clone(),
             parametric: d.parametric.clone(),
+            procedure: d.procedure.clone(),
+            section_hatch: d.section_hatch,
         }),
         false,
     );
@@ -429,6 +447,7 @@ pub fn save(doc: &Document) -> String {
                     material: i.material,
                     hidden: i.hidden,
                     glued_to: i.glued_to,
+                    attributes: i.attributes.clone(),
                 }
             })
         }),
@@ -517,7 +536,20 @@ pub fn load(text: &str) -> Result<Document, IoError> {
         if !m.pbr.valid() || m.pbr.images().any(|id| !images.contains_key(&id)) {
             return Err(IoError::Format("invalid material surface or missing surface image".into()));
         }
-        materials.insert(m.id, Material { name: m.name, color: m.color, texture: m.texture, glow: m.glow, pbr: m.pbr });
+        materials.insert(
+            m.id,
+            Material {
+                name: m.name,
+                color: m.color,
+                texture: m.texture,
+                glow: m.glow,
+                pbr: m.pbr,
+                section_hatch: m.section_hatch.map(|mut h| {
+                    h.spacing *= scale;
+                    h
+                }),
+            },
+        );
     }
     let mut tags = BTreeMap::new();
     for t in f.tags {
@@ -641,6 +673,12 @@ pub fn load(text: &str) -> Result<Document, IoError> {
         }
         environment_dimensions(&image.bytes)?;
     }
+    rysmo_model::sheets::validate(&f.sheets).map_err(IoError::Format)?;
+    doc.sheets = f.sheets;
+    doc.root_mut().section_hatch = f.section_hatch.map(|mut h| {
+        h.spacing *= scale;
+        h
+    });
     doc.root_mut().mesh = meshes.remove(&None).unwrap_or_default();
     for (id, d) in def_lines.iter() {
         let mesh = meshes.remove(&Some(*id)).unwrap_or_default();
@@ -656,6 +694,11 @@ pub fn load(text: &str) -> Result<Document, IoError> {
                 group: d.group,
                 mesh,
                 axes,
+                section_hatch: d.section_hatch.map(|mut h| {
+                    h.spacing *= scale;
+                    h
+                }),
+                procedure: d.procedure.clone(),
                 parametric: d
                     .parametric
                     .as_ref()
@@ -668,6 +711,13 @@ pub fn load(text: &str) -> Result<Document, IoError> {
                 component: {
                     let mut component = d.component.clone();
                     component.insertion_axes.origin *= scale;
+                    for frame in component.connections.values_mut() {
+                        frame.origin *= scale;
+                    }
+                    rysmo_model::component_data::validate_connections(&component.connections)
+                        .map_err(|e| IoError::Format(e.to_string()))?;
+                    rysmo_model::component_data::validate_attributes(&component.attributes)
+                        .map_err(|e| IoError::Format(e.to_string()))?;
                     if !component.insertion_axes.valid() {
                         return Err(IoError::Format("invalid component insertion axes".into()));
                     }
@@ -716,8 +766,10 @@ pub fn load(text: &str) -> Result<Document, IoError> {
         let axis = |a: [f64; 3]| DVec4::new(a[0], a[1], a[2], 0.0);
         let o = DVec3::from_array(i.o) * scale;
         let transform = DMat4::from_cols(axis(i.x), axis(i.y), axis(i.z), DVec4::new(o.x, o.y, o.z, 1.0));
+        rysmo_model::component_data::validate_attributes(&i.attributes).map_err(|e| IoError::Format(e.to_string()))?;
         let inst = Instance {
             glued_to: i.glued_to,
+            attributes: i.attributes.clone(),
             definition: i.def,
             transform,
             name: i.name,
@@ -789,7 +841,23 @@ pub fn load(text: &str) -> Result<Document, IoError> {
             }
         }
     }
+    for def in doc.definitions.values() {
+        if let Some(procedure) = &def.procedure {
+            rysmo_model::procedures::validate(&procedure.input.document, 0, &mut 200_000)
+                .map_err(|e| IoError::Format(e.to_string()))?;
+        }
+    }
     rysmo_model::components::validate_openings(&doc).map_err(|e| IoError::Format(e.to_string()))?;
+    for hatch in doc
+        .materials
+        .values()
+        .filter_map(|m| m.section_hatch)
+        .chain(std::iter::once(&doc.root).chain(doc.definitions.values()).filter_map(|d| d.section_hatch))
+    {
+        if !hatch.valid() {
+            return Err(IoError::Format("Invalid section hatch".into()));
+        }
+    }
     doc.fix_next_id();
     Ok(doc)
 }
@@ -815,6 +883,8 @@ mod tests {
             definition,
             name: "Window".into(),
             settings: ComponentSettings {
+                connections: Default::default(),
+                attributes: Default::default(),
                 glue: Default::default(),
                 cut_opening: false,
                 description: "Insert at centre".into(),
@@ -920,6 +990,7 @@ mod tests {
                 material: None,
                 hidden: false,
                 glued_to: None,
+                attributes: Default::default(),
             },
         );
         let guide = GuideId(doc.reserve_id());
@@ -2505,5 +2576,69 @@ mod environment_tests {
         let mut pbr = editor.doc().materials[&material].pbr;
         pbr.alpha_cutoff = Some(1.5);
         assert!(editor.apply(Command::SetMaterialPbr { material, pbr }).is_err());
+    }
+}
+
+#[cfg(test)]
+mod editable_workflow_tests {
+    use super::*;
+    use rysmo_math::{DMat4, DVec3, DrawingAxes};
+    use rysmo_model::{
+        Command, Editor, Element,
+        clipboard::Clipboard,
+        component_data::{Attribute, Value},
+        parametric::Spec,
+        path_array::{Distribution, Options},
+        procedures::Operation,
+        section_hatching::Hatch,
+    };
+    #[test]
+    fn editable_operations_metadata_hatches_and_sheets_roundtrip() {
+        let mut input = Editor::with_document(Spec::default().document().unwrap());
+        input.apply(Command::DrawLines { lines: vec![[DVec3::X * 10., DVec3::X * 20.]], facing: None }).unwrap();
+        let mut editor = Editor::new();
+        let out = editor
+            .apply(Command::CreateProcedure {
+                input: Box::new(Clipboard { document: input.doc().clone(), source_transform: DMat4::IDENTITY }),
+                operation: Operation::Array {
+                    options: Options { distribution: Distribution::Count(2), ..Default::default() },
+                },
+                transform: DMat4::IDENTITY,
+                replace: vec![],
+            })
+            .unwrap();
+        let Element::Instance(id) = out.created[0] else { panic!() };
+        let definition = editor.doc().root.instances[&id].definition;
+        let mut doc = editor.doc().clone();
+        doc.root_mut().section_hatch = Some(Hatch::default());
+        doc.sheets = vec![Default::default()];
+        doc.root_mut()
+            .instances
+            .get_mut(&id)
+            .unwrap()
+            .attributes
+            .insert("Cost".into(), Attribute { value: Value::Number(25.), unit: "EUR".into() });
+        let def = doc.def_mut(Some(definition)).unwrap();
+        def.section_hatch = Some(Hatch { cross: true, ..Default::default() });
+        def.component.connections.insert("Base".into(), DrawingAxes { origin: DVec3::X, ..Default::default() });
+        def.component.attributes.insert("Cost".into(), Attribute { value: Value::Number(10.), unit: "EUR".into() });
+        let loaded = load(&save(&doc)).unwrap();
+        assert_eq!(save(&loaded), save(&doc));
+        let mut regenerated = Editor::with_document(loaded);
+        regenerated
+            .apply(Command::UpdateProcedure {
+                definition,
+                operation: None,
+                edit: rysmo_model::procedures::Edit::Regenerate,
+            })
+            .unwrap();
+        assert_eq!(regenerated.doc().definitions[&definition].instances.len(), 3);
+    }
+    #[test]
+    fn hatch_spacing_respects_declared_source_units() {
+        let mut doc = Document::new();
+        doc.root_mut().section_hatch = Some(Hatch::default());
+        let text = save(&doc).replace("\"length_unit\": \"m\"", "\"length_unit\": \"mm\"");
+        assert!((load(&text).unwrap().root.section_hatch.unwrap().spacing - 0.0001).abs() < 1e-12);
     }
 }

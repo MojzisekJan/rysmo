@@ -215,6 +215,7 @@ impl Spec {
                 material: None,
                 hidden: false,
                 glued_to: None,
+                attributes: Default::default(),
             },
         );
         Ok(document)

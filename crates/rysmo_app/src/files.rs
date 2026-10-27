@@ -26,7 +26,7 @@ fn reset_interaction(app: &mut App3d) {
     app.features.photo = Default::default();
     app.portable_files = None;
     app.paste_place = None;
-    app.document_generation = app.document_generation.wrapping_add(1);
+    app.document_generation = crate::documents::generation();
     app.tools.set_tool(app.tools.active());
     app.tools.set_paint(None);
     app.vcb.clear();
@@ -71,6 +71,9 @@ fn reset_interaction(app: &mut App3d) {
 }
 
 pub fn new(app: &mut App3d) {
+    if !crate::documents::create(app) {
+        return;
+    }
     #[cfg(target_arch = "wasm32")]
     crate::web::new_document();
     reset_interaction(app);
@@ -81,11 +84,16 @@ pub fn new(app: &mut App3d) {
     app.zoom_window = None;
     app.last_wheel_time = None;
     app.message = Some("New model.".into());
+    #[cfg(target_arch = "wasm32")]
+    crate::web::persist_tabs(app);
 }
 
 /// Puts a loaded document in the window. `name` is where it came from.
 pub fn open_text(app: &mut App3d, text: &str, name: &str) -> Result<String, String> {
     let doc = rysmo_io::load(text).map_err(|e| format!("Cannot open {name}: {e}"))?;
+    if !crate::documents::create(app) {
+        return Err("Document limit reached".into());
+    }
     reset_interaction(app);
     app.camera_history.clear();
     app.zoom_window = None;

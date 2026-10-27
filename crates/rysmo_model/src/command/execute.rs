@@ -54,6 +54,93 @@ impl Command {
             DMat4::IDENTITY
         };
         match self {
+            Command::SetComponentOccurrenceData { definition, instance, connections, attributes, overrides } => {
+                if doc.def(def).and_then(|d| d.instances.get(&instance)).is_none_or(|i| i.definition != definition) {
+                    return invalid("Component occurrence changed");
+                }
+                crate::component_data::validate_attributes(&overrides)?;
+                crate::component_data::validate_attributes(&attributes)?;
+                crate::component_data::validate_connections(&connections)?;
+                out.changed = doc
+                    .def(Some(definition))
+                    .is_some_and(|d| d.component.connections != connections || d.component.attributes != attributes)
+                    || doc.def(def).unwrap().instances[&instance].attributes != overrides;
+                let target = doc.def_mut(Some(definition)).unwrap();
+                target.component.connections = connections;
+                target.component.attributes = attributes;
+                doc.def_mut(def).unwrap().instances.get_mut(&instance).unwrap().attributes = overrides;
+            }
+            Command::CreateProcedure { input, operation, transform, replace } => {
+                out.created = crate::procedures::create(doc, def, *input, operation, transform, replace)?;
+            }
+            Command::UpdateProcedure { definition, operation, edit } => {
+                crate::procedures::update(doc, definition, operation, edit)?;
+            }
+            Command::SetSheets { sheets } => {
+                crate::sheets::validate(&sheets).map_err(CommandError::Invalid)?;
+                out.changed = doc.sheets != sheets;
+                doc.sheets = sheets;
+            }
+            Command::SetSectionHatch { definition, material, hatch } => {
+                if hatch.is_some_and(|h| !h.valid()) {
+                    return invalid("Invalid hatch angle or spacing");
+                }
+                let target = if let Some(id) = material {
+                    &mut doc
+                        .materials
+                        .get_mut(&id)
+                        .ok_or_else(|| CommandError::Invalid("Missing hatch material".into()))?
+                        .section_hatch
+                } else {
+                    &mut doc
+                        .def_mut(definition)
+                        .ok_or_else(|| CommandError::Invalid("Missing hatch component".into()))?
+                        .section_hatch
+                };
+                out.changed = *target != hatch;
+                *target = hatch;
+            }
+            Command::SetComponentData { definition, connections, attributes } => {
+                crate::component_data::validate_connections(&connections)?;
+                crate::component_data::validate_attributes(&attributes)?;
+                let target =
+                    doc.def_mut(Some(definition)).ok_or_else(|| CommandError::Invalid("Missing component".into()))?;
+                out.changed = target.component.connections != connections || target.component.attributes != attributes;
+                target.component.connections = connections;
+                target.component.attributes = attributes;
+            }
+            Command::SetInstanceAttributes { instance, attributes } => {
+                crate::component_data::validate_attributes(&attributes)?;
+                let target = doc
+                    .def_mut(def)
+                    .unwrap()
+                    .instances
+                    .get_mut(&instance)
+                    .ok_or_else(|| CommandError::Invalid("Missing occurrence".into()))?;
+                out.changed = target.attributes != attributes;
+                target.attributes = attributes;
+            }
+            Command::AttachConnections { source, source_name, target, target_name, context } => {
+                let transform =
+                    crate::component_data::attachment(doc, def, context, source, &source_name, target, &target_name)?;
+                let instance = doc.def_mut(def).unwrap().instances.get_mut(&source).unwrap();
+                out.changed = instance.transform != transform;
+                instance.transform = transform;
+                instance.glued_to = None;
+                out.created = vec![Element::Instance(source)];
+            }
+            Command::FitParametric { instance, face, make_unique: unique } => {
+                let (spec, transform) = crate::parametric_edit::fit(doc, def, instance, face)?;
+                if unique {
+                    make_unique(doc, def, instance)?;
+                }
+                let definition = doc.def(def).unwrap().instances[&instance].definition;
+                Command::SetParametric { definition, spec }.run(doc, def)?;
+                let target = doc.def_mut(def).unwrap().instances.get_mut(&instance).unwrap();
+                target.transform = transform;
+                target.glued_to = None;
+                out.created = vec![Element::Instance(instance)];
+            }
             Command::SetParametric { definition, spec } => {
                 let previous = doc
                     .definitions
@@ -80,7 +167,12 @@ impl Command {
                 if previous.parametric.as_ref() == Some(&spec) {
                     out.changed = false;
                 } else {
-                    let mesh = spec.mesh().map_err(CommandError::Invalid)?.with_fresh_ids(|| doc.reserve_id())?;
+                    let staged = crate::parametric_edit::regenerate(
+                        previous.parametric.as_ref().unwrap(),
+                        &previous.mesh,
+                        &spec,
+                    )?;
+                    let mesh = staged.with_fresh_ids(|| doc.reserve_id())?;
                     let target = doc.def_mut(Some(definition)).unwrap();
                     target.mesh = mesh;
                     target.parametric = Some(spec);
@@ -358,6 +450,7 @@ impl Command {
                     instance,
                     Instance {
                         glued_to: None,
+                        attributes: Default::default(),
                         definition,
                         transform: DMat4::from_translation(origin),
                         name: String::new(),
@@ -391,6 +484,7 @@ impl Command {
                     instance,
                     Instance {
                         glued_to: None,
+                        attributes: Default::default(),
                         definition,
                         transform: DMat4::from_translation(origin) * axes.basis(),
                         name: String::new(),
@@ -429,6 +523,7 @@ impl Command {
                     instance,
                     Instance {
                         glued_to: None,
+                        attributes: Default::default(),
                         definition,
                         transform: DMat4::from_translation(origin) * axes.basis(),
                         name: String::new(),
@@ -1207,6 +1302,8 @@ impl Command {
                 }
             }
             Command::SetComponentProperties { definition, name, settings } => {
+                crate::component_data::validate_connections(&settings.connections)?;
+                crate::component_data::validate_attributes(&settings.attributes)?;
                 if settings.cut_opening {
                     if settings.glue == crate::components::GlueMode::None {
                         return invalid("Choose a glue orientation before enabling Cut Opening.");
@@ -1272,6 +1369,7 @@ impl Command {
                         material: None,
                         hidden: false,
                         glued_to: Some(face),
+                        attributes: Default::default(),
                     },
                 );
                 out.created = vec![Element::Instance(id)];
@@ -1295,6 +1393,7 @@ impl Command {
                     id,
                     Instance {
                         glued_to: None,
+                        attributes: Default::default(),
                         definition,
                         transform,
                         name: String::new(),
@@ -1343,7 +1442,10 @@ impl Command {
             Command::AddMaterial { name, color, texture } => {
                 check_texture(doc, texture.as_ref())?;
                 let id = MaterialId(doc.reserve_id());
-                doc.materials.insert(id, Material { name, color, texture, glow: 0.0, pbr: Default::default() });
+                doc.materials.insert(
+                    id,
+                    Material { name, color, texture, glow: 0.0, pbr: Default::default(), section_hatch: None },
+                );
                 out.material = Some(id);
             }
             Command::AddTexturedMaterial { name, color, image_name, mime, data, size } => {
@@ -1370,6 +1472,7 @@ impl Command {
                         texture: Some(Texture { image, size }),
                         glow: 0.0,
                         pbr: Default::default(),
+                        section_hatch: None,
                     },
                 );
                 out.image = Some(image);
@@ -1507,6 +1610,7 @@ impl Command {
                     instance,
                     Instance {
                         glued_to: None,
+                        attributes: Default::default(),
                         definition,
                         transform: DMat4::IDENTITY,
                         name: "Section Slice".into(),

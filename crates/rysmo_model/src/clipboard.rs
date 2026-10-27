@@ -67,25 +67,9 @@ impl Clipboard {
         }
         visit(&document, &document.root, &mut keep);
         document.definitions.retain(|id, _| keep.contains(id));
-        let mut materials = BTreeSet::new();
-        let mut tags = BTreeSet::new();
-        for def in std::iter::once(&document.root).chain(document.definitions.values()) {
-            for (_, face) in def.mesh.faces() {
-                materials.extend([face.material, face.back_material].into_iter().flatten());
-            }
-            for (_, edge) in def.mesh.edges() {
-                materials.extend(edge.material);
-            }
-            for instance in def.instances.values() {
-                materials.extend(instance.material);
-                tags.extend(instance.tag);
-            }
-        }
-        document.materials.retain(|id, _| materials.contains(id));
-        document.tags.retain(|id, _| tags.contains(id));
-        let images = document.materials.values().flat_map(|m| m.images()).collect::<BTreeSet<_>>();
-        document.images.retain(|id, _| images.contains(id));
+        retain_geometry_assets(&mut document);
         document.scenes.clear();
+        document.sheets.clear();
         document.camera = None;
         document.photo_match = None;
         let source_transform = editor.context_transform() * instance.transform;
@@ -94,6 +78,29 @@ impl Clipboard {
     pub fn bounds(&self) -> Option<(DVec3, DVec3)> {
         self.document.definition_bounds(None)
     }
+}
+
+/// Keep only resources referenced by geometry in this self-contained document.
+pub(crate) fn retain_geometry_assets(document: &mut Document) {
+    let mut materials = BTreeSet::new();
+    let mut tags = BTreeSet::new();
+    for def in std::iter::once(&document.root).chain(document.definitions.values()) {
+        for (_, face) in def.mesh.faces() {
+            materials.extend([face.material, face.back_material].into_iter().flatten());
+        }
+        for (_, edge) in def.mesh.edges() {
+            materials.extend(edge.material);
+        }
+        for instance in def.instances.values() {
+            materials.extend(instance.material);
+            tags.extend(instance.tag);
+        }
+    }
+    document.materials.retain(|id, _| materials.contains(id));
+    document.tags.retain(|id, _| tags.contains(id));
+    let images = document.materials.values().flat_map(|m| m.images()).collect::<BTreeSet<_>>();
+    document.images.retain(|id, _| images.contains(id));
+    document.style.environment_image = None;
 }
 
 pub(crate) fn paste(
@@ -219,6 +226,8 @@ pub(crate) fn paste(
                 axes: source.axes,
                 component: source.component.clone(),
                 parametric: source.parametric.clone(),
+                section_hatch: source.section_hatch,
+                procedure: source.procedure.clone(),
                 ..Default::default()
             };
             let mut instances = BTreeMap::new();
@@ -283,6 +292,7 @@ pub(crate) fn paste(
         id,
         Instance {
             glued_to: None,
+            attributes: Default::default(),
             definition,
             transform,
             name: String::new(),

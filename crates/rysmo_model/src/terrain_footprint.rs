@@ -375,6 +375,7 @@ mod source_tests {
     fn instance(definition: DefinitionId, transform: DMat4) -> Instance {
         Instance {
             glued_to: None,
+            attributes: Default::default(),
             definition,
             transform,
             name: String::new(),

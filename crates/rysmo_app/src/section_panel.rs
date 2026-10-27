@@ -86,6 +86,7 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
         .vscroll(true)
         .max_height((ctx.content_rect().height() - 120.).max(200.))
         .show(ctx, |ui| {
+            crate::features::hatches::settings(ui, app);
             // Only edits count: a colour button's round trip can change the stored value.
             styled |= crate::widgets::checkbox(ui, &mut style.section_planes, "Show planes").changed();
             styled |= crate::widgets::checkbox(ui, &mut style.section_cuts, "Enable cuts").changed();

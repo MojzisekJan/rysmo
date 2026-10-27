@@ -198,7 +198,16 @@ fn from_y(p: DVec3) -> DVec3 {
     DVec3::new(p.x, -p.z, p.y)
 }
 fn add_instance(definition: DefinitionId, transform: DMat4, name: String) -> Instance {
-    Instance { definition, transform, name, tag: None, material: None, hidden: false, glued_to: None }
+    Instance {
+        definition,
+        transform,
+        name,
+        tag: None,
+        material: None,
+        hidden: false,
+        glued_to: None,
+        attributes: Default::default(),
+    }
 }
 struct Nodes<'a> {
     root: &'a Value,
@@ -433,6 +442,7 @@ pub(super) fn read(bytes: &[u8], options: Options) -> Result<Imported> {
                 texture,
                 glow,
                 pbr: surface,
+                section_hatch: None,
             },
         );
         materials.push(id);

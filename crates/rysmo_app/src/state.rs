@@ -10,6 +10,7 @@ use rysmo_tools::{Ctx, Modifiers, ToolBox, ToolKind};
 
 #[derive(Resource)]
 pub struct App3d {
+    pub documents: crate::documents::Documents,
     pub features: crate::features::State,
     pub preferences: crate::preferences::Preferences,
     pub preference_store: crate::preferences::Store,
@@ -197,6 +198,7 @@ impl App3d {
                 ..Default::default()
             },
             last_click: None,
+            documents: Default::default(),
             preferences: Default::default(),
             preference_store: Default::default(),
             welcome: false,
@@ -238,7 +240,7 @@ impl App3d {
             component_edit: None,
             object_clipboard: None,
             paste_place: None,
-            document_generation: 1,
+            document_generation: crate::documents::generation(),
             component_place: None,
             selected_scene: None,
             scene_update: None,

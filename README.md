@@ -10,7 +10,9 @@ Written in Rust with Bevy and egui.
 
 Recent editor additions include OBJ/GLB/DXF import, portable component collections,
 editable windows/doors/stairs, scaled SVG/PDF drawings, photo perspective matching,
-material surface controls and nested solid operations. See
+material surface controls and nested solid operations. Editable workflows add live
+operations, component connections and attributes, section hatching, document tabs
+and multi-viewport drawing sheets. See [editable workflows](docs/editable-workflows.md) and
 [editor workflows and limits](docs/editor-expansion.md).
 
 Requires Rust 1.97.1 or newer.

@@ -41,6 +41,53 @@ pub enum Command {
         material: MaterialId,
         pbr: crate::Pbr,
     },
+    SetComponentOccurrenceData {
+        definition: DefinitionId,
+        instance: InstanceId,
+        connections: crate::component_data::Connections,
+        attributes: crate::component_data::Attributes,
+        overrides: crate::component_data::Attributes,
+    },
+    CreateProcedure {
+        input: Box<crate::clipboard::Clipboard>,
+        operation: crate::procedures::Operation,
+        transform: DMat4,
+        replace: Vec<Element>,
+    },
+    UpdateProcedure {
+        definition: DefinitionId,
+        operation: Option<crate::procedures::Operation>,
+        edit: crate::procedures::Edit,
+    },
+    SetSheets {
+        sheets: Vec<crate::sheets::Sheet>,
+    },
+    SetSectionHatch {
+        definition: Option<DefinitionId>,
+        material: Option<MaterialId>,
+        hatch: Option<crate::section_hatching::Hatch>,
+    },
+    SetComponentData {
+        definition: DefinitionId,
+        connections: crate::component_data::Connections,
+        attributes: crate::component_data::Attributes,
+    },
+    SetInstanceAttributes {
+        instance: InstanceId,
+        attributes: crate::component_data::Attributes,
+    },
+    AttachConnections {
+        source: InstanceId,
+        source_name: String,
+        target: InstanceId,
+        target_name: String,
+        context: DMat4,
+    },
+    FitParametric {
+        instance: InstanceId,
+        face: FaceId,
+        make_unique: bool,
+    },
     SetParametric {
         definition: DefinitionId,
         spec: crate::parametric::Spec,

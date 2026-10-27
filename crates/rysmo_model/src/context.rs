@@ -59,6 +59,7 @@ mod tests {
             material: None,
             hidden: false,
             glued_to: None,
+            attributes: Default::default(),
         }
     }
 

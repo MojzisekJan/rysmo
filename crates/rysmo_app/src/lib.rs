@@ -21,6 +21,7 @@ mod component_panel;
 mod curve_points;
 mod detail_tool;
 mod divide;
+mod documents;
 mod drape_tool;
 mod environment;
 mod faces;

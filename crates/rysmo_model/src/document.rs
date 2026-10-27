@@ -28,6 +28,8 @@ pub struct Material {
     pub glow: f32,
     #[serde(default)]
     pub pbr: Pbr,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub section_hatch: Option<crate::section_hatching::Hatch>,
 }
 impl Material {
     /// Every image the material reads.
@@ -139,6 +141,8 @@ pub struct Instance {
     pub hidden: bool,
     #[serde(default)]
     pub glued_to: Option<crate::FaceId>,
+    #[serde(default)]
+    pub attributes: crate::component_data::Attributes,
 }
 
 /// Geometry, guides and child instances: the model itself, a group or a component.
@@ -157,6 +161,10 @@ pub struct Definition {
     pub component: crate::components::ComponentSettings,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parametric: Option<crate::parametric::Spec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub procedure: Option<Box<crate::procedures::Procedure>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub section_hatch: Option<crate::section_hatching::Hatch>,
 }
 
 /// Everything that is saved in a file.
@@ -180,6 +188,8 @@ pub struct Document {
     #[serde(default)]
     pub photo_match: Option<crate::photo::Setup>,
     pub scenes: Vec<crate::scenes::Scene>,
+    #[serde(default)]
+    pub sheets: Vec<crate::sheets::Sheet>,
     /// The next free id; every element kind in every mesh draws from it.
     pub(crate) next_id: u64,
 }
@@ -199,6 +209,7 @@ impl Default for Document {
             camera: None,
             photo_match: None,
             scenes: Vec::new(),
+            sheets: Vec::new(),
             next_id: 1,
         }
     }

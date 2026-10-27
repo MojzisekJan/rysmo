@@ -10,6 +10,7 @@ pub enum Action {
     Open,
     Recent(String),
     Close,
+    CloseTab,
 }
 
 #[derive(Default)]
@@ -29,7 +30,13 @@ pub fn request(app: &mut App3d, action: Action) {
     if app.unsaved.pending.is_some() {
         return;
     }
-    if app.editor.is_dirty() {
+    if matches!(action, Action::New | Action::NewWithUnits(_)) && app.documents.full() {
+        app.message = Some("Close a document before opening more than 16 models.".into());
+        return;
+    }
+    if matches!(action, Action::New | Action::NewWithUnits(_) | Action::Open | Action::Recent(_)) {
+        perform(app, action);
+    } else if app.editor.is_dirty() {
         app.unsaved.pending = Some(action);
     } else {
         perform(app, action);
@@ -47,7 +54,15 @@ fn perform(app: &mut App3d, action: Action) {
         }
         Action::Open => files::open(app),
         Action::Recent(name) => files::open_recent(app, &name),
-        Action::Close => app.unsaved.close_ready = true,
+        Action::CloseTab => crate::documents::close(app),
+        Action::Close => {
+            if let Some(id) = app.documents.first_dirty() {
+                crate::documents::switch(app, id);
+                request(app, Action::Close);
+            } else {
+                app.unsaved.close_ready = true;
+            }
+        }
     }
 }
 
@@ -120,6 +135,9 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
         Some(Choice::Discard) => {
             if let Some(action) = app.unsaved.pending.take() {
                 app.unsaved.saving = false;
+                if action == Action::Close {
+                    app.editor.mark_saved();
+                }
                 perform(app, action);
             }
         }
@@ -138,9 +156,9 @@ mod tests {
     fn dirty_model_requires_confirmation_and_repeated_close_keeps_pending_action() {
         let mut app = App3d::new(rysmo_model::Editor::new());
         app.editor.mark_dirty();
-        request(&mut app, Action::New);
+        request(&mut app, Action::CloseTab);
         request(&mut app, Action::Close);
-        assert_eq!(app.unsaved.pending, Some(Action::New));
+        assert_eq!(app.unsaved.pending, Some(Action::CloseTab));
         assert!(app.editor.is_dirty());
         assert!(!app.unsaved.close_ready);
     }
@@ -223,12 +241,14 @@ mod tests {
 mod welcome_guard_tests {
     use super::*;
     #[test]
-    fn template_creation_waits_for_unsaved_changes() {
+    fn template_creation_preserves_the_dirty_document_in_another_tab() {
         let mut app = App3d::new(rysmo_model::Editor::new());
         app.editor.mark_dirty();
-        let before = app.editor.doc().clone();
+        let previous = app.documents.active;
         request(&mut app, Action::NewWithUnits(rysmo_model::Units::Architectural));
-        assert_eq!(app.unsaved.pending, Some(Action::NewWithUnits(rysmo_model::Units::Architectural)));
-        assert_eq!(app.editor.doc(), &before);
+        assert!(app.unsaved.pending.is_none());
+        assert_eq!(app.editor.doc().units, rysmo_model::Units::Architectural);
+        crate::documents::switch(&mut app, previous);
+        assert!(app.editor.is_dirty());
     }
 }

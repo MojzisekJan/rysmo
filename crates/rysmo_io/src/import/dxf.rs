@@ -373,6 +373,7 @@ pub(super) fn read(text: &str, options: Options) -> Result<Imported> {
                 material: None,
                 hidden: false,
                 glued_to: None,
+                attributes: Default::default(),
             },
         );
     }

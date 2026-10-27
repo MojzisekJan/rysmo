@@ -1,8 +1,8 @@
 # Additional editor workflows
 
-All GUI labels are English. File version 18 adds editable component parameters,
-material surface properties and photo calibration; versions 1–17 still load.
-Older builds reject version 18 to prevent silently losing these properties.
+All GUI labels are English. The current file version is 20; versions 1 through 19
+still load. See [editable workflows](editable-workflows.md) for live operations,
+component connections, section hatching, document tabs, sheets and custom attributes.
 
 ## Model and underlay import
 
@@ -47,8 +47,8 @@ cut openings in surrounding walls.
 
 Select an instance, open Edit selected component, adjust its parameters and Update.
 Shared instances regenerate together in one Undo step; Make Unique isolates a
-copy. Regeneration replaces generated faces and face paint, while instance paint
-and transforms remain. Components with manual geometry changes or added annotations
+copy. Regeneration preserves front/back paint, UVs and hidden state on matching
+generated parts. Instance paint and transforms remain. Components with manual geometry changes or added annotations
 are rejected rather than overwriting those additions.
 
 ## Scaled drawings

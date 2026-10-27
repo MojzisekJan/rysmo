@@ -280,3 +280,42 @@ test("binary import preserves bytes, handles cancellation and read failure, and 
   const cancelled=await fixture({cancelInput:true});assert.equal(await cancelled.api.pick_data_file(".glb",64),null);
   const failed=await fixture({readError:true});assert.match((await failed.api.pick_data_file(".glb",64)).error,/read failed/);
 });
+
+test("document tabs retain distinct file destinations and Save As follows its initiating tab", async () => {
+  const {api,window,calls}=await fixture();
+  const handle=name=>({name,queryPermission:async()=>"granted",createWritable:async()=>({write:async text=>calls.writes.push(`${name}:${text}`),close:async()=>{}})});
+  api.activate_document(1);
+  window.showSaveFilePicker=async()=>handle("one.rysmo");
+  await api.save("one.rysmo","one",true);
+  api.activate_document(2);
+  window.showSaveFilePicker=async()=>handle("two.rysmo");
+  await api.save("two.rysmo","two",true);
+  api.activate_document(1);
+  await api.save("one.rysmo","one updated",false);
+  let finish;
+  const gate=new Promise(resolve=>{finish=resolve;});
+  window.showSaveFilePicker=async()=>{await gate;return handle("renamed.rysmo");};
+  const pending=api.save("renamed.rysmo","rename",true);
+  api.activate_document(2);
+  finish();await pending;
+  await api.save("two.rysmo","two updated",false);
+  api.activate_document(1);
+  await api.save("renamed.rysmo","renamed updated",false);
+  assert.deepEqual(calls.writes,["one.rysmo:one","two.rysmo:two","one.rysmo:one updated","renamed.rysmo:rename","two.rysmo:two updated","renamed.rysmo:renamed updated"]);
+});
+
+test("workspace recovery preserves all document snapshots, dirty flags and active tab", async()=>{
+  const db=recoveryDatabase();
+  const {api}=await fixture({indexedDB:db});
+  const snapshot={active:2,documents:[{id:1,name:"A.rysmo",text:"model A",dirty:true},{id:2,name:"B.rysmo",text:"model B",dirty:false}]};
+  assert.equal(await api.save_workspace(JSON.stringify(snapshot)),true);
+  const reloaded=await fixture({indexedDB:db});
+  const recovered=await reloaded.api.restore_workspace();
+  assert.equal(recovered.active,2);
+  assert.deepEqual(Array.from(recovered.documents,d=>[d.id,d.name,d.text,d.dirty]),[[1,"A.rysmo","model A",true],[2,"B.rysmo","model B",false]]);
+  const first=api.save_workspace(JSON.stringify(snapshot));
+  snapshot.documents.splice(0,1);
+  const last=api.save_workspace(JSON.stringify(snapshot));
+  await Promise.all([first,last]);
+  assert.equal((await api.restore_workspace()).documents.length,1);
+});

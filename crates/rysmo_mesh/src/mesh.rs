@@ -158,7 +158,7 @@ pub enum MeshError {
 }
 
 /// Vertices, edges and faces, keyed by stable ids.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct Mesh {
     pub(crate) vertices: BTreeMap<VertexId, Vertex>,
     pub(crate) edges: BTreeMap<EdgeId, Edge>,
@@ -168,6 +168,46 @@ pub struct Mesh {
     pub(crate) next_id: u64,
     #[serde(skip)]
     pub(crate) edge_index: HashMap<(VertexId, VertexId), EdgeId>,
+}
+
+impl<'de> Deserialize<'de> for Mesh {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Stored {
+            vertices: BTreeMap<VertexId, Vertex>,
+            edges: BTreeMap<EdgeId, Edge>,
+            faces: BTreeMap<FaceId, Face>,
+            #[serde(default)]
+            curves: BTreeMap<crate::CurveId, crate::Curve>,
+            next_id: u64,
+        }
+        let stored = Stored::deserialize(deserializer)?;
+        let highest = stored
+            .vertices
+            .keys()
+            .map(|id| id.0)
+            .chain(stored.edges.keys().map(|id| id.0))
+            .chain(stored.faces.keys().map(|id| id.0))
+            .chain(stored.curves.keys().map(|id| id.0))
+            .max()
+            .unwrap_or(0);
+        let minimum = if highest == 0 {
+            0
+        } else {
+            highest.checked_add(1).ok_or_else(|| serde::de::Error::custom("Mesh identifier overflow"))?
+        };
+        let mut mesh = Mesh {
+            vertices: stored.vertices,
+            edges: stored.edges,
+            faces: stored.faces,
+            curves: stored.curves,
+            next_id: stored.next_id.max(minimum),
+            edge_index: HashMap::new(),
+        };
+        mesh.reindex();
+        mesh.validate().map_err(serde::de::Error::custom)?;
+        Ok(mesh)
+    }
 }
 
 pub(crate) fn key(a: VertexId, b: VertexId) -> (VertexId, VertexId) {

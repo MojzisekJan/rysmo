@@ -202,6 +202,9 @@ pub fn build(doc: &Document, options: &Options) -> Result<Drawing, String> {
             }
         }
     }
+    for hatch in rysmo_model::section_hatching::build(doc).map_err(|e| e.to_string())? {
+        lines.push((hatch.map(project), 0.13));
+    }
     if lines.is_empty() {
         return Err(err("No visible linework in this view."));
     }
@@ -369,7 +372,7 @@ fn triangle_depth(p: DVec2, t: [DVec3; 3]) -> f64 {
     let c = u.perp_dot(p - a) / det;
     t[0].z + (t[1].z - t[0].z) * b + (t[2].z - t[0].z) * c
 }
-fn text_width(text: &str, size: f64) -> f64 {
+pub(crate) fn text_width(text: &str, size: f64) -> f64 {
     let face =
         ttf_parser::Face::parse(include_bytes!("../../rysmo_model/fonts/DejaVuSans.ttf"), 0).expect("bundled font");
     text.chars().map(|c| face.glyph_index(c).and_then(|g| face.glyph_hor_advance(g)).unwrap_or(0) as f64).sum::<f64>()
@@ -421,62 +424,72 @@ impl Drawing {
         pdf::write(self)
     }
 }
-mod pdf {
+pub(crate) mod pdf {
     use super::*;
     use std::collections::BTreeMap;
     pub fn write(drawing: &Drawing) -> Vec<u8> {
+        write_pages(std::slice::from_ref(drawing))
+    }
+    pub fn write_pages(drawings: &[Drawing]) -> Vec<u8> {
         let font = include_bytes!("../../rysmo_model/fonts/DejaVuSans.ttf");
         let face = ttf_parser::Face::parse(font, 0).expect("bundled font");
         let unit = 1000. / face.units_per_em() as f64;
         let mut glyphs = BTreeMap::new();
-        let mut content = String::new();
+        let mut contents = Vec::new();
         let pt = 72. / 25.4;
+        for drawing in drawings {
+            let mut content = String::new();
+            let height = drawing.page_mm[1];
+            for line in &drawing.lines {
+                let [a, b] = line.points;
+                writeln!(
+                    content,
+                    "{} w {} {} m {} {} l S",
+                    line.width * pt,
+                    a.x * pt,
+                    (height - a.y) * pt,
+                    b.x * pt,
+                    (height - b.y) * pt
+                )
+                .unwrap();
+            }
+            for polygon in &drawing.fills {
+                for (i, p) in polygon.iter().enumerate() {
+                    writeln!(content, "{} {} {}", p.x * pt, (height - p.y) * pt, if i == 0 { "m" } else { "l" })
+                        .unwrap();
+                }
+                content.push_str("h f\n");
+            }
+            for label in &drawing.labels {
+                writeln!(
+                    content,
+                    "q 1 g {} {} {} {} re f Q",
+                    (label.at.x - 0.6) * pt,
+                    (height - label.at.y - 0.7) * pt,
+                    (text_width(&label.text, label.size) + 1.2) * pt,
+                    (label.size + 1.) * pt
+                )
+                .unwrap();
+                let mut encoded = String::new();
+                for character in label.text.chars() {
+                    let glyph = face.glyph_index(character).unwrap_or(ttf_parser::GlyphId(0));
+                    glyphs.entry(glyph.0).or_insert(character);
+                    write!(encoded, "{:04X}", glyph.0).unwrap();
+                }
+                writeln!(
+                    content,
+                    "BT /F1 {} Tf 1 0 0 1 {} {} Tm <{}> Tj ET",
+                    label.size * pt,
+                    label.at.x * pt,
+                    (height - label.at.y) * pt,
+                    encoded
+                )
+                .unwrap();
+            }
+            contents.push(content);
+        }
+        let drawing = &drawings[0];
         let height = drawing.page_mm[1];
-        for line in &drawing.lines {
-            let [a, b] = line.points;
-            writeln!(
-                content,
-                "{} w {} {} m {} {} l S",
-                line.width * pt,
-                a.x * pt,
-                (height - a.y) * pt,
-                b.x * pt,
-                (height - b.y) * pt
-            )
-            .unwrap();
-        }
-        for polygon in &drawing.fills {
-            for (i, p) in polygon.iter().enumerate() {
-                writeln!(content, "{} {} {}", p.x * pt, (height - p.y) * pt, if i == 0 { "m" } else { "l" }).unwrap();
-            }
-            content.push_str("h f\n");
-        }
-        for label in &drawing.labels {
-            writeln!(
-                content,
-                "q 1 g {} {} {} {} re f Q",
-                (label.at.x - 0.6) * pt,
-                (height - label.at.y - 0.7) * pt,
-                (text_width(&label.text, label.size) + 1.2) * pt,
-                (label.size + 1.) * pt
-            )
-            .unwrap();
-            let mut encoded = String::new();
-            for character in label.text.chars() {
-                let glyph = face.glyph_index(character).unwrap_or(ttf_parser::GlyphId(0));
-                glyphs.entry(glyph.0).or_insert(character);
-                write!(encoded, "{:04X}", glyph.0).unwrap();
-            }
-            writeln!(
-                content,
-                "BT /F1 {} Tf 1 0 0 1 {} {} Tm <{}> Tj ET",
-                label.size * pt,
-                label.at.x * pt,
-                (height - label.at.y) * pt,
-                encoded
-            )
-            .unwrap();
-        }
         let stream = |data: &[u8], extra: &str| {
             let mut v = format!("<< /Length {} {extra} >>\nstream\n", data.len()).into_bytes();
             v.extend_from_slice(data);
@@ -507,16 +520,26 @@ mod pdf {
             .collect::<Vec<_>>()
             .join(" ");
         let bbox = face.global_bounding_box();
-        let objects=[
+        let kids = std::iter::once(3)
+            .chain((1..drawings.len()).map(|i| 10 + (i - 1) * 2))
+            .map(|id| format!("{id} 0 R"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let mut objects=vec![
             b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
-            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+            format!("<< /Type /Pages /Kids [{kids}] /Count {} >>",drawings.len()).into_bytes(),
             format!("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {} {}] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",drawing.page_mm[0]*pt,height*pt).into_bytes(),
-            stream(content.as_bytes(),""),
+            stream(contents[0].as_bytes(),""),
             b"<< /Type /Font /Subtype /Type0 /BaseFont /DejaVuSans /Encoding /Identity-H /DescendantFonts [6 0 R] /ToUnicode 9 0 R >>".to_vec(),
             format!("<< /Type /Font /Subtype /CIDFontType2 /BaseFont /DejaVuSans /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor 7 0 R /CIDToGIDMap /Identity /DW 1000 /W [{widths}] >>").into_bytes(),
             format!("<< /Type /FontDescriptor /FontName /DejaVuSans /Flags 32 /FontBBox [{} {} {} {}] /ItalicAngle 0 /Ascent {} /Descent {} /CapHeight {} /StemV 80 /FontFile2 8 0 R >>",bbox.x_min as f64*unit,bbox.y_min as f64*unit,bbox.x_max as f64*unit,bbox.y_max as f64*unit,face.ascender() as f64*unit,face.descender() as f64*unit,face.capital_height().unwrap_or(face.ascender()) as f64*unit).into_bytes(),
             stream(font,&format!("/Length1 {}",font.len())),stream(cmap.as_bytes(),""),
         ];
+        for (i, drawing) in drawings.iter().enumerate().skip(1) {
+            let content_id = 11 + (i - 1) * 2;
+            objects.push(format!("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {} {}] /Resources << /Font << /F1 5 0 R >> >> /Contents {content_id} 0 R >>",drawing.page_mm[0]*pt,drawing.page_mm[1]*pt).into_bytes());
+            objects.push(stream(contents[i].as_bytes(), ""));
+        }
         let mut out = b"%PDF-1.7\n%\xE2\xE3\xCF\xD3\n".to_vec();
         let mut offsets = vec![0];
         for (i, object) in objects.iter().enumerate() {

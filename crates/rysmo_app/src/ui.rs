@@ -271,6 +271,7 @@ fn panels(
                         }
                         menus(ui, &mut app);
                     });
+                crate::documents::panel(ui, &mut app);
                 ui.add_space(2.);
                 ui.horizontal(|ui| {
                     // Tool groups sit in quiet rounded trays; the panel toggle and command
@@ -765,6 +766,9 @@ pub fn menus(ui: &mut egui::Ui, app: &mut App3d) {
                 crate::features::data_files::pick(app, crate::features::data_files::Purpose::Collection);
             }
         });
+        if menu::button(ui, g::FLOPPY_DISK, "Drawing sheets...", "").clicked() {
+            app.features.sheets.open = true;
+        }
         if menu::button(ui, g::FLOPPY_DISK, "Export drawing (SVG / PDF)...", "").clicked() {
             app.features.drawing.open = true;
         }

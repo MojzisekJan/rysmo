@@ -8,6 +8,10 @@ pub struct ComponentSettings {
     pub insertion_axes: DrawingAxes,
     pub glue: GlueMode,
     pub cut_opening: bool,
+    #[serde(default)]
+    pub connections: crate::component_data::Connections,
+    #[serde(default)]
+    pub attributes: crate::component_data::Attributes,
 }
 impl ComponentSettings {
     pub fn frame(&self) -> DMat4 {
@@ -37,6 +41,8 @@ mod tests {
         let (mut e, instance, definition) = component();
         let old = e.doc().root.instances[&instance].clone();
         let settings = ComponentSettings {
+            connections: Default::default(),
+            attributes: Default::default(),
             glue: GlueMode::None,
             cut_opening: false,
             description: "A panel".into(),

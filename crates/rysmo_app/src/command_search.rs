@@ -39,6 +39,8 @@ enum File {
     Stl,
     ThreeMf,
     Report,
+    Sheets,
+    CloseTab,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Command {
@@ -111,6 +113,8 @@ fn entries(app: &App3d) -> Vec<Entry> {
         (File::Stl, "Export STL for 3D printing...", ""),
         (File::ThreeMf, "Export 3MF for 3D printing...", ""),
         (File::Report, "Model report (CSV)...", ""),
+        (File::Sheets, "Drawing sheets...", ""),
+        (File::CloseTab, "Close document", ""),
     ] {
         result.push(Entry {
             command: Command::File(file),
@@ -227,6 +231,10 @@ fn matches(entry: &Entry, query: &str) -> bool {
         Command::File(File::Dae) => "collada dae export textures",
         Command::File(File::Dxf) => "autocad dxf cad export",
         Command::File(File::Stl) => "stl 3d print printing slicer export",
+        Command::File(File::Sheets) => "paper layout drawing scale viewports pdf svg title block",
+        Command::File(File::CloseTab) => "close active model tab document",
+        Command::Action(Action::ComponentData) => "attributes metadata custom properties attachment connectors",
+        Command::Action(Action::LiveOperations) => "editable nondestructive array follow me sweep boolean inputs",
         Command::File(File::Report) => "csv quantities count volume area length spreadsheet bill materials",
         Command::File(File::ThreeMf) => "3mf 3d print printing slicer export",
         _ => "",
@@ -290,6 +298,8 @@ fn execute(app: &mut App3d, command: Command) {
             File::Stl => crate::files::export_for_print(app, crate::print_check::Format::Stl),
             File::ThreeMf => crate::files::export_for_print(app, crate::print_check::Format::ThreeMf),
             File::Report => app.features.report.open = true,
+            File::Sheets => app.features.sheets.open = true,
+            File::CloseTab => crate::unsaved::request(app, crate::unsaved::Action::CloseTab),
         },
         Command::Copy => {
             crate::object_clipboard::copy(app, false);

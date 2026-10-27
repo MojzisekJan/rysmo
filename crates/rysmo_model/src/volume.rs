@@ -166,6 +166,7 @@ mod tests {
             material: None,
             hidden: false,
             glued_to: None,
+            attributes: Default::default(),
         };
         assert!((doc.instance_volume(&inst, DMat4::from_scale(DVec3::splat(2.))).unwrap() - 4608.).abs() < 1e-8);
         inst.transform = DMat4::from_scale(DVec3::new(1., 0., 1.));

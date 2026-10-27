@@ -23,11 +23,15 @@ extern "C" {
     fn set_unsaved_changes(dirty: bool);
     fn set_render_diagnostics(text: &str);
     async fn restore() -> JsValue;
+    async fn restore_workspace() -> JsValue;
+    async fn save_workspace(json: &str) -> JsValue;
     async fn recent_names() -> JsValue;
     async fn autosave(name: &str, text: &str, dirty: bool) -> JsValue;
     fn get_autosave_settings() -> JsValue;
     fn set_autosave_settings(enabled: bool, minutes: u32);
     fn forget_file();
+    fn activate_document(id: f64);
+    fn forget_document(id: f64);
     fn accept_open_file(token: f64);
     fn reject_open_file(token: f64);
     async fn pick_open() -> JsValue;
@@ -41,6 +45,7 @@ extern "C" {
 
 /// What the asynchronous side found, for the next frame.
 enum Arrived {
+    Workspace { documents: Vec<(f64, String, String, bool, f64)>, active: f64 },
     Restored { name: String, text: String, dirty: bool, token: f64 },
     Opened { name: String, text: String, token: f64, version: DocumentVersion },
     Saved { name: String, how: String, version: DocumentVersion },
@@ -129,10 +134,33 @@ fn start(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>) {
     auto.preferences = Some(app.autosave_settings);
     auto.startup_generation = app.document_generation;
     install_shortcuts();
+    activate_tab(app.documents.active);
     let keep_demo = query_has("demo");
     wasm_bindgen_futures::spawn_local(async move {
         let state = restore().await;
         arrive(Arrived::Recent(strings(&field(&state, "recent"))));
+        let workspace = if keep_demo { JsValue::NULL } else { restore_workspace().await };
+        if !keep_demo && !workspace.is_null() && !workspace.is_undefined() {
+            let documents = js_sys::Array::from(&field(&workspace, "documents"))
+                .iter()
+                .filter_map(|doc| {
+                    Some((
+                        field(&doc, "id").as_f64()?,
+                        field(&doc, "name").as_string()?,
+                        field(&doc, "text").as_string()?,
+                        field(&doc, "dirty").as_bool().unwrap_or(false),
+                        field(&doc, "token").as_f64().unwrap_or(0.),
+                    ))
+                })
+                .collect::<Vec<_>>();
+            if !documents.is_empty() {
+                if let Some(token) = field(&state, "token").as_f64() {
+                    reject_open_file(token);
+                }
+                arrive(Arrived::Workspace { documents, active: field(&workspace, "active").as_f64().unwrap_or(0.) });
+                return;
+            }
+        }
         let doc = field(&state, "current");
         if !keep_demo
             && !doc.is_null()
@@ -197,6 +225,36 @@ fn take_arrived(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>, time: Res<Ti
     let arrived: Vec<Arrived> = ARRIVED.with(|q| q.borrow_mut().drain(..).collect());
     for a in arrived {
         match a {
+            Arrived::Workspace { documents, active } => {
+                if !app.accepts_recovery(auto.startup_generation) {
+                    for (_, _, _, _, token) in documents {
+                        reject_open_file(token);
+                    }
+                    continue;
+                }
+                let mut chosen = None;
+                for (id, name, text, dirty, token) in documents {
+                    match files::open_text(&mut app, &text, &name) {
+                        Ok(_) => {
+                            accept_open_file(token);
+                            if dirty {
+                                app.editor.mark_dirty();
+                            }
+                            if id == active {
+                                chosen = Some(app.documents.active);
+                            }
+                        }
+                        Err(error) => {
+                            reject_open_file(token);
+                            app.message = Some(error);
+                        }
+                    }
+                }
+                if let Some(id) = chosen {
+                    crate::documents::switch(&mut app, id);
+                }
+                app.message = Some("Restored document workspace from the last visit.".into());
+            }
             Arrived::Restored { name, text, dirty, token } if app.accepts_recovery(auto.startup_generation) => {
                 match files::open_text(&mut app, &text, &name) {
                     Ok(_) => {
@@ -231,6 +289,7 @@ fn take_arrived(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>, time: Res<Ti
                 let r = files::open_text(&mut app, &text, &name);
                 if r.is_ok() {
                     accept_open_file(token);
+                    persist_tabs(&app);
                 } else {
                     reject_open_file(token);
                 }
@@ -239,6 +298,13 @@ fn take_arrived(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>, time: Res<Ti
             Arrived::Saved { name, how, version } => {
                 let current = DocumentVersion { generation: app.document_generation, revision: app.editor.revision() };
                 if !version.same_document(current) {
+                    if let Some(session) = app.documents.session_mut(version.generation) {
+                        if session.editor.revision() == version.revision {
+                            session.editor.mark_saved();
+                        }
+                        session.path = Some(name.into());
+                        persist_tabs(&app);
+                    }
                     continue;
                 }
                 // Only clean if nothing changed while the browser was saving.
@@ -323,9 +389,12 @@ fn autosave_now(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>, time: Res<Ti
         app.editor.set_camera(camera);
         let text = rysmo_io::save(app.editor.doc());
         let dirty = app.editor.is_dirty();
+        let workspace = workspace_text(&app);
         auto.in_flight = true;
         wasm_bindgen_futures::spawn_local(async move {
-            let success = autosave(&name, &text, dirty).await.as_bool().unwrap_or(false);
+            let workspace_saved = save_workspace(&workspace).await.as_bool().unwrap_or(false);
+            let single = autosave(&name, &text, dirty).await.as_bool().unwrap_or(false);
+            let success = workspace_saved && single;
             arrive(Arrived::Autosaved { version, camera, dirty, success });
         });
     }
@@ -355,7 +424,7 @@ pub fn pick_texture() {
 }
 
 fn unload_guard(app: Res<App3d>) {
-    set_unsaved_changes(app.editor.is_dirty());
+    set_unsaved_changes(app.editor.is_dirty() || app.documents.dirty());
 }
 
 /// Measure completed editor updates separately from browser animation callbacks.
@@ -409,4 +478,31 @@ pub fn pick_data(purpose: crate::features::data_files::Purpose, version: Documen
             arrive(Arrived::Data { purpose, name, bytes: js_sys::Uint8Array::new(&values.get(1)).to_vec(), version });
         }
     });
+}
+
+/// Switch the browser file destination together with the active editor tab.
+pub fn activate_tab(id: u64) {
+    activate_document(id as f64);
+}
+
+fn workspace_text(app: &App3d) -> String {
+    let documents: Vec<_> = app.documents.sessions(app).map(|(id, session)| {
+        let mut doc = session.editor.doc().clone();
+        doc.camera = Some(session.camera);
+        serde_json::json!({ "id": id, "name": session.path.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|| "Untitled.rysmo".into()), "text": rysmo_io::save(&doc), "dirty": session.editor.is_dirty() })
+    }).collect();
+    serde_json::json!({ "active": app.documents.active, "documents": documents }).to_string()
+}
+pub fn persist_tabs(app: &App3d) {
+    if !app.autosave_settings.enabled {
+        return;
+    }
+    let json = workspace_text(app);
+    wasm_bindgen_futures::spawn_local(async move {
+        save_workspace(&json).await;
+    });
+}
+
+pub fn forget_tab(id: u64) {
+    forget_document(id as f64);
 }
