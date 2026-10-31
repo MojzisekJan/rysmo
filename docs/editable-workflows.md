@@ -80,9 +80,11 @@ hatch segments and a bounded intersection budget; increase spacing if needed.
 
 New and Open retain the current model in another tab. Each document has independent
 Undo/Redo, camera, selection, editing context and save destination. The clipboard,
-component library and application preferences are shared. Plus creates a document;
-the close button closes the active document and checks unsaved changes. Closing
-the application checks every dirty document. Up to 16 documents can be open.
+component library and application preferences are shared. The tab row appears when
+two or more documents are open; its close button closes the active document and
+checks unsaved changes. With one document, Close document in command search does the
+same. Closing the application checks every dirty document. Up to 16 documents can be
+open.
 
 In the browser, each tab retains its own file handle. A delayed Save As remains
 associated with its initiating document. Autosave stores a workspace with all

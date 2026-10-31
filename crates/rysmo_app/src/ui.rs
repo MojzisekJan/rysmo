@@ -159,6 +159,12 @@ pub(crate) fn slot_button(ui: &mut egui::Ui, app: &mut App3d, slot: &Slot, icon_
 /// Inner height of toolbar trays: a 20-point icon button.
 const TRAY_HEIGHT: f32 = 34.;
 
+/// A frameless icon button for the end of the tool row.
+fn tray_icon(glyph: &str) -> egui::Button<'_> {
+    let text = egui::RichText::new(glyph).family(egui::FontFamily::Name("phosphor".into())).size(20.);
+    egui::Button::new(text).frame(false).min_size(egui::vec2(TRAY_HEIGHT, TRAY_HEIGHT))
+}
+
 /// A rounded tray grouping related tool buttons.
 fn tool_tray(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
     egui::Frame::new()
@@ -286,11 +292,8 @@ fn panels(
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         tool_tray(ui, |ui| {
-                            let search =
-                                egui::Button::new(menu::label(menu::glyph::MAGNIFYING_GLASS, "Search commands"))
-                                    .frame(false)
-                                    .min_size(egui::vec2(0., TRAY_HEIGHT));
-                            if ui.add(search).on_hover_text("Shift+S").clicked() {
+                            let search = tray_icon(menu::glyph::MAGNIFYING_GLASS);
+                            if ui.add(search).on_hover_text("Search commands (Shift+S)").clicked() {
                                 crate::command_search::open(&mut app);
                             }
                             ui.add_space(6.);
@@ -298,10 +301,8 @@ fn panels(
                             ui.add_space(6.);
                             let panel_open = crate::tablet::sidebar_open(&mut app);
                             let text = if panel_open { "Hide panel" } else { "Show panel" };
-                            let panels = egui::Button::new(menu::label(menu::glyph::SIDEBAR_SIMPLE, text))
-                                .frame(false)
-                                .min_size(egui::vec2(0., TRAY_HEIGHT));
-                            if ui.add(panels).on_hover_text("Show or hide the side panel").clicked() {
+                            let panels = tray_icon(menu::glyph::SIDEBAR_SIMPLE);
+                            if ui.add(panels).on_hover_text(text).clicked() {
                                 crate::tablet::toggle_sidebar(&mut app, ui.ctx());
                             }
                             ui.add_space(4.);

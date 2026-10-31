@@ -31,6 +31,9 @@ impl Documents {
     pub fn session_mut(&mut self, generation: u64) -> Option<&mut App3d> {
         self.inactive.values_mut().find(|app| app.document_generation == generation).map(Box::as_mut)
     }
+    pub fn single(&self) -> bool {
+        self.inactive.is_empty()
+    }
     pub fn full(&self) -> bool {
         self.inactive.len() >= 15
     }
@@ -137,7 +140,11 @@ pub fn close(app: &mut App3d) {
     }
 }
 
+/// Tabs for switching documents. A single document needs no tab row.
 pub fn panel(ui: &mut egui::Ui, app: &mut App3d) {
+    if app.documents.single() {
+        return;
+    }
     let mut tabs: Vec<_> = app.documents.inactive.iter().map(|(id, a)| (*id, title(a))).collect();
     tabs.push((app.documents.active, title(app)));
     tabs.sort_by_key(|(id, _)| *id);
@@ -148,9 +155,6 @@ pub fn panel(ui: &mut egui::Ui, app: &mut App3d) {
             if ui.selectable_label(id == app.documents.active, name).clicked() {
                 activate = Some(id);
             }
-        }
-        if ui.small_button("+").on_hover_text("New document").clicked() {
-            crate::unsaved::request(app, crate::unsaved::Action::New);
         }
         close = ui.small_button("×").on_hover_text("Close active document").clicked();
     });
@@ -199,6 +203,17 @@ mod tests {
         switch(&mut app, second);
         assert_eq!(app.path, Some("second.rysmo".into()));
         assert_eq!(app.editor.mesh().edge_count(), 1);
+    }
+    #[test]
+    fn tab_row_appears_only_with_several_documents() {
+        let mut app = App3d::new(Editor::new());
+        app.welcome = false;
+        assert!(app.documents.single());
+        app.editor.mark_dirty();
+        assert!(create(&mut app));
+        assert!(!app.documents.single());
+        close(&mut app);
+        assert!(app.documents.single());
     }
     #[test]
     fn closing_app_checks_dirty_background_documents() {
