@@ -40,6 +40,7 @@ mod terrain_edit;
 mod topology_tools;
 mod transform;
 mod triangulate;
+mod view;
 
 #[cfg(test)]
 mod tests;
@@ -58,6 +59,7 @@ pub use offset::offset_polyline;
 pub use ops::PushPullResult;
 pub use transform::Template;
 pub use triangulate::triangulate_face;
+pub use view::MeshView;
 
 /// Edges between faces that meet at less than this angle (degrees) are softened and
 /// smoothed when push/pull or Follow Me makes them, so curved surfaces look round.

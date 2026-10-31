@@ -601,7 +601,7 @@ fn accelerated_queries_find_what_a_full_scan_finds() {
         .add_lines(&closed([DVec3::Y * 5., DVec3::new(1., 5., 0.), DVec3::new(1., 6., 0.), DVec3::Y * 6.]), None)
         .unwrap();
     let updated = Accel::new(
-        std::sync::Arc::new(MeshIndex::new(&mesh).update(&edited)),
+        std::sync::Arc::new(MeshIndex::new(&edited)),
         placements.iter().map(|(_, to_local)| (index.clone(), *to_local)).collect(),
     );
     let camera = rysmo_math::OrbitCamera {

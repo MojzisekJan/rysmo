@@ -7,7 +7,7 @@ use rysmo_math::{DVec3, EPS, Plane, closest_on_segment, parallel, segment_inters
 
 use crate::ids::{EdgeId, FaceId, VertexId};
 use crate::mesh::{Mesh, MeshError};
-use crate::spatial::{Aabb, Bvh, DynamicBvh};
+use crate::spatial::{Aabb, DynamicBvh};
 
 /// How far past a box the tolerances can reach.
 pub(crate) const MARGIN: f64 = EPS * 2.0;
@@ -56,49 +56,40 @@ impl Mesh {
 
     /// `edges_along` for many segments in one pass over the edges.
     pub fn edges_along_each(&self, segments: &[(DVec3, DVec3)]) -> Vec<Vec<EdgeId>> {
-        let tree =
-            Bvh::new(segments.iter().enumerate().map(|(i, (p, q))| (Aabb::of([*p, *q]).expanded(MARGIN), i)).collect());
-        let mut found = vec![Vec::new(); segments.len()];
-        for (id, e) in &self.edges {
-            let (a, b) = (self.pos(e.v[0]), self.pos(e.v[1]));
-            tree.overlapping(Aabb::of([a, b]), |i| {
-                let (p, q) = segments[*i];
-                if lies_on(p, q, a) && lies_on(p, q, b) {
-                    found[*i].push(*id);
-                }
+        let view = self.view();
+        let along = |(p, q): &(DVec3, DVec3)| {
+            let mut found = view.edges_in(self, Aabb::of([*p, *q]).expanded(MARGIN));
+            found.retain(|id| {
+                let (a, b) = self.edge_points(*id);
+                lies_on(*p, *q, a) && lies_on(*p, *q, b)
             });
-        }
-        found
+            found
+        };
+        segments.iter().map(along).collect()
     }
 
-    /// What a batch of insertions along `lines` has to look at: the vertices, edges and
-    /// faces near them, gathered in one pass over the mesh.
+    /// What a batch of insertions along `lines` has to look at.
     pub(crate) fn line_index(&self, lines: &[(DVec3, DVec3)]) -> LineIndex {
+        let view = self.view();
         let reach = |a: DVec3, b: DVec3| Aabb::of([a, b]).expanded(MARGIN);
-        let near = Bvh::new(lines.iter().map(|(p, q)| (reach(*p, *q), ())).collect());
-        let touches = |area: Aabb| near.any(area, |_| true);
-        let mut edges = Vec::new();
+        let mut edges = BTreeSet::new();
+        let mut vertices = BTreeSet::new();
+        for (p, q) in lines {
+            edges.extend(view.edges_in(self, reach(*p, *q)));
+            vertices.extend(view.vertices_in(self, reach(*p, *q)));
+        }
         let mut around: HashMap<VertexId, Vec<FaceId>> = HashMap::new();
-        for (id, edge) in &self.edges {
-            let area = reach(self.pos(edge.v[0]), self.pos(edge.v[1]));
-            if touches(area) {
-                edges.push((area, *id));
-                around.extend(edge.v.map(|v| (v, Vec::new())));
-            }
-        }
-        for (id, face) in &self.faces {
-            for v in face.loops().flatten() {
-                if let Some(faces) = around.get_mut(v) {
-                    faces.push(*id);
+        let edges: Vec<_> = edges
+            .into_iter()
+            .map(|id| {
+                let [a, b] = self.edges[&id].v;
+                for v in [a, b] {
+                    around.entry(v).or_insert_with(|| view.faces_at(self, v));
                 }
-            }
-        }
-        let vertices = self
-            .vertices
-            .iter()
-            .map(|(id, v)| (Aabb::at(v.pos).expanded(MARGIN), *id))
-            .filter(|(area, _)| touches(*area))
+                (reach(self.pos(a), self.pos(b)), id)
+            })
             .collect();
+        let vertices = vertices.into_iter().map(|id| (Aabb::at(self.pos(id)).expanded(MARGIN), id)).collect();
         LineIndex { vertices: DynamicBvh::new(vertices), edges: DynamicBvh::new(edges), around }
     }
 
@@ -241,17 +232,7 @@ impl Mesh {
     /// Rebuilds the faces of every plane that contains one of `seeds` together with an
     /// existing face or a neighbouring edge.
     pub(crate) fn rebuild_around(&mut self, seeds: &[EdgeId], facing: Option<DVec3>) {
-        let seed_boxes = seeds.iter().filter_map(|e| {
-            let [a, b] = self.edges.get(e)?.v;
-            Some((Aabb::of([self.pos(a), self.pos(b)]).expanded(MARGIN), *e))
-        });
-        let near = Bvh::new(seed_boxes.collect());
-        // One pass over the faces and edges finds what each seed needs.
-        let mut in_plane: HashMap<EdgeId, Vec<FaceId>> = HashMap::new();
-        for (id, face) in &self.faces {
-            let area = Aabb::of(face.outer.iter().map(|v| self.pos(*v)));
-            near.overlapping(area, |seed| in_plane.entry(*seed).or_default().push(*id));
-        }
+        let view = self.view();
         let mut planes = PlaneSet::default();
         for &e in seeds {
             let Some(edge) = self.edges.get(&e) else { continue };
@@ -260,12 +241,12 @@ impl Mesh {
             let pb = self.pos(b);
             let dir = (pb - pa).normalize();
             // Planes of faces the edge lies in.
-            for f in in_plane.get(&e).into_iter().flatten() {
-                if let Some(pl) = self.face_plane(*f)
+            for f in view.faces_in(self, Aabb::of([pa, pb]).expanded(MARGIN)) {
+                if let Some(pl) = self.face_plane(f)
                     && pl.contains(pa)
                     && pl.contains(pb)
                 {
-                    planes.push(pl);
+                    planes.push(pl, e);
                 }
             }
             // Planes spanned with each edge at either end.
@@ -284,13 +265,13 @@ impl Mesh {
                 if parallel(dir, ndir) {
                     continue;
                 }
-                planes.push(Plane::new(dir.cross(ndir), pa));
+                planes.push(Plane::new(dir.cross(ndir), pa), e);
             }
         }
         let seed_set: BTreeSet<EdgeId> = seeds.iter().copied().collect();
-        let mut index = crate::region::RegionIndex::new(self, planes.list.len());
-        for pl in planes.list {
-            self.rebuild_plane_in(&pl, &seed_set, facing, &mut index);
+        let mut index = crate::region::RegionIndex::new(view);
+        for (pl, start) in planes.list.into_iter().zip(planes.seeds) {
+            self.rebuild_plane_in(&pl, &seed_set, facing, &mut index, &start);
         }
     }
 }
@@ -309,19 +290,26 @@ pub(crate) struct LineIndex {
 #[derive(Default)]
 struct PlaneSet {
     list: Vec<Plane>,
+    /// The seeds that led to each plane.
+    seeds: Vec<Vec<EdgeId>>,
     buckets: HashMap<i64, Vec<usize>>,
 }
 
 impl PlaneSet {
-    fn push(&mut self, plane: Plane) {
+    fn push(&mut self, plane: Plane, seed: EdgeId) {
         let bucket = (plane.d.abs() / (EPS * 10.0)).floor() as i64;
         let known = (bucket - 1..=bucket + 1)
             .filter_map(|b| self.buckets.get(&b))
             .flatten()
-            .any(|i| self.list[*i].same_surface(&plane));
-        if !known {
-            self.buckets.entry(bucket).or_default().push(self.list.len());
-            self.list.push(plane);
+            .copied()
+            .find(|i| self.list[*i].same_surface(&plane));
+        match known {
+            Some(i) => self.seeds[i].push(seed),
+            None => {
+                self.buckets.entry(bucket).or_default().push(self.list.len());
+                self.list.push(plane);
+                self.seeds.push(vec![seed]);
+            }
         }
     }
 }

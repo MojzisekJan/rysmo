@@ -23,7 +23,9 @@ use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 use rysmo_math::{DMat4, DVec3};
 use rysmo_mesh::spatial::Aabb;
-use rysmo_mesh::{DefinitionId, EdgeId, Element, FaceId, ImageId, InstanceId, MaterialId, VertexId, triangulate_face};
+use rysmo_mesh::{
+    DefinitionId, EdgeId, Element, FaceId, ImageId, InstanceId, MaterialId, MeshView, VertexId, triangulate_face,
+};
 use rysmo_model::sections::SectionPlane;
 use rysmo_model::{FaceStyle, Lighting, Occurrence};
 
@@ -184,14 +186,18 @@ struct DrawnFace {
 }
 
 impl FaceChunk {
-    fn new(mesh: &rysmo_mesh::Mesh, block: u64, ids: &[FaceId], smooth: HashMap<(FaceId, VertexId), DVec3>) -> Self {
+    fn new(mesh: &rysmo_mesh::Mesh, view: &MeshView, block: u64, ids: &[FaceId]) -> Self {
         let faces: Vec<_> = ids
             .iter()
             .filter_map(|id| {
                 Some(DrawnFace { id: *id, normal: mesh.face_normal(*id)?, triangles: triangulate_face(mesh, *id) })
             })
             .collect();
-        let vertices = ids.iter().filter_map(|id| mesh.face(*id)).flat_map(|f| f.loops().flatten().copied()).collect();
+        let vertices: HashSet<VertexId> =
+            ids.iter().filter_map(|id| mesh.face(*id)).flat_map(|f| f.loops().flatten().copied()).collect();
+        let corners: BTreeSet<_> = vertices.iter().copied().collect();
+        let mut smooth = mesh.smooth_normals_at(view, &corners);
+        smooth.retain(|(face, _), _| face.0 >> CHUNK_BITS == block);
         FaceChunk { block, faces, vertices, smooth }
     }
 }
@@ -203,6 +209,26 @@ struct DrawnFaces {
     chunks: Vec<Arc<FaceChunk>>,
 }
 
+/// The vertices of `mesh` whose triangles or corner normals may differ from `older`.
+fn affected_vertices(
+    mesh: &rysmo_mesh::Mesh,
+    older: &rysmo_mesh::Mesh,
+    view: &MeshView,
+) -> (BTreeSet<FaceId>, BTreeSet<VertexId>) {
+    let (faces, vertices) = mesh.changed_since(older);
+    let mut affected: BTreeSet<VertexId> = vertices.iter().copied().collect();
+    // A corner's normal depends on all of the faces at it, and those on all their corners.
+    let moved = view.faces_touching(mesh, &affected);
+    let faces: BTreeSet<_> = faces.into_iter().chain(moved).collect();
+    for face in faces.iter().flat_map(|id| mesh.face(*id).into_iter().chain(older.face(*id))) {
+        affected.extend(face.loops().flatten().copied());
+    }
+    for edge in mesh.changed_edges_since(older).iter().filter_map(|id| mesh.edge(*id)) {
+        affected.extend(edge.v);
+    }
+    (faces, affected)
+}
+
 impl DrawnFaces {
     /// Builds the chunks of `mesh`, keeping those of `older` that still hold.
     fn new(mesh: rysmo_mesh::Mesh, older: Option<&DrawnFaces>) -> Self {
@@ -210,23 +236,19 @@ impl DrawnFaces {
         for (id, _) in mesh.faces() {
             by_block.entry(id.0 >> CHUNK_BITS).or_default().push(id);
         }
-        let mut smooth: HashMap<u64, HashMap<(FaceId, VertexId), DVec3>> = HashMap::new();
-        for ((face, vertex), normal) in mesh.smooth_normals() {
-            smooth.entry(face.0 >> CHUNK_BITS).or_default().insert((face, vertex), normal);
-        }
-        let changes = older.map(|older| mesh.changed_since(&older.mesh));
+        let view = mesh.view();
+        let changes = older.map(|older| affected_vertices(&mesh, &older.mesh, &view));
         let dirty: BTreeSet<u64> = changes.iter().flat_map(|(faces, _)| faces).map(|id| id.0 >> CHUNK_BITS).collect();
-        let vertices = changes.as_ref().map_or(&[][..], |(_, vertices)| vertices.as_slice());
+        let vertices: Vec<_> = changes.iter().flat_map(|(_, vertices)| vertices).copied().collect();
         let check_vertices = vertices.len().saturating_mul(by_block.len()) <= CHUNK_CHECK_LIMIT;
         let chunks = by_block
             .into_iter()
             .map(|(block, ids)| {
-                let smooth = smooth.remove(&block).unwrap_or_default();
                 let known = older
                     .filter(|_| check_vertices && !dirty.contains(&block))
                     .and_then(|older| older.chunk(block))
-                    .filter(|chunk| chunk.smooth == smooth && !vertices.iter().any(|v| chunk.vertices.contains(v)));
-                known.cloned().unwrap_or_else(|| Arc::new(FaceChunk::new(&mesh, block, &ids, smooth)))
+                    .filter(|chunk| !vertices.iter().any(|v| chunk.vertices.contains(v)));
+                known.cloned().unwrap_or_else(|| Arc::new(FaceChunk::new(&mesh, &view, block, &ids)))
             })
             .collect();
         DrawnFaces { mesh, chunks }

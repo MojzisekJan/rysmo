@@ -124,36 +124,51 @@ impl Mesh {
     /// that vertex. Corners with no smooth edge get the face normal. Built in one pass
     /// for the viewport.
     pub fn smooth_normals(&self) -> HashMap<(FaceId, VertexId), DVec3> {
-        if !self.edges.values().any(|e| e.smooth) {
+        let smooth: BTreeSet<_> = self.edges.values().filter(|e| e.smooth).flat_map(|e| e.v).collect();
+        if smooth.is_empty() {
             return HashMap::new();
         }
-        let mut edge_faces: HashMap<(VertexId, VertexId), Vec<FaceId>> = HashMap::new();
-        let mut vertex_faces: HashMap<VertexId, Vec<FaceId>> = HashMap::new();
-        for (id, f) in &self.faces {
-            for (a, b) in f.loop_edges() {
-                edge_faces.entry(key(a, b)).or_default().push(*id);
-                vertex_faces.entry(a).or_default().push(*id);
-            }
-        }
-        let mut smooth_at: HashMap<VertexId, Vec<(VertexId, VertexId)>> = HashMap::new();
-        for e in self.edges.values().filter(|e| e.smooth) {
-            for v in e.v {
-                smooth_at.entry(v).or_default().push(key(e.v[0], e.v[1]));
-            }
-        }
-        let normals: HashMap<FaceId, DVec3> =
-            self.faces.keys().filter_map(|f| Some((*f, self.face_normal(*f)?))).collect();
+        self.smooth_normals_at(&self.view(), &smooth)
+    }
+
+    /// `smooth_normals` limited to the corners at `vertices`.
+    pub fn smooth_normals_at(
+        &self,
+        view: &crate::MeshView,
+        vertices: &BTreeSet<VertexId>,
+    ) -> HashMap<(FaceId, VertexId), DVec3> {
         let mut out = HashMap::new();
-        for (v, faces) in &vertex_faces {
+        for v in vertices {
+            let smooth_here: Vec<_> = self
+                .edges_of_vertex(*v)
+                .into_iter()
+                .filter(|e| self.edges[e].smooth)
+                .map(|e| self.edges[&e].v)
+                .map(|[a, b]| key(a, b))
+                .collect();
+            if smooth_here.is_empty() {
+                continue;
+            }
+            // A face passes through a vertex once per visit of its loops.
+            let faces: Vec<FaceId> = view
+                .faces_at(self, *v)
+                .into_iter()
+                .flat_map(|id| {
+                    let visits = self.faces[&id].loops().flatten().filter(|x| *x == v).count();
+                    std::iter::repeat_n(id, visits)
+                })
+                .collect();
             // Union the faces at v that share a smooth edge at v.
             let mut group: HashMap<FaceId, usize> = faces.iter().enumerate().map(|(i, f)| (*f, i)).collect();
-            let Some(smooth_here) = smooth_at.get(v) else { continue };
             let mut changed = false;
-            for k in smooth_here {
-                if let Some(fs) = edge_faces.get(k)
-                    && fs.len() == 2
-                {
-                    let (ga, gb) = (group[&fs[0]], group[&fs[1]]);
+            for k in &smooth_here {
+                let along: Vec<_> = group
+                    .keys()
+                    .copied()
+                    .filter(|f| self.faces[f].loop_edges().iter().any(|(a, b)| key(*a, *b) == *k))
+                    .collect();
+                if let [first, second] = along[..] {
+                    let (ga, gb) = (group[&first], group[&second]);
                     if ga != gb {
                         for g in group.values_mut() {
                             if *g == gb {
@@ -167,7 +182,9 @@ impl Mesh {
             if !changed {
                 continue;
             }
-            for f in faces {
+            let normals: HashMap<FaceId, DVec3> =
+                group.keys().filter_map(|f| Some((*f, self.face_normal(*f)?))).collect();
+            for f in &faces {
                 let g = group[f];
                 let sum: DVec3 = group.iter().filter(|(_, x)| **x == g).filter_map(|(h, _)| normals.get(h)).sum();
                 if sum.length() > 1e-12 {

@@ -648,8 +648,7 @@ impl SceneCache {
         let definition = doc.def_arc(owner).expect("an occurrence's definition");
         let index = match self.indices.get(&owner) {
             Some((known, index)) if Arc::ptr_eq(known, definition) && !evaluated => return index.clone(),
-            Some((_, index)) => Arc::new(index.update(mesh)),
-            None => Arc::new(MeshIndex::new(mesh)),
+            _ => Arc::new(MeshIndex::new(mesh)),
         };
         self.indices.insert(owner, (definition.clone(), index.clone()));
         index

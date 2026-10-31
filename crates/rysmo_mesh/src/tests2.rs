@@ -5,6 +5,7 @@ use std::collections::BTreeSet;
 
 use rysmo_math::{DMat4, DVec3};
 
+use crate::mesh::VIEW_FACES;
 use crate::tests::{assert_closed, assert_outward, face_at, only_face, rect, unit_box, v};
 use crate::*;
 
@@ -397,4 +398,56 @@ fn a_move_near_other_geometry_takes_the_full_path() {
     far.move_elements(&copy, DVec3::new(-4., -1., 0.)).unwrap();
     assert!(far.vertex_count() < vertices);
     m.validate().unwrap();
+}
+
+/// Rebuilding part of a plane must leave the same faces as tracing all of it.
+#[test]
+fn local_plane_rebuilds_match_whole_plane_rebuilds() {
+    let scene = |extra: usize| {
+        let mut m = Mesh::new();
+        rect(&mut m, -2., -2., 60., 8., 0.);
+        for k in 0..(extra + 700) {
+            let (x, y) = ((k % 30) as f64 * 2., (k / 30) as f64 * 1.5 + 30.);
+            rect(&mut m, x, y, x + 1., y + 1., 0.);
+        }
+        m
+    };
+    let shape = |m: &Mesh| {
+        let mut out: Vec<_> = m
+            .faces()
+            .map(|(id, f)| {
+                format!("{:.4} {:.4} {}", m.face_area(id), m.loop_points(&f.outer).iter().sum::<DVec3>(), f.holes.len())
+            })
+            .collect();
+        out.sort();
+        out
+    };
+    let mut fast = scene(0);
+    assert!(fast.face_count() > VIEW_FACES);
+    // Into the big face: a hole region inside it, then a line across that.
+    fast.add_lines(
+        &[
+            (v(1., 1., 0.), v(3., 1., 0.)),
+            (v(3., 1., 0.), v(3., 3., 0.)),
+            (v(3., 3., 0.), v(1., 3., 0.)),
+            (v(1., 3., 0.), v(1., 1., 0.)),
+        ],
+        None,
+    )
+    .unwrap();
+    fast.add_line(v(1., 2., 0.), v(3., 2., 0.), None).unwrap();
+    // Across an outer boundary, and bridging two pieces.
+    fast.add_line(v(-3., 0., 0.), v(-1., 0., 0.), None).unwrap();
+    fast.add_line(v(0.5, 8., 0.), v(0.5, 30., 0.), None).unwrap();
+    let mut whole = fast.clone();
+    let plane = rysmo_math::Plane::new(DVec3::Z, DVec3::ZERO);
+    whole.rebuild_plane_in(&plane, &BTreeSet::new(), None, &mut Default::default(), &[]);
+    assert_eq!(shape(&fast), shape(&whole));
+    whole.validate().unwrap();
+    let first = fast.faces().find(|(_, f)| f.holes.is_empty()).unwrap().0;
+    let edge = fast.face_edges(first)[0];
+    fast.erase(&[Element::Edge(edge)]);
+    let mut whole = fast.clone();
+    whole.rebuild_plane_in(&plane, &BTreeSet::new(), None, &mut Default::default(), &[]);
+    assert_eq!(shape(&fast), shape(&whole));
 }

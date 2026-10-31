@@ -275,12 +275,11 @@ Editing and drawing avoid visiting the whole model once per element.
   behind `Arc`. An undo snapshot copies a list of blocks; an edit copies the blocks it
   writes to. Write through `get_mut` where only some entries change, since `values_mut`
   unshares every block.
-- `rysmo_mesh::spatial` has box trees. Batch operations build one over the smaller set
-  (the lines being inserted, the edges being moved) and pass over the mesh once.
-  Results that depend on id order are sorted, so a tree never changes an outcome.
+- `rysmo_mesh::spatial` has box trees. Results that depend on id order are sorted, so a
+  tree never changes an outcome.
 - `Editor::content_revision` ignores selection changes. Anything built from the document
   waits for it; `Editor::revision` also covers the selection.
-- Snapping keeps a scene per content revision and a `MeshIndex` per definition. A held
+- Snapping keeps a scene per content revision and a mesh view per definition. A held
   `Arc<Definition>` keeps its pointer valid as an identity, because an edit then has to
   copy it. Meshes with evaluated openings depend on other definitions and are rebuilt.
 - `Mesh::vertex_edges` is kept with `edge_index` by `link_edge` and `remove_edge_raw`,
@@ -293,7 +292,13 @@ Editing and drawing avoid visiting the whole model once per element.
   is split into pieces, each with its own Bevy meshes, and a piece is rebuilt when its
   signature changes. Style and material changes redraw all pieces. Selected and hovered
   faces are a separate blended mesh, so a click does not rebuild the model.
-- A snap `MeshIndex` is shared trees of an earlier state plus small trees of the changes.
+- `Mesh::view` gives trees, faces at a vertex and edges of a curve without any edit having
+  to report what it did. It holds a snapshot of the element maps, compares the mesh with
+  it through `BlockMap::changed_since` and adds small trees for the difference, so the
+  cost follows the change. Results are checked against the mesh. Take a new view after
+  adding elements; the snapshot is replaced once changes reach an eighth of the mesh.
+- Rebuilding a plane starts from the changed edges and takes what is connected to them
+  plus whatever overlaps that, since anything else cannot share a region with them.
 
 `crates/rysmo_tools/examples/perf.rs` times whole-model operations on scenes of boxes
 and `crates/rysmo_io/examples/perf_scene.rs` writes such a scene to a file.

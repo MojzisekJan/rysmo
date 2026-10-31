@@ -33,7 +33,7 @@ impl ToolBox {
                 mesh.curve_edges(mesh.edge(e).unwrap().curve.unwrap()).into_iter().map(Element::Edge).collect()
             }
             (1, Element::Face(face)) if !editor.doc().style.show_hidden_geometry => {
-                soft_surface(mesh, face).into_iter().map(Element::Face).collect()
+                soft_surface(mesh, &mesh.view(), face).into_iter().map(Element::Face).collect()
             }
             (1, _) => vec![el],
             // A double click opens a group or component.
@@ -45,7 +45,8 @@ impl ToolBox {
                 return;
             }
             (2, Element::Face(f)) => {
-                let faces = if editor.doc().style.show_hidden_geometry { vec![f] } else { soft_surface(mesh, f) };
+                let faces =
+                    if editor.doc().style.show_hidden_geometry { vec![f] } else { soft_surface(mesh, &mesh.view(), f) };
                 faces
                     .iter()
                     .copied()
@@ -194,9 +195,15 @@ impl ToolBox {
         if !editor.doc().style.show_hidden_geometry {
             let initial: BTreeSet<_> =
                 found.iter().filter_map(|e| if let Element::Face(id) = e { Some(*id) } else { None }).collect();
+            let view = mesh.view();
             let mut expanded = BTreeSet::new();
+            let mut seen = BTreeSet::new();
             for face in &initial {
-                let surface = soft_surface(mesh, *face);
+                if seen.contains(face) {
+                    continue;
+                }
+                let surface = soft_surface(mesh, &view, *face);
+                seen.extend(surface.iter().copied());
                 if crossing || surface.iter().all(|f| initial.contains(f)) {
                     expanded.extend(surface);
                 }
@@ -283,7 +290,7 @@ fn segment_hits_rect(a: DVec2, b: DVec2, lo: DVec2, hi: DVec2) -> bool {
 }
 
 /// Soft edges join visible facets into one selectable surface.
-fn soft_surface(mesh: &Mesh, start: rysmo_mesh::FaceId) -> Vec<rysmo_mesh::FaceId> {
+fn soft_surface(mesh: &Mesh, view: &rysmo_mesh::MeshView, start: rysmo_mesh::FaceId) -> Vec<rysmo_mesh::FaceId> {
     let mut result = BTreeSet::from([start]);
     let mut pending = vec![start];
     while let Some(face) = pending.pop() {
@@ -291,7 +298,7 @@ fn soft_surface(mesh: &Mesh, start: rysmo_mesh::FaceId) -> Vec<rysmo_mesh::FaceI
             if !mesh.edge(edge).is_some_and(|e| e.soft && !e.hidden) {
                 continue;
             }
-            for neighbour in mesh.faces_of_edge(edge) {
+            for neighbour in view.faces_of_edge(mesh, edge) {
                 if mesh.face(neighbour).is_some_and(|f| !f.hidden) && result.insert(neighbour) {
                     pending.push(neighbour);
                 }

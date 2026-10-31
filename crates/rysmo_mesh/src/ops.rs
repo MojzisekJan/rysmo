@@ -121,8 +121,9 @@ impl Mesh {
             return false;
         }
         let [v0, v1] = self.edges[&e].v;
+        let start: Vec<_> = faces.iter().flat_map(|f| self.face_edges(*f)).filter(|id| *id != e).collect();
         self.remove_edge_raw(e);
-        self.rebuild_plane(&a, &BTreeSet::new(), None);
+        self.rebuild_plane_around(&a, &start);
         self.heal_vertex(v0);
         self.heal_vertex(v1);
         true

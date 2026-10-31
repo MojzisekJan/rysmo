@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::blocks::BlockMap;
 use crate::ids::{EdgeId, Element, FaceId, MaterialId, VertexId};
+use crate::spatial::Aabb;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Vertex {
@@ -158,6 +159,9 @@ pub enum MeshError {
     Invalid(String),
 }
 
+/// Above this many faces, one-off adjacency questions go through a `MeshView`.
+pub(crate) const VIEW_FACES: usize = 512;
+
 /// Vertices, edges and faces, keyed by stable ids.
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct Mesh {
@@ -172,6 +176,8 @@ pub struct Mesh {
     /// The edges at each vertex, in id order.
     #[serde(skip)]
     pub(crate) vertex_edges: BlockMap<VertexId, Vec<EdgeId>>,
+    #[serde(skip)]
+    pub(crate) snapshot: crate::view::SnapshotSlot,
 }
 
 impl<'de> Deserialize<'de> for Mesh {
@@ -208,6 +214,7 @@ impl<'de> Deserialize<'de> for Mesh {
             next_id: stored.next_id.max(minimum),
             edge_index: BlockMap::new(),
             vertex_edges: BlockMap::new(),
+            snapshot: Default::default(),
         };
         mesh.reindex();
         mesh.validate().map_err(serde::de::Error::custom)?;
@@ -304,6 +311,7 @@ impl Mesh {
             next_id: max + 1,
             edge_index: BlockMap::new(),
             vertex_edges: BlockMap::new(),
+            snapshot: Default::default(),
         };
         m.reindex();
         m.validate()?;
@@ -474,6 +482,9 @@ impl Mesh {
     /// The faces whose loops run along an edge.
     pub fn faces_of_edge(&self, e: EdgeId) -> Vec<FaceId> {
         let Some(edge) = self.edges.get(&e) else { return Vec::new() };
+        if self.faces.len() > VIEW_FACES {
+            return self.view().faces_of_edge(self, e);
+        }
         let k = key(edge.v[0], edge.v[1]);
         self.faces
             .iter()
@@ -487,6 +498,9 @@ impl Mesh {
     }
 
     pub fn faces_of_vertex(&self, v: VertexId) -> Vec<FaceId> {
+        if self.faces.len() > VIEW_FACES {
+            return self.view().faces_at(self, v);
+        }
         self.faces.iter().filter(|(_, f)| f.has_vertex(v)).map(|(id, _)| *id).collect()
     }
 
@@ -525,40 +539,14 @@ impl Mesh {
         self.vertices.iter().find(|(_, v)| v.pos.distance(p) < EPS).map(|(id, _)| *id)
     }
 
-    /// `find_vertex` for many points in one pass over the vertices. `allowed` narrows
-    /// which vertices count.
+    /// `find_vertex` for many points. `allowed` narrows which vertices count.
     pub fn locate(&self, points: &[DVec3], allowed: impl Fn(VertexId) -> bool) -> Vec<Option<VertexId>> {
-        const CELL: f64 = EPS * 4.0;
-        let cell = |p: DVec3| (p / CELL).floor().as_i64vec3().to_array();
-        // A point goes in every cell its tolerance reaches, so a vertex checks one cell.
-        let mut grid: HashMap<[i64; 3], Vec<usize>> = HashMap::with_capacity(points.len());
-        for (index, p) in points.iter().enumerate() {
-            let mut cells = [[0; 3]; 8];
-            for (k, slot) in cells.iter_mut().enumerate() {
-                let corner = DVec3::new(
-                    if k & 1 == 0 { -EPS } else { EPS },
-                    if k & 2 == 0 { -EPS } else { EPS },
-                    if k & 4 == 0 { -EPS } else { EPS },
-                );
-                *slot = cell(*p + corner);
-            }
-            cells.sort_unstable();
-            for (k, key) in cells.iter().enumerate() {
-                if k == 0 || cells[k - 1] != *key {
-                    grid.entry(*key).or_default().push(index);
-                }
-            }
-        }
-        let mut found = vec![None; points.len()];
-        for (id, vertex) in &self.vertices {
-            let Some(indices) = grid.get(&cell(vertex.pos)) else { continue };
-            for &index in indices {
-                if found[index].is_none() && vertex.pos.distance(points[index]) < EPS && allowed(*id) {
-                    found[index] = Some(*id);
-                }
-            }
-        }
-        found
+        let view = self.view();
+        let near = |p: &DVec3| {
+            let found = view.vertices_in(self, Aabb::at(*p).expanded(EPS));
+            found.into_iter().find(|id| self.pos(*id).distance(*p) < EPS && allowed(*id))
+        };
+        points.iter().map(near).collect()
     }
 
     pub fn bounds(&self) -> Option<(DVec3, DVec3)> {

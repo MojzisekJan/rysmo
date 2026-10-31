@@ -223,7 +223,7 @@ impl Mesh {
                 vx.pos = f(vx.pos);
             }
         }
-        let touched = self.faces_touching(vertices);
+        let touched = self.view().faces_touching(self, vertices);
         let mut diagonals: Vec<EdgeId> = Vec::new();
         for face in &touched {
             if m.face_is_flat(*face) {
@@ -253,17 +253,13 @@ impl Mesh {
                 m.merge_coplanar_at(e);
             }
         }
-        for face in m.faces_touching(vertices) {
+        for face in m.view().faces_touching(&m, vertices) {
             if !m.face_is_flat(face) {
                 return Err(MeshError::WouldBend(face));
             }
         }
-        let moved_lines: Vec<_> = m
-            .edges
-            .values()
-            .filter(|edge| edge.v.iter().any(|v| vertices.contains(v)))
-            .map(|edge| (m.pos(edge.v[0]), m.pos(edge.v[1])))
-            .collect();
+        let moved_edges: BTreeSet<_> = vertices.iter().flat_map(|v| m.edges_of_vertex(*v)).collect();
+        let moved_lines: Vec<_> = moved_edges.iter().map(|id| m.edge_points(*id)).collect();
         let moved: Vec<_> = vertices.iter().copied().filter(|v| m.vertices.contains_key(v)).collect();
         let points: Vec<_> = moved.iter().map(|v| m.pos(*v)).collect();
         let targets = m.locate(&points, |id| !vertices.contains(&id));
@@ -302,7 +298,8 @@ impl Mesh {
                 moved_edges.insert(*id);
             }
         }
-        let touched = self.faces_touching(vertices);
+        let view = self.view();
+        let touched = view.faces_touching(self, vertices);
         let mapped = |v: &VertexId| self.vertices.get(v).map(|x| f(x.pos));
         for id in &touched {
             let face = &self.faces[id];
@@ -323,17 +320,14 @@ impl Mesh {
             if a.distance(b) < EPS {
                 return false;
             }
-            boxes.push((Aabb::of([a, b]).expanded(EPS * 4.0), ()));
+            boxes.push(Aabb::of([a, b]).expanded(EPS * 4.0));
         }
-        if moved_edges.len() < self.edges.len() {
-            let tree = Bvh::new(boxes);
-            let edges = self.edges.iter().filter(|(id, _)| !moved_edges.contains(id));
-            if edges.map(|(_, e)| Aabb::of(e.v.map(|v| self.pos(v)))).any(|area| tree.any(area, |_| true)) {
+        for area in boxes {
+            let edges = view.edges_in(self, area);
+            if edges.iter().any(|id| !moved_edges.contains(id)) {
                 return false;
             }
-            let faces = self.faces.iter().filter(|(id, _)| !touched.contains(id));
-            let mut outlines = faces.map(|(_, face)| Aabb::of(face.outer.iter().map(|v| self.pos(*v))));
-            if outlines.any(|area| tree.any(area, |_| true)) {
+            if view.faces_in(self, area).iter().any(|id| !touched.contains(id)) {
                 return false;
             }
         }
@@ -350,44 +344,34 @@ impl Mesh {
     /// Split in the candidate mesh so a failed transform never leaks partial edits.
     fn split_moved_crossings(&mut self, lines: &[(DVec3, DVec3)]) {
         let reach = |a: DVec3, b: DVec3| Aabb::of([a, b]).expanded(EPS * 2.0);
-        let moved = Bvh::new(lines.iter().map(|(a, b)| (reach(*a, *b), (*a, *b))).collect());
         let on = |p: DVec3, q: DVec3, x: DVec3| closest_on_segment(p, q, x).0.distance(x) < EPS;
-        // The trees hold the moved lines, so one pass over the edges finds the rest.
-        let affected: BTreeSet<_> = self
-            .edges
-            .iter()
-            .filter(|(_, edge)| {
-                let (a, b) = (self.pos(edge.v[0]), self.pos(edge.v[1]));
-                moved.any(reach(a, b), |(p, q)| on(*p, *q, a) && on(*p, *q, b))
-            })
-            .map(|(id, _)| *id)
-            .collect();
-        let tree = Bvh::new(
-            affected
-                .iter()
-                .map(|id| {
-                    let (a, b) = self.edge_points(*id);
-                    (reach(a, b), (*id, a, b))
-                })
-                .collect(),
-        );
-        let mut crossings = Vec::new();
-        for (other, edge) in &self.edges {
-            let c = self.pos(edge.v[0]);
-            let d = self.pos(edge.v[1]);
-            tree.overlapping(reach(c, d), |(id, a, b)| {
-                if other == id || (affected.contains(other) && other < id) {
-                    return;
+        let view = self.view();
+        let mut affected = BTreeSet::new();
+        for (p, q) in lines {
+            for id in view.edges_in(self, reach(*p, *q)) {
+                let (a, b) = self.edge_points(id);
+                if on(*p, *q, a) && on(*p, *q, b) {
+                    affected.insert(id);
                 }
-                if let Some((t, _)) = segment_intersection(*a, *b, c, d) {
-                    let point = *a + (*b - *a) * t;
-                    let interior = (point.distance(*a) > EPS && point.distance(*b) > EPS)
+            }
+        }
+        let mut crossings = Vec::new();
+        for id in &affected {
+            let (a, b) = self.edge_points(*id);
+            for other in view.edges_in(self, reach(a, b)) {
+                if other == *id || (affected.contains(&other) && other < *id) {
+                    continue;
+                }
+                let (c, d) = self.edge_points(other);
+                if let Some((t, _)) = segment_intersection(a, b, c, d) {
+                    let point = a + (b - a) * t;
+                    let interior = (point.distance(a) > EPS && point.distance(b) > EPS)
                         || (point.distance(c) > EPS && point.distance(d) > EPS);
                     if interior {
-                        crossings.push((*id, *other, point));
+                        crossings.push((*id, other, point));
                     }
                 }
-            });
+            }
         }
         crossings.sort_by_key(|(id, other, _)| (*id, *other));
         let mut points = Vec::new();
@@ -425,15 +409,6 @@ impl Mesh {
             seeds.extend(affected.into_iter().filter(|id| self.edges.contains_key(id)));
             self.rebuild_around(&seeds.into_iter().collect::<Vec<_>>(), None);
         }
-    }
-
-    /// The faces with a loop through any of `vertices`.
-    fn faces_touching(&self, vertices: &BTreeSet<VertexId>) -> BTreeSet<FaceId> {
-        self.faces
-            .iter()
-            .filter(|(_, face)| face.loops().flatten().any(|v| vertices.contains(v)))
-            .map(|(id, _)| *id)
-            .collect()
     }
 
     /// Whether a face is flat and not degenerate.
@@ -546,19 +521,14 @@ impl Mesh {
             return candidates;
         }
         let tree = Bvh::new(candidates.iter().enumerate().map(|(i, shell)| (area(shell), i)).collect());
-        let mut blocked = vec![false; candidates.len()];
-        for (i, shell) in candidates.iter().enumerate() {
-            tree.overlapping(area(shell), |other| blocked[i] |= *other != i);
-        }
-        for edge in self.edges.values() {
-            let reach = Aabb::of(edge.v.map(|v| self.pos(v)));
-            tree.overlapping(reach, |i| blocked[*i] = true);
-        }
-        for face in self.faces.values() {
-            let reach = Aabb::of(face.outer.iter().map(|v| self.pos(*v)));
-            tree.overlapping(reach, |i| blocked[*i] = true);
-        }
-        candidates.into_iter().zip(blocked).filter(|(_, blocked)| !blocked).map(|(shell, _)| shell).collect()
+        let view = self.view();
+        let clear = |(i, shell): &(usize, &&Shell)| {
+            let reach = area(shell);
+            !tree.any(reach, |other| other != i)
+                && view.edges_in(self, reach).is_empty()
+                && view.faces_in(self, reach).is_empty()
+        };
+        candidates.iter().enumerate().filter(clear).map(|(_, shell)| *shell).collect()
     }
 
     /// Adds a shell as it is, mapped by `f`. See `clear_shells` for when that is right.
@@ -735,14 +705,7 @@ impl Mesh {
         let mapped: Vec<Vec<DVec3>> = t.faces.iter().map(|face| face.outer.iter().map(|p| f(*p)).collect()).collect();
         let found = self.locate(&mapped.concat(), |_| true);
         let mut found = found.as_slice();
-        let mut faces_at: HashMap<VertexId, Vec<FaceId>> = found.iter().flatten().map(|v| (*v, Vec::new())).collect();
-        for (id, face) in &self.faces {
-            for v in &face.outer {
-                if let Some(faces) = faces_at.get_mut(v) {
-                    faces.push(*id);
-                }
-            }
-        }
+        let view = self.view();
         for (face, mapped) in t.faces.iter().zip(&mapped) {
             let (corners, rest) = found.split_at(mapped.len());
             found = rest;
@@ -750,14 +713,12 @@ impl Mesh {
             let Some(ids) = ids else { continue };
             let want = canonical(&ids);
             // A face that holds the outline holds its first corner.
-            let Some(candidates) = faces_at.get(&ids[0]) else { continue };
-            let found = candidates.iter().find(|id| {
-                let g = &self.faces[*id];
+            let found = view.faces_at(self, ids[0]).into_iter().find(|id| {
+                let g = &self.faces[id];
                 let c = canonical(&g.outer);
                 c == want || (c.len() >= want.len() && want.iter().all(|v| g.outer.contains(v)))
             });
             let Some(id) = found else { continue };
-            let id = *id;
             // Map the normal as a direction from the outline's centre: that keeps the
             // copy facing the right side, mirror images included.
             let c = face.outer.iter().copied().sum::<DVec3>() / face.outer.len() as f64;
@@ -779,29 +740,21 @@ impl Mesh {
 
     /// For each template curve, the edges along its mapped segments.
     fn stamped_curves(&self, t: &Template, f: impl Fn(DVec3) -> DVec3) -> Vec<Vec<EdgeId>> {
-        let segments = t
-            .curves
-            .iter()
-            .enumerate()
-            .flat_map(|(curve, template)| template.segments.iter().map(move |(a, b)| (curve, *a, *b)));
-        let tree = Bvh::new(
-            segments
-                .map(|(curve, a, b)| {
-                    let (a, b) = (f(a), f(b));
-                    (Aabb::of([a, b]).expanded(EPS * 4.0), (curve, a, b))
-                })
-                .collect(),
-        );
-        let mut members = vec![Vec::new(); t.curves.len()];
-        for (id, edge) in &self.edges {
-            let (p, q) = (self.pos(edge.v[0]), self.pos(edge.v[1]));
-            tree.overlapping(Aabb::of([p, q]), |(curve, a, b)| {
-                if on_segment(p, *a, *b) && on_segment(q, *a, *b) && members[*curve].last() != Some(id) {
-                    members[*curve].push(*id);
+        let view = self.view();
+        let along = |template: &TemplateCurve| {
+            let mut members = BTreeSet::new();
+            for (a, b) in &template.segments {
+                let (a, b) = (f(*a), f(*b));
+                for id in view.edges_in(self, Aabb::of([a, b]).expanded(EPS * 4.0)) {
+                    let (p, q) = self.edge_points(id);
+                    if on_segment(p, a, b) && on_segment(q, a, b) {
+                        members.insert(id);
+                    }
                 }
-            });
-        }
-        members
+            }
+            members.into_iter().collect()
+        };
+        t.curves.iter().map(along).collect()
     }
 
     /// Takes elements out of the mesh into a new mesh, with fresh ids from this mesh's

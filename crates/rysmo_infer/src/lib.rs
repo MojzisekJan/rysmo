@@ -16,7 +16,7 @@ use rysmo_math::{
     Axis, DMat4, DVec2, DVec3, EPS, Plane, Ray, View, closest_line_ray, closest_on_segment, distance_point_segment_2d,
 };
 use rysmo_mesh::spatial::{Aabb, Bvh};
-use rysmo_mesh::{EdgeId, Element, FaceId, GuideId, InstanceId, Mesh};
+use rysmo_mesh::{EdgeId, Element, FaceId, GuideId, InstanceId, Mesh, MeshView};
 use std::sync::Arc;
 
 /// Screen distance within which points snap, in pixels.
@@ -187,94 +187,25 @@ pub struct Query<'a> {
     pub clips: Vec<Plane>,
 }
 
-/// Trees over one mesh's edges and faces.
-struct Trees {
-    edges: Bvh<EdgeId>,
-    faces: Bvh<FaceId>,
-    /// The mesh they were built from.
-    mesh: Mesh,
-}
-
-impl Trees {
-    fn over(
-        mesh: &Mesh,
-        edges: impl Iterator<Item = EdgeId>,
-        faces: impl Iterator<Item = FaceId>,
-    ) -> (Bvh<EdgeId>, Bvh<FaceId>) {
-        let margin = EPS * 4.;
-        let edges = edges.filter_map(|id| Some((Aabb::of(mesh.edge(id)?.v.map(|v| mesh.pos(v))).expanded(margin), id)));
-        let edges = Bvh::new(edges.collect());
-        let faces = faces
-            .filter_map(|id| Some((Aabb::of(mesh.face(id)?.outer.iter().map(|v| mesh.pos(*v))).expanded(margin), id)));
-        (edges, Bvh::new(faces.collect()))
-    }
-}
-
-/// Lookups in one mesh: full trees of an earlier state, shared between updates, and
-/// small trees of what has changed since. An element that moved or went is still in the
-/// full trees at its old place, which only costs callers a look at the mesh.
+/// A view of one mesh and how far a query can reach in it.
 pub struct MeshIndex {
-    base: Arc<Trees>,
-    edges: Bvh<EdgeId>,
-    faces: Bvh<FaceId>,
-    /// Everything a query can reach, curve centres included.
+    view: MeshView,
+    /// Curve centres included.
     bounds: Aabb,
 }
 
 impl MeshIndex {
     pub fn new(mesh: &Mesh) -> Self {
-        let (edges, faces) = Trees::over(mesh, mesh.edges().map(|(id, _)| id), mesh.faces().map(|(id, _)| id));
-        let base = Arc::new(Trees { edges, faces, mesh: mesh.clone() });
-        MeshIndex { base, edges: Bvh::default(), faces: Bvh::default(), bounds: Self::reach(mesh) }
-    }
-
-    /// The index of `mesh`, a later state of the one `self` was made for.
-    pub fn update(&self, mesh: &Mesh) -> Self {
-        let (mut faces, vertices) = mesh.changed_since(&self.base.mesh);
-        let mut edges: Vec<_> = mesh.changed_edges_since(&self.base.mesh).into_iter().collect();
-        if (edges.len() + faces.len()) * REBUILD_SHARE > self.base.edges.len() + self.base.faces.len() {
-            return Self::new(mesh);
-        }
-        edges.extend(vertices.iter().flat_map(|v| mesh.edges_of_vertex(*v)));
-        if !vertices.is_empty() {
-            let vertices: std::collections::HashSet<_> = vertices.into_iter().collect();
-            let touches = |(id, face): (FaceId, &rysmo_mesh::Face)| {
-                face.loops().flatten().any(|v| vertices.contains(v)).then_some(id)
-            };
-            faces.extend(mesh.faces().filter_map(touches));
-        }
-        let (edges, faces) = Trees::over(mesh, edges.into_iter(), faces.into_iter());
-        MeshIndex { base: self.base.clone(), edges, faces, bounds: self.bounds.union(Self::reach(mesh)) }
-    }
-
-    fn reach(mesh: &Mesh) -> Aabb {
-        let margin = EPS * 4.;
         let lines = mesh.edges().map(|(_, e)| Aabb::of(e.v.map(|v| mesh.pos(v))));
         let centres = mesh.curves().map(|(_, curve)| Aabb::at(curve.centre));
-        lines.chain(centres).fold(Aabb::EMPTY, Aabb::union).expanded(margin)
-    }
-
-    fn visit_edges(&self, mut enter: impl FnMut(&Aabb) -> bool, found: &mut Vec<EdgeId>) {
-        self.base.edges.visit(&mut enter, |id| found.push(*id));
-        self.edges.visit(&mut enter, |id| found.push(*id));
-        found.sort_unstable();
-        found.dedup();
-    }
-
-    fn visit_faces(&self, mut enter: impl FnMut(&Aabb) -> bool, found: &mut Vec<FaceId>) {
-        self.base.faces.visit(&mut enter, |id| found.push(*id));
-        self.faces.visit(&mut enter, |id| found.push(*id));
-        found.sort_unstable();
-        found.dedup();
+        let bounds = lines.chain(centres).fold(Aabb::EMPTY, Aabb::union).expanded(EPS * 4.);
+        MeshIndex { view: mesh.view(), bounds }
     }
 
     pub fn bounds(&self) -> Aabb {
         self.bounds
     }
 }
-
-/// `MeshIndex::update` starts over once changes reach one part in this many.
-const REBUILD_SHARE: usize = 8;
 
 /// Indexes of a query's meshes, and a tree of where the other meshes sit. `others` and
 /// `from_local` run parallel to `Query::others`.
@@ -363,29 +294,25 @@ impl Src<'_> {
     /// The edges whose screen box comes within `tol` of the cursor, in id order.
     fn edges_near_cursor(&self, q: &Query, tol: f64) -> Vec<EdgeId> {
         let Some(index) = self.index else { return self.mesh.edges().map(|(id, _)| id).collect() };
-        let mut found = Vec::new();
-        index.visit_edges(|b| q.reaches(b.corners().map(|p| self.p(p)), tol), &mut found);
-        found
+        index.view.edges_where(self.mesh, |b| q.reaches(b.corners().map(|p| self.p(p)), tol))
     }
 
     /// The edges through any of `points`, given in the context's coordinates, in id order.
     fn edges_at(&self, points: &[DVec3]) -> Vec<EdgeId> {
         let Some(index) = self.index else { return self.mesh.edges().map(|(id, _)| id).collect() };
-        let mut found = Vec::new();
-        for point in points {
-            let area = Aabb::at(self.from_local.transform_point3(*point));
-            index.visit_edges(|b| b.overlaps(&area), &mut found);
-        }
+        let mut found: Vec<_> = points
+            .iter()
+            .flat_map(|point| index.view.edges_in(self.mesh, Aabb::at(self.from_local.transform_point3(*point))))
+            .collect();
+        found.sort_unstable();
+        found.dedup();
         found
     }
 
     /// The faces whose box `ray` enters, in id order.
     fn faces_on_ray(&self, ray: &Ray) -> Vec<FaceId> {
         let Some(index) = self.index else { return self.mesh.faces().map(|(id, _)| id).collect() };
-        let mut found = Vec::new();
-        index.visit_faces(|b| b.entry(ray, f64::INFINITY).is_some(), &mut found);
-        found.retain(|id| self.mesh.face(*id).is_some());
-        found
+        index.view.faces_where(self.mesh, |b| b.entry(ray, f64::INFINITY).is_some())
     }
 
     /// The nearest face the ray hits, with the distance along the context ray.

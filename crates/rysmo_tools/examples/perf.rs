@@ -88,6 +88,21 @@ fn instanced(count: usize, shared: bool) -> Editor {
     Editor::with_document(doc)
 }
 
+/// `count` cylinders of 24 sides, with curves and smooth sides, drawn by commands.
+fn cylinders(count: usize) -> Editor {
+    let side = ((count as f64).sqrt().ceil() as u32).max(2);
+    let mut editor = Editor::new();
+    let circle = Command::DrawCircle { centre: DVec3::ZERO, normal: DVec3::Z, radius: 0.5, segments: 24, start: None };
+    editor.apply(circle).expect("a circle");
+    let face = editor.mesh().faces().next().expect("a face").0;
+    editor.apply(Command::PushPull { face, distance: 1., keep_base: false }).expect("a cylinder");
+    let row = everything(&editor);
+    editor.apply(Command::Copy { elements: row, offset: DVec3::X * 2., copies: side - 1 }).expect("a row");
+    let all = everything(&editor);
+    editor.apply(Command::Copy { elements: all, offset: DVec3::Y * 2., copies: side - 1 }).expect("rows");
+    editor
+}
+
 fn everything(editor: &Editor) -> Vec<Element> {
     let def = editor.active();
     let geometry = def.mesh.faces().map(|(id, _)| Element::Face(id));
@@ -127,13 +142,16 @@ impl Bench {
             println!("  {name:<24} skipped");
             return;
         }
-        let start = Instant::now();
+        // The best of several, because the first run can pay for caches the rest reuse.
+        let begun = Instant::now();
+        let mut each = Duration::MAX;
         let mut rounds = 0;
-        while rounds == 0 || start.elapsed() < Duration::from_millis(100) {
+        while rounds < 3 || begun.elapsed() < Duration::from_millis(100) {
+            let start = Instant::now();
             run();
+            each = each.min(start.elapsed());
             rounds += 1;
         }
-        let each = start.elapsed() / rounds;
         println!("  {name:<24} {:>12.3} ms", each.as_secs_f64() * 1e3);
         if each > LIMIT {
             self.over.insert(key);
@@ -194,6 +212,20 @@ fn scene(bench: &mut Bench, name: &'static str, count: usize, editor: &Editor) {
     bench.time(name, "hover with Line", || {
         tools.pointer(&mut line, &at(DVec2::new(800., 500.)), Pointer::Move);
     });
+    let mut edited = editor.clone();
+    let mut steps = 0;
+    let mut spent = Duration::ZERO;
+    tools.pointer(&mut edited, &at(DVec2::new(800., 500.)), Pointer::Move);
+    while steps < 5 {
+        steps += 1;
+        let step = DVec3::Z * 3. * if steps % 2 == 0 { -1. } else { 1. };
+        edited.apply(Command::Move { elements: single.clone(), offset: step }).expect("command runs");
+        let start = Instant::now();
+        tools.pointer(&mut edited, &at(DVec2::new(800., 500.)), Pointer::Move);
+        spent += start.elapsed();
+    }
+    println!("  {:<24} {:>12.3} ms", "hover after an edit", spent.as_secs_f64() * 1e3 / steps as f64);
+    bench.time(name, "smooth normals", || drop(editor.mesh().smooth_normals()));
     bench.time(name, "box select", || {
         let mut e = editor.clone();
         let mut tools = ToolBox::default();
@@ -212,5 +244,6 @@ fn main() {
         scene(&mut bench, "raw", count, &raw(count));
         scene(&mut bench, "groups", count, &instanced(count, false));
         scene(&mut bench, "component", count, &instanced(count, true));
+        scene(&mut bench, "cylinders", count, &cylinders(count));
     }
 }

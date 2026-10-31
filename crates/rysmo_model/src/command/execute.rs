@@ -7,7 +7,7 @@ use super::types::{Command, CommandError, MAX_GLOW, Outcome, invalid};
 use super::{annotations, settings};
 use crate::{Definition, Document, Guide, Image, Instance, Material, Tag, Texture};
 use rysmo_math::{DMat4, DVec3, EPS, Plane};
-use rysmo_mesh::spatial::{Aabb, Bvh};
+use rysmo_mesh::spatial::Aabb;
 use rysmo_mesh::{
     DefinitionId, EdgeId, Element, FaceId, GuideId, ImageId, InstanceId, MaterialId, Mesh, MeshError, TagId,
 };
@@ -966,7 +966,7 @@ impl Command {
                     let source_mesh = &doc.def(def).unwrap().mesh;
                     // What was moved is found again by place; anything else stays as named.
                     let mut followed = BTreeSet::new();
-                    let moved_faces: Vec<_> = elements
+                    let moved_faces: Vec<(Aabb, _)> = elements
                         .iter()
                         .filter_map(|element| {
                             let Element::Face(id) = element else { return None };
@@ -1017,30 +1017,26 @@ impl Command {
                         let mut created: BTreeSet<_> =
                             elements.into_iter().filter(|element| !followed.contains(element)).collect();
                         created.extend(mesh.edges_along_each(&moved_edges).into_iter().flatten().map(Element::Edge));
-                        let tree = Bvh::new(moved_faces);
-                        for (id, face) in mesh.faces() {
-                            let area = Aabb::of(face.outer.iter().map(|v| mesh.pos(*v)));
-                            if !tree.any(area, |_| true) {
-                                continue;
-                            }
-                            let (Some(surface), Some(triangle)) =
-                                (mesh.face_plane(id), rysmo_mesh::triangulate_face(mesh, id).first().copied())
-                            else {
-                                continue;
-                            };
-                            let centre = triangle.iter().map(|v| mesh.pos(*v)).sum::<DVec3>() / 3.;
-                            let inside = tree.any(Aabb::at(centre), |(plane, outer, holes)| {
+                        let view = mesh.view();
+                        for (area, (plane, outer, holes)) in &moved_faces {
+                            for id in view.faces_in(mesh, *area) {
+                                if mesh.face_plane(id).is_none_or(|surface| !surface.same_surface(plane)) {
+                                    continue;
+                                }
+                                let Some(triangle) = rysmo_mesh::triangulate_face(mesh, id).first().copied() else {
+                                    continue;
+                                };
+                                let centre = triangle.iter().map(|v| mesh.pos(*v)).sum::<DVec3>() / 3.;
                                 let point = plane.to_2d(centre);
-                                surface.same_surface(plane)
-                                    && rysmo_math::point_in_polygon_2d(point, outer, 1e-9)
-                                        != rysmo_math::PolygonSide::Outside
+                                let inside = rysmo_math::point_in_polygon_2d(point, outer, 1e-9)
+                                    != rysmo_math::PolygonSide::Outside
                                     && holes.iter().all(|hole| {
                                         rysmo_math::point_in_polygon_2d(point, hole, 1e-9)
                                             == rysmo_math::PolygonSide::Outside
-                                    })
-                            });
-                            if inside {
-                                created.insert(Element::Face(id));
+                                    });
+                                if inside {
+                                    created.insert(Element::Face(id));
+                                }
                             }
                         }
                         out.created = created.into_iter().collect();

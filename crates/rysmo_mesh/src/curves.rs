@@ -80,6 +80,9 @@ impl Mesh {
         self.curves.get(&id)
     }
     pub fn curve_edges(&self, id: CurveId) -> Vec<EdgeId> {
+        if self.edges.len() > crate::mesh::VIEW_FACES {
+            return self.view().curve_edges(self, id);
+        }
         self.edges.iter().filter_map(|(id_e, e)| (e.curve == Some(id)).then_some(*id_e)).collect()
     }
     /// The edges of every curve, in one pass over the edges.
@@ -321,11 +324,11 @@ impl Mesh {
     }
 
     pub(crate) fn map_touched_curves(&mut self, vertices: &BTreeSet<VertexId>, f: &impl Fn(DVec3) -> DVec3) {
-        let curves: Vec<_> = self.curves.keys().copied().collect();
-        let mut edges = self.curve_members();
+        let curves: BTreeSet<_> =
+            vertices.iter().flat_map(|v| self.edges_of_vertex(*v)).filter_map(|e| self.edges[&e].curve).collect();
+        let view = self.view();
         for id in curves {
-            let members: BTreeSet<_> =
-                edges.remove(&id).unwrap_or_default().iter().flat_map(|e| self.edges[e].v).collect();
+            let members: BTreeSet<_> = view.curve_edges(self, id).iter().flat_map(|e| self.edges[e].v).collect();
             if members.is_disjoint(vertices) {
                 continue;
             }
