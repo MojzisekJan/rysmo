@@ -43,6 +43,7 @@ fn query<'a>(m: &'a Mesh, v: &'a View, at: DVec3, from: Option<DVec3>, hints: &'
         hints,
         scale: 1.0,
         others: &[],
+        accel: None,
         guides: &[],
     })
 }
@@ -75,6 +76,7 @@ fn endpoint_snaps_from_a_few_pixels_away() {
         hints: &[],
         scale: 1.0,
         others: &[],
+        accel: None,
         guides: &[],
     });
     assert_eq!(i.kind, Kind::Endpoint);
@@ -170,6 +172,7 @@ fn axis_inference_tolerates_a_slightly_off_cursor() {
         hints: &[],
         scale: 1.0,
         others: &[],
+        accel: None,
         guides: &[],
     });
     assert_eq!(i.kind, Kind::OnAxis(Axis::X));
@@ -216,6 +219,7 @@ fn locked_line_slides_and_borrows_points() {
         hints: &[],
         scale: 1.0,
         others: &[],
+        accel: None,
         guides: &[],
     });
     assert!((i.point.x - 3.0).abs() < 1e-9 && i.point.y.abs() < 1e-9);
@@ -233,6 +237,7 @@ fn locked_line_slides_and_borrows_points() {
         hints: &[],
         scale: 1.0,
         others: &[],
+        accel: None,
         guides: &[],
     });
     assert!(i.point.distance(DVec3::new(3.0, 0.0, 1.0)) < 1e-9);
@@ -256,6 +261,7 @@ fn locked_plane_projects() {
         hints: &[],
         scale: 1.0,
         others: &[],
+        accel: None,
         guides: &[],
     });
     assert!(i.point.distance(DVec3::new(1.0, 1.0, 2.0)) < 1e-6);
@@ -314,6 +320,7 @@ fn snaps_to_a_placed_component_and_picks_it() {
             hints: &[],
             scale: 1.0,
             others: &others,
+            accel: None,
             guides: &[],
         }
     };
@@ -342,6 +349,7 @@ fn snaps_to_a_placed_component_and_picks_it() {
         hints: &[],
         scale: 1.0,
         others: &outside,
+        accel: None,
         guides: &[],
     };
     assert_eq!(pick(&qo), Pick::Outside);
@@ -369,6 +377,7 @@ fn guides_snap_and_pick() {
             hints: &[],
             scale: 1.0,
             others: &[],
+            accel: None,
             guides: &g,
         }
     };
@@ -412,6 +421,7 @@ fn custom_axes_origin_axis_and_shift_lock_follow_the_frame() {
         hints: &[],
         scale: 1.0,
         others: &[],
+        accel: None,
         guides: &[],
     };
     let inf = infer(&q);
@@ -464,6 +474,7 @@ fn overlapping_edge_pick_prefers_front_depth_in_either_source_order() {
             hints: &[],
             scale: 1.,
             others: &others,
+            accel: None,
             guides: &[],
         };
         assert_eq!(pick(&query), Pick::Element(Element::Instance(front)));
@@ -547,4 +558,93 @@ fn measured_guide_segment_is_pickable_only_between_its_endpoints() {
     assert_ne!(pick(&q), Pick::Element(Element::Guide(id)));
     q.cursor = view.project(DVec3::new(1., 0., 0.)).unwrap();
     assert_eq!(infer(&q).kind, Kind::GuidePoint);
+}
+
+fn closed(corners: [DVec3; 4]) -> Vec<(DVec3, DVec3)> {
+    (0..4).map(|k| (corners[k], corners[(k + 1) % 4])).collect()
+}
+
+/// Trees change how much of the model a query visits, never what it finds.
+#[test]
+fn accelerated_queries_find_what_a_full_scan_finds() {
+    let mut mesh = Mesh::new();
+    let mut part = Mesh::new();
+    for k in 0..6 {
+        let at = DVec3::new(k as f64 * 2., (k % 3) as f64, 0.);
+        let z = k as f64 * 0.25;
+        let corners = [(0., 0.), (1.5, 0.), (1.5, 1.5), (0., 1.5)].map(|(x, y)| at + DVec3::new(x, y, z));
+        mesh.add_lines(&closed(corners), None).unwrap();
+    }
+    part.add_lines(&closed([DVec3::ZERO, DVec3::X, DVec3::X + DVec3::Y, DVec3::Y]), None).unwrap();
+    let id = |k| Some(rysmo_mesh::InstanceId(k));
+    let place = |x: f64, y: f64| rysmo_math::DMat4::from_translation(DVec3::new(x, y, 1.));
+    let placements = [(id(1), place(1., 1.)), (id(2), place(5., 2.)), (None, place(9., 0.))];
+    let others: Vec<_> = placements
+        .iter()
+        .map(|(instance, to_local)| Other {
+            clips: Vec::new(),
+            mesh: std::borrow::Cow::Borrowed(&part),
+            to_local: *to_local,
+            instance: *instance,
+        })
+        .collect();
+    let index = std::sync::Arc::new(MeshIndex::new(&part));
+    let accel = Accel::new(
+        std::sync::Arc::new(MeshIndex::new(&mesh)),
+        placements.iter().map(|(_, to_local)| (index.clone(), *to_local)).collect(),
+    );
+    // An index brought up to date must act like a new one.
+    let mut edited = mesh.clone();
+    let faces: Vec<_> = edited.faces().map(|(id, _)| rysmo_mesh::Element::Face(id)).collect();
+    edited.move_elements(&faces[..2], DVec3::Z).unwrap();
+    edited
+        .add_lines(&closed([DVec3::Y * 5., DVec3::new(1., 5., 0.), DVec3::new(1., 6., 0.), DVec3::Y * 6.]), None)
+        .unwrap();
+    let updated = Accel::new(
+        std::sync::Arc::new(MeshIndex::new(&mesh).update(&edited)),
+        placements.iter().map(|(_, to_local)| (index.clone(), *to_local)).collect(),
+    );
+    let camera = rysmo_math::OrbitCamera {
+        target: DVec3::new(6., 1., 0.),
+        distance: 16.,
+        yaw: -0.8,
+        pitch: 0.7,
+        fov_y: 0.8,
+        parallel: false,
+        eye_base_z: 0.,
+        roll: 0.,
+    };
+    let view = camera.view(DVec2::new(600., 400.));
+    let hints = [DVec3::new(2., 0., 0.25)];
+    let mut checked = 0;
+    for x in (0..600).step_by(9) {
+        for y in (0..400).step_by(9) {
+            for from in [None, Some(DVec3::new(0., 0., 0.))] {
+                let query = |accel| Query {
+                    show_hidden: false,
+                    clips: Vec::new(),
+                    axes: Default::default(),
+                    mesh: &mesh,
+                    view: &view,
+                    cursor: DVec2::new(x as f64, y as f64),
+                    from,
+                    lock: None,
+                    hints: &hints,
+                    scale: 1.0,
+                    others: &others,
+                    accel,
+                    guides: &[],
+                };
+                let (full, fast) = (query(None), query(Some(&accel)));
+                assert_eq!(pick(&full), pick(&fast), "pick at {x}, {y}");
+                assert_eq!(infer(&full), infer(&fast), "infer at {x}, {y}");
+                let (full, fast) =
+                    (Query { mesh: &edited, ..query(None) }, Query { mesh: &edited, ..query(Some(&updated)) });
+                assert_eq!(pick(&full), pick(&fast), "updated pick at {x}, {y}");
+                assert_eq!(infer(&full), infer(&fast), "updated infer at {x}, {y}");
+                checked += 1;
+            }
+        }
+    }
+    assert!(checked > 1000);
 }

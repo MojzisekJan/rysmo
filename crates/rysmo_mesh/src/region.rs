@@ -11,12 +11,13 @@
 //! drawn edge bounds it (a loop was closed). A region whose loops equal an old face's
 //! keeps that face untouched, id and all.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use rysmo_math::{DVec2, DVec3, EPS, Plane, PolygonSide, point_in_polygon_2d, polygon_area_2d};
 
 use crate::ids::{EdgeId, FaceId, VertexId};
 use crate::mesh::{Face, Mesh};
+use crate::spatial::{Aabb, Bvh};
 
 struct OldFace {
     id: FaceId,
@@ -39,28 +40,114 @@ struct Region {
     holes: Vec<Vec<VertexId>>,
 }
 
+/// With this many planes to rebuild, trees pay for themselves over scanning the whole
+/// mesh for each plane.
+const TREE_PLANES: usize = 8;
+
+/// Finds what a run of plane rebuilds needs. The edges do not change during the run;
+/// the faces do, so faces made along the way are listed in `added`.
+#[derive(Default)]
+pub(crate) struct RegionIndex {
+    trees: Option<(Bvh<EdgeId>, Bvh<FaceId>)>,
+    added: Vec<FaceId>,
+    /// The faces at each vertex, built when first needed.
+    around: Option<HashMap<VertexId, Vec<FaceId>>>,
+}
+
+impl RegionIndex {
+    pub(crate) fn new(mesh: &Mesh, planes: usize) -> Self {
+        let trees = (planes > TREE_PLANES).then(|| {
+            let edges = mesh.edges.iter().map(|(id, e)| (Aabb::of(e.v.map(|v| mesh.pos(v))), *id));
+            let faces = mesh.faces.iter().map(|(id, f)| (Aabb::of(f.outer.iter().map(|v| mesh.pos(*v))), *id));
+            (Bvh::new(edges.collect()), Bvh::new(faces.collect()))
+        });
+        RegionIndex { trees, ..Default::default() }
+    }
+
+    fn edges(&self, mesh: &Mesh, plane: &Plane) -> Vec<EdgeId> {
+        let Some((edges, _)) = &self.trees else { return mesh.edges.keys().copied().collect() };
+        let mut found = Vec::new();
+        edges.visit(|b| b.near_plane(plane, EPS * 2.0), |id| found.push(*id));
+        found.retain(|id| mesh.edges.contains_key(id));
+        found.sort_unstable();
+        found
+    }
+
+    fn faces(&self, mesh: &Mesh, plane: &Plane) -> Vec<FaceId> {
+        let Some((_, faces)) = &self.trees else { return mesh.faces.keys().copied().collect() };
+        let mut found = self.added.clone();
+        faces.visit(|b| b.near_plane(plane, EPS * 2.0), |id| found.push(*id));
+        found.retain(|id| mesh.faces.contains_key(id));
+        found.sort_unstable();
+        found.dedup();
+        found
+    }
+
+    /// The faces whose loops run along `e`, as `Mesh::faces_of_edge` finds them.
+    fn faces_of_edge(&mut self, mesh: &Mesh, e: EdgeId) -> Vec<FaceId> {
+        let Some(edge) = mesh.edges.get(&e) else { return Vec::new() };
+        let around = self.around.get_or_insert_with(|| {
+            let mut around: HashMap<_, Vec<_>> = HashMap::new();
+            for (id, face) in &mesh.faces {
+                for v in face.loops().flatten() {
+                    around.entry(*v).or_default().push(*id);
+                }
+            }
+            around
+        });
+        let k = crate::mesh::key(edge.v[0], edge.v[1]);
+        let mut found = around.get(&edge.v[0]).cloned().unwrap_or_default();
+        found.sort_unstable();
+        found.dedup();
+        found.retain(|f| {
+            mesh.faces.get(f).is_some_and(|f| f.loop_edges().iter().any(|(a, b)| crate::mesh::key(*a, *b) == k))
+        });
+        found
+    }
+
+    fn note_face(&mut self, mesh: &Mesh, id: FaceId) {
+        self.added.push(id);
+        if let Some(around) = &mut self.around {
+            for v in mesh.faces[&id].loops().flatten() {
+                around.entry(*v).or_default().push(id);
+            }
+        }
+    }
+}
+
 impl Mesh {
     /// Recomputes the faces lying in `plane`. `seeds` are edges drawn just now: a region
     /// they bound becomes a face even if no face covered it before. `facing` is the
     /// preferred normal direction for brand new faces with nothing else to go by.
     pub(crate) fn rebuild_plane(&mut self, plane: &Plane, seeds: &BTreeSet<EdgeId>, facing: Option<DVec3>) {
+        self.rebuild_plane_in(plane, seeds, facing, &mut RegionIndex::default());
+    }
+
+    pub(crate) fn rebuild_plane_in(
+        &mut self,
+        plane: &Plane,
+        seeds: &BTreeSet<EdgeId>,
+        facing: Option<DVec3>,
+        index: &mut RegionIndex,
+    ) {
         let in_plane = |m: &Mesh, v: VertexId| plane.contains(m.pos(v));
-        let edges: Vec<(EdgeId, [VertexId; 2])> = self
-            .edges
-            .iter()
-            .filter(|(_, e)| in_plane(self, e.v[0]) && in_plane(self, e.v[1]))
-            .map(|(id, e)| (*id, e.v))
+        let edges: Vec<(EdgeId, [VertexId; 2])> = index
+            .edges(self, plane)
+            .into_iter()
+            .map(|id| (id, self.edges[&id].v))
+            .filter(|(_, v)| in_plane(self, v[0]) && in_plane(self, v[1]))
             .collect();
 
         let to2d = |m: &Mesh, v: VertexId| plane.to_2d(m.pos(v));
-        let old: Vec<OldFace> = self
-            .faces
-            .iter()
+        let old: Vec<OldFace> = index
+            .faces(self, plane)
+            .into_iter()
+            .map(|id| (id, &self.faces[&id]))
             .filter(|(_, f)| f.loops().all(|l| l.iter().all(|v| in_plane(self, *v))))
             .filter_map(|(id, f)| {
-                let n = self.face_normal(*id)?;
+                let n = self.face_normal(id)?;
                 Some(OldFace {
-                    id: *id,
+                    id,
                     face: f.clone(),
                     sign: if n.dot(plane.normal) >= 0.0 { 1.0 } else { -1.0 },
                     outer: f.outer.iter().map(|v| to2d(self, *v)).collect(),
@@ -159,10 +246,22 @@ impl Mesh {
         // Assign each outline as a hole of the smallest bounded region around it.
         let mut regions: Vec<Region> =
             bounded.iter().map(|(c, _, _)| Region { outer: c.clone(), holes: Vec::new() }).collect();
+        let flat = |p: DVec2| DVec3::new(p.x, p.y, 0.0);
+        let bounded_tree = Bvh::new(
+            bounded
+                .iter()
+                .enumerate()
+                .map(|(i, (c, _, _))| (Aabb::of(c.iter().map(|v| flat(pts[v]))).expanded(EPS), i))
+                .collect(),
+        );
         for (h, comp) in outlines {
             let probe = pts[&h[0]];
             let mut best: Option<(usize, f64)> = None;
-            for (i, (c, area, ccomp)) in bounded.iter().enumerate() {
+            let mut around = Vec::new();
+            bounded_tree.overlapping(Aabb::at(flat(probe)), |i| around.push(*i));
+            around.sort_unstable();
+            for i in around {
+                let (c, area, ccomp) = &bounded[i];
                 if *ccomp == comp {
                     continue;
                 }
@@ -178,6 +277,12 @@ impl Mesh {
         }
 
         // Decide which regions are faces.
+        let old_tree = Bvh::new(
+            old.iter()
+                .enumerate()
+                .map(|(i, o)| (Aabb::of(o.outer.iter().map(|p| flat(*p))).expanded(EPS), i))
+                .collect(),
+        );
         let mut kept: BTreeSet<FaceId> = BTreeSet::new();
         let mut reused: BTreeSet<FaceId> = BTreeSet::new();
         let mut new_faces: Vec<(Option<FaceId>, Face)> = Vec::new();
@@ -185,7 +290,10 @@ impl Mesh {
             let outer2: Vec<DVec2> = r.outer.iter().map(|v| pts[v]).collect();
             let holes2: Vec<Vec<DVec2>> = r.holes.iter().map(|h| h.iter().map(|v| pts[v]).collect()).collect();
             let Some(sample) = sample_point(&outer2, &holes2) else { continue };
-            let host = old.iter().find(|o| o.contains(sample));
+            let mut around = Vec::new();
+            old_tree.overlapping(Aabb::at(flat(sample)), |i| around.push(*i));
+            around.sort_unstable();
+            let host = around.into_iter().map(|i| &old[i]).find(|o| o.contains(sample));
             if let Some(h) = host
                 && same_loops(&h.face, r)
             {
@@ -196,7 +304,7 @@ impl Mesh {
                 region_edges(r).any(|(a, b)| self.edge_between(a, b).is_some_and(|e| seeds.contains(&e)));
             let (sign, material, back_material, uv, reuse) = match host {
                 Some(h) => (h.sign, h.face.material, h.face.back_material, h.face.uv, Some(h.id)),
-                None if touches_seed => (self.new_face_sign(plane, r, facing), None, None, None, None),
+                None if touches_seed => (self.new_face_sign(plane, r, facing, index), None, None, None, None),
                 None => continue,
             };
             let mut face = Face {
@@ -223,24 +331,24 @@ impl Mesh {
             }
         }
         for (reuse, face) in new_faces {
-            match reuse {
+            let id = match reuse {
                 Some(id) if !self.faces.contains_key(&id) => {
                     self.faces.insert(id, face);
+                    id
                 }
-                _ => {
-                    self.raw_face(face);
-                }
-            }
+                _ => self.raw_face(face),
+            };
+            index.note_face(self, id);
         }
     }
 
     /// Which way a brand new face in `plane` should face: consistently with the faces
     /// it shares edges with, then down on the ground, then towards `facing`.
-    fn new_face_sign(&self, plane: &Plane, r: &Region, facing: Option<DVec3>) -> f64 {
+    fn new_face_sign(&self, plane: &Plane, r: &Region, facing: Option<DVec3>, index: &mut RegionIndex) -> f64 {
         let mut vote = 0i32;
         for (a, b) in region_edges(r) {
             let Some(e) = self.edge_between(a, b) else { continue };
-            for f in self.faces_of_edge(e) {
+            for f in index.faces_of_edge(self, e) {
                 let Some(fp) = self.face_plane(f) else { continue };
                 if fp.same_surface(plane) {
                     continue;

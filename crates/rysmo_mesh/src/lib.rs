@@ -23,6 +23,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod blocks;
 mod curves;
 mod divide;
 mod fillet;
@@ -34,6 +35,7 @@ mod mesh;
 mod offset;
 mod ops;
 mod region;
+pub mod spatial;
 mod terrain_edit;
 mod topology_tools;
 mod transform;

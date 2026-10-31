@@ -306,3 +306,95 @@ fn push_pull_preserves_painted_boundary_edges_on_the_new_cap() {
     assert!(mesh.face_edges(cap).iter().all(|id| mesh.edge(*id).unwrap().material == Some(MaterialId(100))));
     mesh.validate().unwrap();
 }
+
+#[test]
+fn locate_agrees_with_find_vertex() {
+    let mut m = unit_box();
+    let at = DVec3::new(2., 3., 4.);
+    m.add_vertex(at);
+    let points = [DVec3::ZERO, DVec3::new(1., 1., 1.), at + DVec3::X * 5e-7, at + DVec3::X * 3e-6, DVec3::ONE * -9.];
+    let found = m.locate(&points, |_| true);
+    let expected: Vec<_> = points.iter().map(|p| m.find_vertex(*p)).collect();
+    assert_eq!(found, expected);
+    let origin = m.find_vertex(DVec3::ZERO).unwrap();
+    assert_eq!(m.locate(&points[..1], |v| v != origin), vec![None]);
+}
+
+#[test]
+fn copying_a_clear_shell_matches_copying_through_the_lines() {
+    let mut original = unit_box();
+    let all: Vec<_> = original
+        .faces()
+        .map(|(id, _)| Element::Face(id))
+        .chain(original.edges().map(|(id, _)| Element::Edge(id)))
+        .collect();
+    let faces: Vec<_> = original.faces().map(|(id, _)| id).collect();
+    original.face_mut(faces[0]).unwrap().material = Some(MaterialId(7));
+    let template = Template::of(&original, &all);
+    assert_eq!(template.shells().len(), 1);
+    for mirror in [1., -1.] {
+        let map = |p: DVec3| DVec3::new(p.x * mirror + 9., p.y, p.z);
+        let mut direct = original.clone();
+        direct.copy_elements_with(&all, 1, |p, _| map(p)).unwrap();
+        let mut lines = original.clone();
+        lines.stamp(&template, map).unwrap();
+        assert_eq!((direct.face_count(), direct.edge_count()), (12, 24));
+        assert_eq!((lines.face_count(), lines.edge_count()), (12, 24));
+        direct.validate().unwrap();
+        let shape = |m: &Mesh| {
+            let mut out: Vec<_> = m
+                .faces()
+                .map(|(id, f)| {
+                    let n = m.face_normal(id).unwrap();
+                    let centre = m.loop_points(&f.outer).iter().sum::<DVec3>() / 4.;
+                    format!("{:.3} {:.3} {:?}", centre, n, f.material)
+                })
+                .collect();
+            out.sort();
+            out
+        };
+        assert_eq!(shape(&direct), shape(&lines));
+    }
+}
+
+#[test]
+fn a_copy_that_lands_on_geometry_still_joins_it() {
+    let mut m = unit_box();
+    let all: Vec<_> = m.faces().map(|(id, _)| Element::Face(id)).collect();
+    m.copy_elements_with(&all, 1, |p, _| p + DVec3::X).unwrap();
+    assert_eq!(m.vertex_count(), 12);
+}
+
+#[test]
+fn edges_of_a_vertex_follow_every_edit() {
+    let mut m = unit_box();
+    let faces: Vec<_> = m.faces().map(|(id, _)| id).collect();
+    m.push_pull(faces[0], 0.5, false).unwrap();
+    m.add_line(DVec3::ZERO, DVec3::new(1., 1., 0.), None).unwrap();
+    let mut check = m.clone();
+    check.reindex();
+    assert_eq!(m, check);
+    for (v, _) in m.vertices() {
+        let scan: Vec<_> = m.edges().filter(|(_, e)| e.v.contains(&v)).map(|(id, _)| id).collect();
+        assert_eq!(m.edges_of_vertex(v), scan);
+    }
+}
+
+#[test]
+fn a_move_near_other_geometry_takes_the_full_path() {
+    let m = unit_box();
+    let all: Vec<_> = m.faces().map(|(id, _)| Element::Face(id)).collect();
+    let mut far = m.clone();
+    far.copy_elements_with(&all, 1, |p, _| p + DVec3::X * 5.).unwrap();
+    let copy: Vec<_> =
+        far.faces().filter(|(id, _)| !all.contains(&Element::Face(*id))).map(|(id, _)| Element::Face(id)).collect();
+    // Clear of the first box: ids stay.
+    let ids: Vec<_> = far.faces().map(|(id, _)| id).collect();
+    far.move_elements(&copy, DVec3::Y).unwrap();
+    assert_eq!(far.faces().map(|(id, _)| id).collect::<Vec<_>>(), ids);
+    // Onto the first box: the touching corners weld.
+    let vertices = far.vertex_count();
+    far.move_elements(&copy, DVec3::new(-4., -1., 0.)).unwrap();
+    assert!(far.vertex_count() < vertices);
+    m.validate().unwrap();
+}

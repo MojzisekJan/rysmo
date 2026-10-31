@@ -15,11 +15,13 @@ mod rotated_rectangle;
 mod select;
 mod three_point_arc;
 
-use std::collections::BTreeSet;
+use std::borrow::Cow;
+use std::collections::{BTreeSet, HashMap};
+use std::sync::{Arc, Mutex};
 
-use rysmo_infer::{Inference, Kind, Lock, Other, Query, SnapGuide, axis_color, infer};
+use rysmo_infer::{Accel, Inference, Kind, Lock, MeshIndex, Other, Query, SnapGuide, axis_color, infer};
 use rysmo_math::{Axis, DMat4, DVec2, DVec3, EPS, Plane, View};
-use rysmo_mesh::{EdgeId, Element, FaceId, GuideId, MaterialId};
+use rysmo_mesh::{DefinitionId, EdgeId, Element, FaceId, GuideId, InstanceId, MaterialId};
 use rysmo_model::{Command, Editor, Guide, Outcome};
 
 use crate::vcb::{VcbInput, parse_vcb};
@@ -517,6 +519,7 @@ pub(crate) enum Last {
 
 /// The active tool and everything it remembers between events.
 pub struct ToolBox {
+    scenes: Mutex<SceneCache>,
     pub(crate) current_view: Option<View>,
     pub(crate) axes: rysmo_math::DrawingAxes,
     pub(crate) dimension_start: Option<rysmo_model::dimensions::DimensionAnchor>,
@@ -571,6 +574,7 @@ pub struct ToolBox {
 impl Default for ToolBox {
     fn default() -> Self {
         ToolBox {
+            scenes: Mutex::default(),
             active: ToolKind::Select,
             dimension_start: None,
             dimension_draft: None,
@@ -607,19 +611,66 @@ impl Default for ToolBox {
     }
 }
 
-/// Other geometry and the guides of the context, for inference and picking.
-pub(crate) struct Scene<'a> {
-    pub mesh: std::borrow::Cow<'a, rysmo_mesh::Mesh>,
+/// Other geometry and the guides of the context, for inference and picking. Building
+/// one walks every occurrence, so it stays until the document or context changes.
+pub(crate) struct Scene {
+    pub mesh: rysmo_mesh::Mesh,
     pub clips: Vec<Plane>,
-    pub others: Vec<Other<'a>>,
+    pub others: Vec<Other<'static>>,
+    pub accel: Accel,
     pub guides: Vec<(GuideId, SnapGuide)>,
 }
 
-pub(crate) fn scene(editor: &Editor) -> Scene<'_> {
+struct KnownScene {
+    revision: u64,
+    root: Arc<rysmo_model::Definition>,
+    context: Vec<InstanceId>,
+    scene: Arc<Scene>,
+}
+
+/// The current scene with what identifies it, and the trees of each definition's mesh.
+/// Holding the definition keeps the pointer from being reused and any edit from
+/// happening in place, so an equal pointer means the same geometry.
+#[derive(Default)]
+pub(crate) struct SceneCache {
+    scene: Option<KnownScene>,
+    indices: HashMap<Option<DefinitionId>, (Arc<rysmo_model::Definition>, Arc<MeshIndex>)>,
+}
+
+impl SceneCache {
+    fn index(
+        &mut self,
+        doc: &rysmo_model::Document,
+        owner: Option<DefinitionId>,
+        mesh: &rysmo_mesh::Mesh,
+        evaluated: bool,
+    ) -> Arc<MeshIndex> {
+        let definition = doc.def_arc(owner).expect("an occurrence's definition");
+        let index = match self.indices.get(&owner) {
+            Some((known, index)) if Arc::ptr_eq(known, definition) && !evaluated => return index.clone(),
+            Some((_, index)) => Arc::new(index.update(mesh)),
+            None => Arc::new(MeshIndex::new(mesh)),
+        };
+        self.indices.insert(owner, (definition.clone(), index.clone()));
+        index
+    }
+}
+
+pub(crate) fn scene(cache: &Mutex<SceneCache>, editor: &Editor) -> Arc<Scene> {
     let doc = editor.doc();
     let context = editor.context();
+    let mut cache = cache.lock().expect("no panic while the cache is held");
+    if let Some(known) = &cache.scene
+        && known.revision == editor.content_revision()
+        && Arc::ptr_eq(&known.root, &doc.root)
+        && known.context == context
+    {
+        return known.scene.clone();
+    }
     let to_local = editor.context_transform().inverse();
     let mut others = Vec::new();
+    let mut placed = Vec::new();
+    let mut evaluated: HashMap<Option<DefinitionId>, (rysmo_mesh::Mesh, Arc<MeshIndex>)> = HashMap::new();
     let mut active_seen = false;
     for occ in doc.occurrences(context) {
         // The first occurrence inside the context is the context itself.
@@ -628,6 +679,13 @@ pub(crate) fn scene(editor: &Editor) -> Scene<'_> {
             continue;
         }
         if let Some(_def) = doc.def(occ.definition) {
+            let (mesh, index) = evaluated.entry(occ.definition).or_insert_with(|| {
+                let mesh = doc.effective_mesh(occ.definition);
+                let index = cache.index(doc, occ.definition, &mesh, matches!(mesh, Cow::Owned(_)));
+                (mesh.into_owned(), index)
+            });
+            let placement = to_local * occ.transform;
+            placed.push((index.clone(), placement));
             others.push(Other {
                 clips: doc
                     .section_planes(&occ.path)
@@ -635,8 +693,8 @@ pub(crate) fn scene(editor: &Editor) -> Scene<'_> {
                     .map(|p| p.transformed(to_local))
                     .map(|p| Plane::new(p.normal, p.origin))
                     .collect(),
-                mesh: doc.effective_mesh(occ.definition),
-                to_local: to_local * occ.transform,
+                mesh: Cow::Owned(mesh.clone()),
+                to_local: placement,
                 instance: occ.top,
             });
         }
@@ -655,9 +713,12 @@ pub(crate) fn scene(editor: &Editor) -> Scene<'_> {
             (*id, sg)
         })
         .collect();
-    Scene {
-        mesh: doc.effective_mesh(editor.active_definition()),
+    let active = doc.effective_mesh(editor.active_definition());
+    let index = cache.index(doc, editor.active_definition(), &active, matches!(active, Cow::Owned(_)));
+    let scene = Arc::new(Scene {
+        mesh: active.into_owned(),
         others,
+        accel: Accel::new(index, placed),
         guides,
         clips: doc
             .section_planes(context)
@@ -665,7 +726,15 @@ pub(crate) fn scene(editor: &Editor) -> Scene<'_> {
             .map(|p| p.transformed(to_local))
             .map(|p| Plane::new(p.normal, p.origin))
             .collect(),
-    }
+    });
+    cache.scene = Some(KnownScene {
+        revision: editor.content_revision(),
+        root: doc.root.clone(),
+        context: context.to_vec(),
+        scene: scene.clone(),
+    });
+    cache.indices.retain(|owner, _| doc.def(*owner).is_some());
+    scene
 }
 
 impl ToolBox {
@@ -1440,7 +1509,7 @@ impl ToolBox {
         self.axes = editor.active().axes;
         self.current_view = Some(*ctx.view);
         self.tape_measure_only = ctx.modifiers.ctrl;
-        let sc = scene(editor);
+        let sc = scene(&self.scenes, editor);
         let result = infer(&Query {
             show_hidden: editor.doc().style.show_hidden_geometry,
             clips: sc.clips.clone(),
@@ -1453,6 +1522,7 @@ impl ToolBox {
             hints: &self.hints,
             scale: ctx.scale,
             others: &sc.others,
+            accel: Some(&sc.accel),
             guides: &sc.guides,
         });
         let result = if let Some(origin) = from.filter(|_| {
@@ -1528,7 +1598,7 @@ impl ToolBox {
             self.inference = None;
             return;
         }
-        let sc = scene(editor);
+        let sc = scene(&self.scenes, editor);
         let q = Query {
             show_hidden: editor.doc().style.show_hidden_geometry,
             clips: sc.clips.clone(),
@@ -1541,6 +1611,7 @@ impl ToolBox {
             hints: &self.hints,
             scale: ctx.scale,
             others: &sc.others,
+            accel: Some(&sc.accel),
             guides: &sc.guides,
         };
         let mut inf = infer(&q);
@@ -1782,7 +1853,7 @@ impl ToolBox {
         if let Some(pick) = self.override_pick {
             return pick;
         }
-        let sc = scene(editor);
+        let sc = scene(&self.scenes, editor);
         let q = Query {
             show_hidden: editor.doc().style.show_hidden_geometry,
             clips: sc.clips.clone(),
@@ -1795,6 +1866,7 @@ impl ToolBox {
             hints: &[],
             scale: ctx.scale,
             others: &sc.others,
+            accel: Some(&sc.accel),
             guides: &sc.guides,
         };
         let pick = rysmo_infer::pick(&q);

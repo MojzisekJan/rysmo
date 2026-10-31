@@ -62,7 +62,7 @@ pub(super) fn make_definition(
     // Place the component axes at a corner of the new definition's bounding box.
     let mut tmp = Definition {
         mesh: mesh.clone(),
-        instances: children.clone(),
+        instances: children.iter().map(|(id, instance)| (*id, instance.clone())).collect(),
         dimensions: moved_dimensions.clone(),
         texts: moved_texts.clone(),
         ..Default::default()
@@ -371,7 +371,7 @@ pub(super) fn make_unique(
             procedure: source.procedure.clone(),
             section_hatch: source.section_hatch,
             mesh: fresh,
-            instances,
+            instances: instances.into_iter().collect(),
             guides,
             axes: source.axes,
             dimensions,

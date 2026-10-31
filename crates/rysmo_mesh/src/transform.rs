@@ -1,13 +1,15 @@
 //! Moving, rotating, scaling and copying geometry, with auto-fold, and
 //! moving geometry between meshes (making groups and exploding them).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use rysmo_math::{DVec3, EPS, Plane};
+use rysmo_math::{DVec3, EPS, Plane, closest_on_segment, segment_intersection};
 
+use crate::curves::on_segment;
 use crate::ids::{EdgeId, Element, FaceId, MaterialId, VertexId};
 use crate::mesh::{Face, Mesh, MeshError};
 use crate::region::canonical;
+use crate::spatial::{Aabb, Bvh};
 
 /// Display attributes preserved when an edge is copied into another mesh.
 #[derive(Clone, Debug)]
@@ -22,6 +24,8 @@ struct EdgeAppearance {
 struct TemplateLine {
     start: DVec3,
     end: DVec3,
+    ends: [VertexId; 2],
+    curve: Option<usize>,
     appearance: EdgeAppearance,
 }
 
@@ -33,6 +37,7 @@ struct TemplateCurve {
 
 #[derive(Clone, Debug)]
 struct TemplateFace {
+    loops: Vec<Vec<VertexId>>,
     outer: Vec<DVec3>,
     holes: Vec<Vec<DVec3>>,
     normal: DVec3,
@@ -65,6 +70,7 @@ impl Template {
                     let f = &mesh.faces[id];
                     let n = mesh.face_normal(*id).unwrap_or(DVec3::Z);
                     t.faces.push(TemplateFace {
+                        loops: f.loops().cloned().collect(),
                         outer: mesh.loop_points(&f.outer),
                         holes: f.holes.iter().map(|h| mesh.loop_points(h)).collect(),
                         normal: n,
@@ -78,8 +84,10 @@ impl Template {
             }
         }
         let curve_ids: BTreeSet<_> = edges.iter().filter_map(|id| mesh.edges[id].curve).collect();
+        let mut curve_members = mesh.curve_members();
+        let curve_slots: HashMap<_, _> = curve_ids.iter().enumerate().map(|(slot, id)| (*id, slot)).collect();
         for id in curve_ids {
-            let all = mesh.curve_edges(id);
+            let all = curve_members.remove(&id).unwrap_or_default();
             let members: Vec<_> = all.iter().copied().filter(|id| edges.contains(id)).collect();
             let mut curve = mesh.curves[&id];
             if members.len() != all.len() {
@@ -93,6 +101,8 @@ impl Template {
             t.lines.push(TemplateLine {
                 start: a,
                 end: b,
+                ends: edge.v,
+                curve: edge.curve.map(|id| curve_slots[&id]),
                 appearance: EdgeAppearance {
                     soft: edge.soft,
                     smooth: edge.smooth,
@@ -114,6 +124,82 @@ impl Template {
     pub fn is_empty(&self) -> bool {
         self.lines.is_empty()
     }
+
+    /// The connected pieces that are closed shells: every line has two faces of the
+    /// template along it, so copying one cannot leave a loop for a new face to fill.
+    pub(crate) fn shells(&self) -> Vec<Shell> {
+        let mut parent: HashMap<VertexId, VertexId> = HashMap::new();
+        fn find(parent: &mut HashMap<VertexId, VertexId>, v: VertexId) -> VertexId {
+            let mut root = *parent.entry(v).or_insert(v);
+            while parent[&root] != root {
+                root = parent[&root];
+            }
+            parent.insert(v, root);
+            root
+        }
+        for line in &self.lines {
+            let (a, b) = (find(&mut parent, line.ends[0]), find(&mut parent, line.ends[1]));
+            parent.insert(a, b);
+        }
+        let mut uses: HashMap<(VertexId, VertexId), u32> = HashMap::new();
+        for face in &self.faces {
+            for l in &face.loops {
+                for k in 0..l.len() {
+                    *uses.entry(crate::mesh::key(l[k], l[(k + 1) % l.len()])).or_default() += 1;
+                }
+            }
+        }
+        let mut pieces: BTreeMap<VertexId, Shell> = BTreeMap::new();
+        let mut open = BTreeSet::new();
+        let mut curve_piece: HashMap<usize, VertexId> = HashMap::new();
+        for (index, line) in self.lines.iter().enumerate() {
+            let root = find(&mut parent, line.ends[0]);
+            pieces.entry(root).or_default().lines.push(index);
+            if uses.get(&crate::mesh::key(line.ends[0], line.ends[1])).is_none_or(|count| *count < 2) {
+                open.insert(root);
+            }
+            if let Some(curve) = line.curve
+                && *curve_piece.entry(curve).or_insert(root) != root
+            {
+                open.insert(root);
+                open.insert(curve_piece[&curve]);
+            }
+        }
+        for (index, face) in self.faces.iter().enumerate() {
+            let root = find(&mut parent, face.loops[0][0]);
+            pieces.entry(root).or_default().faces.push(index);
+        }
+        for (curve, root) in curve_piece {
+            pieces.entry(root).or_default().curves.push(curve);
+        }
+        pieces.into_iter().filter(|(root, _)| !open.contains(root)).map(|(_, shell)| shell).collect()
+    }
+
+    /// The lines, faces and curves outside `shells`.
+    fn without(&self, shells: &[&Shell]) -> Template {
+        let lines: HashSet<_> = shells.iter().flat_map(|s| s.lines.iter().copied()).collect();
+        let faces: HashSet<_> = shells.iter().flat_map(|s| s.faces.iter().copied()).collect();
+        let curves: HashSet<_> = shells.iter().flat_map(|s| s.curves.iter().copied()).collect();
+        Template {
+            lines: self.lines.iter().enumerate().filter(|(i, _)| !lines.contains(i)).map(|(_, l)| l.clone()).collect(),
+            faces: self.faces.iter().enumerate().filter(|(i, _)| !faces.contains(i)).map(|(_, f)| f.clone()).collect(),
+            curves: self
+                .curves
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| !curves.contains(i))
+                .map(|(_, c)| c.clone())
+                .collect(),
+        }
+    }
+}
+
+/// Indices into a template of one closed piece.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Shell {
+    lines: Vec<usize>,
+    faces: Vec<usize>,
+    curves: Vec<usize>,
 }
 
 impl Mesh {
@@ -127,6 +213,9 @@ impl Mesh {
         vertices: &BTreeSet<VertexId>,
         f: impl Fn(DVec3) -> DVec3,
     ) -> Result<(), MeshError> {
+        if self.move_clear_of_the_rest(vertices, &f) {
+            return Ok(());
+        }
         let mut m = self.clone();
         m.map_touched_curves(vertices, &f);
         for v in vertices {
@@ -134,7 +223,7 @@ impl Mesh {
                 vx.pos = f(vx.pos);
             }
         }
-        let touched: BTreeSet<FaceId> = vertices.iter().flat_map(|v| self.faces_of_vertex(*v)).collect();
+        let touched = self.faces_touching(vertices);
         let mut diagonals: Vec<EdgeId> = Vec::new();
         for face in &touched {
             if m.face_is_flat(*face) {
@@ -164,8 +253,7 @@ impl Mesh {
                 m.merge_coplanar_at(e);
             }
         }
-        let now_touched: BTreeSet<FaceId> = vertices.iter().flat_map(|v| m.faces_of_vertex(*v)).collect();
-        for face in now_touched {
+        for face in m.faces_touching(vertices) {
             if !m.face_is_flat(face) {
                 return Err(MeshError::WouldBend(face));
             }
@@ -176,26 +264,24 @@ impl Mesh {
             .filter(|edge| edge.v.iter().any(|v| vertices.contains(v)))
             .map(|edge| (m.pos(edge.v[0]), m.pos(edge.v[1])))
             .collect();
-        for v in vertices {
-            if !m.vertices.contains_key(v) {
-                continue;
-            }
-            let p = m.pos(*v);
-            let other = m
-                .vertices
-                .iter()
-                .find(|(id, x)| *id != v && !vertices.contains(id) && x.pos.distance(p) < EPS)
-                .map(|(id, _)| *id);
-            if let Some(o) = other {
+        let moved: Vec<_> = vertices.iter().copied().filter(|v| m.vertices.contains_key(v)).collect();
+        let points: Vec<_> = moved.iter().map(|v| m.pos(*v)).collect();
+        let targets = m.locate(&points, |id| !vertices.contains(&id));
+        let mut welded = false;
+        for (v, target) in moved.iter().zip(targets) {
+            if let Some(o) = target {
                 m.weld(*v, o);
+                welded = true;
             }
         }
         // Welding can leave two faces on the same loop (both halves of a fold); keep one.
-        let mut seen = BTreeSet::new();
-        let dupes: Vec<FaceId> =
-            m.faces.iter().filter(|(_, f)| !seen.insert(canonical(&f.outer))).map(|(id, _)| *id).collect();
-        for f in dupes {
-            m.faces.remove(&f);
+        if welded {
+            let mut seen = BTreeSet::new();
+            let dupes: Vec<FaceId> =
+                m.faces.iter().filter(|(_, f)| !seen.insert(canonical(&f.outer))).map(|(id, _)| *id).collect();
+            for f in dupes {
+                m.faces.remove(&f);
+            }
         }
         m.split_moved_crossings(&moved_lines);
         m.prune_curves();
@@ -203,62 +289,151 @@ impl Mesh {
         Ok(())
     }
 
+    /// Moves `vertices` in place if that is all there is to it: nothing attaches them to
+    /// the rest, their faces stay flat, and they land clear of everything else, so
+    /// there is nothing to fold, weld or split. Returns whether it did.
+    fn move_clear_of_the_rest(&mut self, vertices: &BTreeSet<VertexId>, f: &impl Fn(DVec3) -> DVec3) -> bool {
+        let mut moved_edges = BTreeSet::new();
+        for v in vertices {
+            for id in self.vertex_edges.get(v).into_iter().flatten() {
+                if !self.edges[id].v.iter().all(|end| vertices.contains(end)) {
+                    return false;
+                }
+                moved_edges.insert(*id);
+            }
+        }
+        let touched = self.faces_touching(vertices);
+        let mapped = |v: &VertexId| self.vertices.get(v).map(|x| f(x.pos));
+        for id in &touched {
+            let face = &self.faces[id];
+            if !face.loops().flatten().all(|v| vertices.contains(v)) {
+                return false;
+            }
+            let Some(outer) = face.outer.iter().map(mapped).collect::<Option<Vec<_>>>() else { return false };
+            let Some(plane) = Plane::from_polygon(&outer) else { return false };
+            let flat = face.loops().flatten().filter_map(mapped).all(|p| plane.distance(p).abs() <= EPS * 10.0);
+            if !flat {
+                return false;
+            }
+        }
+        let mut boxes = Vec::with_capacity(moved_edges.len());
+        for id in &moved_edges {
+            let [a, b] = self.edges[id].v;
+            let (Some(a), Some(b)) = (mapped(&a), mapped(&b)) else { return false };
+            if a.distance(b) < EPS {
+                return false;
+            }
+            boxes.push((Aabb::of([a, b]).expanded(EPS * 4.0), ()));
+        }
+        if moved_edges.len() < self.edges.len() {
+            let tree = Bvh::new(boxes);
+            let edges = self.edges.iter().filter(|(id, _)| !moved_edges.contains(id));
+            if edges.map(|(_, e)| Aabb::of(e.v.map(|v| self.pos(v)))).any(|area| tree.any(area, |_| true)) {
+                return false;
+            }
+            let faces = self.faces.iter().filter(|(id, _)| !touched.contains(id));
+            let mut outlines = faces.map(|(_, face)| Aabb::of(face.outer.iter().map(|v| self.pos(*v))));
+            if outlines.any(|area| tree.any(area, |_| true)) {
+                return false;
+            }
+        }
+        self.map_touched_curves(vertices, f);
+        for v in vertices {
+            if let Some(vertex) = self.vertices.get_mut(v) {
+                vertex.pos = f(vertex.pos);
+            }
+        }
+        true
+    }
+
     /// Sticky geometry also intersects edges which meet between their endpoints.
     /// Split in the candidate mesh so a failed transform never leaks partial edits.
     fn split_moved_crossings(&mut self, lines: &[(DVec3, DVec3)]) {
-        use rysmo_math::{closest_on_segment, segment_intersection};
-        let affected: BTreeSet<_> = lines.iter().flat_map(|(a, b)| self.edges_along(*a, *b)).collect();
-        let mut points = Vec::new();
-        for id in &affected {
-            let (a, b) = self.edge_points(*id);
-            for (other, edge) in &self.edges {
+        let reach = |a: DVec3, b: DVec3| Aabb::of([a, b]).expanded(EPS * 2.0);
+        let moved = Bvh::new(lines.iter().map(|(a, b)| (reach(*a, *b), (*a, *b))).collect());
+        let on = |p: DVec3, q: DVec3, x: DVec3| closest_on_segment(p, q, x).0.distance(x) < EPS;
+        // The trees hold the moved lines, so one pass over the edges finds the rest.
+        let affected: BTreeSet<_> = self
+            .edges
+            .iter()
+            .filter(|(_, edge)| {
+                let (a, b) = (self.pos(edge.v[0]), self.pos(edge.v[1]));
+                moved.any(reach(a, b), |(p, q)| on(*p, *q, a) && on(*p, *q, b))
+            })
+            .map(|(id, _)| *id)
+            .collect();
+        let tree = Bvh::new(
+            affected
+                .iter()
+                .map(|id| {
+                    let (a, b) = self.edge_points(*id);
+                    (reach(a, b), (*id, a, b))
+                })
+                .collect(),
+        );
+        let mut crossings = Vec::new();
+        for (other, edge) in &self.edges {
+            let c = self.pos(edge.v[0]);
+            let d = self.pos(edge.v[1]);
+            tree.overlapping(reach(c, d), |(id, a, b)| {
                 if other == id || (affected.contains(other) && other < id) {
-                    continue;
+                    return;
                 }
-                let c = self.pos(edge.v[0]);
-                let d = self.pos(edge.v[1]);
-                if (a.max(b) + DVec3::splat(EPS)).cmplt(c.min(d)).any()
-                    || (c.max(d) + DVec3::splat(EPS)).cmplt(a.min(b)).any()
-                {
-                    continue;
-                }
-                if let Some((t, _)) = segment_intersection(a, b, c, d) {
-                    let point = a + (b - a) * t;
-                    let interior = (point.distance(a) > EPS && point.distance(b) > EPS)
+                if let Some((t, _)) = segment_intersection(*a, *b, c, d) {
+                    let point = *a + (*b - *a) * t;
+                    let interior = (point.distance(*a) > EPS && point.distance(*b) > EPS)
                         || (point.distance(c) > EPS && point.distance(d) > EPS);
-                    if interior && !points.iter().any(|p: &DVec3| p.distance(point) < EPS) {
-                        points.push(point);
+                    if interior {
+                        crossings.push((*id, *other, point));
                     }
                 }
+            });
+        }
+        crossings.sort_by_key(|(id, other, _)| (*id, *other));
+        let mut points = Vec::new();
+        for (_, _, point) in crossings {
+            if !points.iter().any(|p: &DVec3| p.distance(point) < EPS) {
+                points.push(point);
             }
         }
         let mut seeds = BTreeSet::new();
-        for point in points {
-            let crossing: Vec<_> = self
-                .edges
-                .iter()
-                .filter_map(|(id, edge)| {
-                    let a = self.pos(edge.v[0]);
-                    let b = self.pos(edge.v[1]);
-                    (point.distance(a) > EPS
-                        && point.distance(b) > EPS
-                        && closest_on_segment(a, b, point).0.distance(point) < EPS)
-                        .then_some(*id)
-                })
-                .collect();
-            if crossing.is_empty() {
-                continue;
-            }
-            let vertex = self.add_vertex(point);
-            for edge in crossing {
-                let (a, b) = self.split_edge(edge, vertex);
-                seeds.extend([a, b]);
+        if !points.is_empty() {
+            let spots: Vec<_> = points.iter().map(|p| (*p, *p)).collect();
+            let mut index = self.line_index(&spots);
+            for point in points {
+                let crossing: Vec<_> = self
+                    .edges_near(&index, Aabb::at(point).expanded(crate::insert::MARGIN))
+                    .into_iter()
+                    .filter(|id| {
+                        let (a, b) = self.edge_points(*id);
+                        point.distance(a) > EPS
+                            && point.distance(b) > EPS
+                            && closest_on_segment(a, b, point).0.distance(point) < EPS
+                    })
+                    .collect();
+                if crossing.is_empty() {
+                    continue;
+                }
+                let vertex = self.add_vertex_in(&mut index, point);
+                for edge in crossing {
+                    let (a, b) = self.split_edge_indexed(&mut index, edge, vertex);
+                    seeds.extend([a, b]);
+                }
             }
         }
         if !seeds.is_empty() {
             seeds.extend(affected.into_iter().filter(|id| self.edges.contains_key(id)));
             self.rebuild_around(&seeds.into_iter().collect::<Vec<_>>(), None);
         }
+    }
+
+    /// The faces with a loop through any of `vertices`.
+    fn faces_touching(&self, vertices: &BTreeSet<VertexId>) -> BTreeSet<FaceId> {
+        self.faces
+            .iter()
+            .filter(|(_, face)| face.loops().flatten().any(|v| vertices.contains(v)))
+            .map(|(id, _)| *id)
+            .collect()
     }
 
     /// Whether a face is flat and not degenerate.
@@ -330,9 +505,110 @@ impl Mesh {
         f: impl Fn(DVec3, usize) -> DVec3,
     ) -> Result<Vec<Element>, MeshError> {
         let t = Template::of(self, elements);
+        let shells = t.shells();
         let mut out = Vec::new();
         for k in 1..=copies.max(1) {
-            out.extend(self.stamp(&t, |p| f(p, k))?);
+            let map = |p| f(p, k);
+            let clear = self.clear_shells(&t, &shells, &map);
+            for shell in &clear {
+                out.extend(self.place_shell(&t, shell, &map)?);
+            }
+            if clear.len() == shells.len() && t.lines.len() == shells.iter().map(|s| s.lines.len()).sum::<usize>() {
+                continue;
+            }
+            out.extend(self.stamp(&t.without(&clear), map)?);
+        }
+        self.prune_curves();
+        Ok(out)
+    }
+
+    /// The shells that keep their shape under `f` and land clear of the mesh and of
+    /// each other, so nothing can cross or join them. Those need no intersecting and no
+    /// face finding.
+    fn clear_shells<'a>(&self, t: &Template, shells: &'a [Shell], f: &impl Fn(DVec3) -> DVec3) -> Vec<&'a Shell> {
+        let flat = |face: &TemplateFace| {
+            let outer: Vec<_> = face.outer.iter().map(|p| f(*p)).collect();
+            Plane::from_polygon(&outer).is_some_and(|plane| {
+                let holes = face.holes.iter().flatten().map(|p| f(*p));
+                outer.iter().copied().chain(holes).all(|p| plane.distance(p).abs() <= EPS)
+            })
+        };
+        let area = |shell: &Shell| {
+            let ends = shell.lines.iter().flat_map(|i| [f(t.lines[*i].start), f(t.lines[*i].end)]);
+            Aabb::of(ends).expanded(EPS * 4.0)
+        };
+        let usable = |shell: &&Shell| {
+            shell.lines.iter().all(|i| f(t.lines[*i].start).distance(f(t.lines[*i].end)) >= EPS)
+                && shell.faces.iter().all(|i| flat(&t.faces[*i]))
+        };
+        let candidates: Vec<_> = shells.iter().filter(usable).collect();
+        if candidates.is_empty() {
+            return candidates;
+        }
+        let tree = Bvh::new(candidates.iter().enumerate().map(|(i, shell)| (area(shell), i)).collect());
+        let mut blocked = vec![false; candidates.len()];
+        for (i, shell) in candidates.iter().enumerate() {
+            tree.overlapping(area(shell), |other| blocked[i] |= *other != i);
+        }
+        for edge in self.edges.values() {
+            let reach = Aabb::of(edge.v.map(|v| self.pos(v)));
+            tree.overlapping(reach, |i| blocked[*i] = true);
+        }
+        for face in self.faces.values() {
+            let reach = Aabb::of(face.outer.iter().map(|v| self.pos(*v)));
+            tree.overlapping(reach, |i| blocked[*i] = true);
+        }
+        candidates.into_iter().zip(blocked).filter(|(_, blocked)| !blocked).map(|(shell, _)| shell).collect()
+    }
+
+    /// Adds a shell as it is, mapped by `f`. See `clear_shells` for when that is right.
+    fn place_shell(
+        &mut self,
+        t: &Template,
+        shell: &Shell,
+        f: &impl Fn(DVec3) -> DVec3,
+    ) -> Result<Vec<Element>, MeshError> {
+        let mut out = Vec::with_capacity(shell.lines.len() + shell.faces.len());
+        let mut vertices: HashMap<VertexId, VertexId> = HashMap::new();
+        let mut members: HashMap<usize, Vec<EdgeId>> = HashMap::new();
+        for line in shell.lines.iter().map(|i| &t.lines[*i]) {
+            let mut end = |mesh: &mut Mesh, old: VertexId, at: DVec3| {
+                *vertices.entry(old).or_insert_with(|| mesh.raw_vertex(f(at)))
+            };
+            let a = end(self, line.ends[0], line.start);
+            let b = end(self, line.ends[1], line.end);
+            let id = self.raw_edge(a, b);
+            let edge = self.edges.get_mut(&id).ok_or(MeshError::Missing(id.0))?;
+            let appearance = &line.appearance;
+            edge.soft = appearance.soft;
+            edge.smooth = appearance.smooth;
+            edge.hidden = appearance.hidden;
+            edge.material = appearance.material;
+            if let Some(curve) = line.curve {
+                members.entry(curve).or_default().push(id);
+            }
+            out.push(Element::Edge(id));
+        }
+        for curve in &shell.curves {
+            self.register_curve_unpruned(&members[curve], t.curves[*curve].curve.mapped(f))?;
+        }
+        for face in shell.faces.iter().map(|i| &t.faces[*i]) {
+            let mut loops = face.loops.iter().map(|l| l.iter().map(|v| vertices[v]).collect::<Vec<_>>());
+            let outer = loops.next().expect("a face has an outer loop");
+            let id = self.raw_face(Face {
+                hidden: face.hidden,
+                outer,
+                holes: loops.collect(),
+                material: face.material,
+                back_material: face.back_material,
+                uv: face.uv,
+            });
+            let c = face.outer.iter().copied().sum::<DVec3>() / face.outer.len() as f64;
+            let wanted = f(c + face.normal) - f(c);
+            if self.face_normal(id).is_some_and(|n| n.dot(wanted) < 0.0) {
+                self.faces.get_mut(&id).ok_or(MeshError::Missing(id.0))?.reverse();
+            }
+            out.push(Element::Face(id));
         }
         Ok(out)
     }
@@ -352,12 +628,19 @@ impl Mesh {
         let before: BTreeSet<_> = self.faces.keys().copied().collect();
         let edges = self.add_lines(&lines, None)?;
         out.extend(edges.into_iter().map(Element::Edge));
-        for line in &t.lines {
+        let styled: Vec<_> = t
+            .lines
+            .iter()
+            .filter(|line| {
+                let appearance = &line.appearance;
+                appearance.soft || appearance.smooth || appearance.hidden || appearance.material.is_some()
+            })
+            .collect();
+        let ends: Vec<_> = styled.iter().flat_map(|line| [f(line.start), f(line.end)]).collect();
+        let found = self.locate(&ends, |_| true);
+        for (line, ends) in styled.into_iter().zip(found.as_chunks::<2>().0) {
             let appearance = &line.appearance;
-            if !appearance.soft && !appearance.smooth && !appearance.hidden && appearance.material.is_none() {
-                continue;
-            }
-            if let (Some(x), Some(y)) = (self.find_vertex(f(line.start)), self.find_vertex(f(line.end)))
+            if let [Some(x), Some(y)] = *ends
                 && let Some(e) = self.edge_between(x, y)
             {
                 let edge = self.edges.get_mut(&e).ok_or(MeshError::Missing(e.0))?;
@@ -367,11 +650,11 @@ impl Mesh {
                 edge.material = appearance.material;
             }
         }
-        for template in &t.curves {
-            let lines: Vec<_> = template.segments.iter().map(|(a, b)| (f(*a), f(*b))).collect();
-            let members = self.edges_on_segments(&lines);
-            if !members.is_empty() {
-                self.register_curve(&members, template.curve.mapped(&f))?;
+        if !t.curves.is_empty() {
+            for (template, members) in t.curves.iter().zip(self.stamped_curves(t, &f)) {
+                if !members.is_empty() {
+                    self.register_curve_unpruned(&members, template.curve.mapped(&f))?;
+                }
             }
         }
         self.prune_curves();
@@ -449,16 +732,31 @@ impl Mesh {
                 self.faces.remove(&face);
             }
         }
-        for face in &t.faces {
-            let mapped: Vec<DVec3> = face.outer.iter().map(|p| f(*p)).collect();
-            let ids: Option<Vec<VertexId>> = mapped.iter().map(|p| self.find_vertex(*p)).collect();
+        let mapped: Vec<Vec<DVec3>> = t.faces.iter().map(|face| face.outer.iter().map(|p| f(*p)).collect()).collect();
+        let found = self.locate(&mapped.concat(), |_| true);
+        let mut found = found.as_slice();
+        let mut faces_at: HashMap<VertexId, Vec<FaceId>> = found.iter().flatten().map(|v| (*v, Vec::new())).collect();
+        for (id, face) in &self.faces {
+            for v in &face.outer {
+                if let Some(faces) = faces_at.get_mut(v) {
+                    faces.push(*id);
+                }
+            }
+        }
+        for (face, mapped) in t.faces.iter().zip(&mapped) {
+            let (corners, rest) = found.split_at(mapped.len());
+            found = rest;
+            let ids: Option<Vec<VertexId>> = corners.iter().copied().collect();
             let Some(ids) = ids else { continue };
             let want = canonical(&ids);
-            let found = self.faces.iter().find(|(_, g)| {
+            // A face that holds the outline holds its first corner.
+            let Some(candidates) = faces_at.get(&ids[0]) else { continue };
+            let found = candidates.iter().find(|id| {
+                let g = &self.faces[*id];
                 let c = canonical(&g.outer);
                 c == want || (c.len() >= want.len() && want.iter().all(|v| g.outer.contains(v)))
             });
-            let Some((id, _)) = found else { continue };
+            let Some(id) = found else { continue };
             let id = *id;
             // Map the normal as a direction from the outline's centre: that keeps the
             // copy facing the right side, mirror images included.
@@ -477,6 +775,33 @@ impl Mesh {
             out.push(Element::Face(id));
         }
         Ok(out)
+    }
+
+    /// For each template curve, the edges along its mapped segments.
+    fn stamped_curves(&self, t: &Template, f: impl Fn(DVec3) -> DVec3) -> Vec<Vec<EdgeId>> {
+        let segments = t
+            .curves
+            .iter()
+            .enumerate()
+            .flat_map(|(curve, template)| template.segments.iter().map(move |(a, b)| (curve, *a, *b)));
+        let tree = Bvh::new(
+            segments
+                .map(|(curve, a, b)| {
+                    let (a, b) = (f(a), f(b));
+                    (Aabb::of([a, b]).expanded(EPS * 4.0), (curve, a, b))
+                })
+                .collect(),
+        );
+        let mut members = vec![Vec::new(); t.curves.len()];
+        for (id, edge) in &self.edges {
+            let (p, q) = (self.pos(edge.v[0]), self.pos(edge.v[1]));
+            tree.overlapping(Aabb::of([p, q]), |(curve, a, b)| {
+                if on_segment(p, *a, *b) && on_segment(q, *a, *b) && members[*curve].last() != Some(id) {
+                    members[*curve].push(*id);
+                }
+            });
+        }
+        members
     }
 
     /// Takes elements out of the mesh into a new mesh, with fresh ids from this mesh's
@@ -501,8 +826,9 @@ impl Mesh {
         out.next_id = self.next_id;
         let mut map: BTreeMap<VertexId, VertexId> = BTreeMap::new();
         let mut vmap =
-            |out: &mut Mesh, m: &Mesh, v: VertexId| *map.entry(v).or_insert_with(|| out.add_vertex(m.pos(v)));
+            |out: &mut Mesh, m: &Mesh, v: VertexId| *map.entry(v).or_insert_with(|| out.raw_vertex(m.pos(v)));
         let mut curve_map = BTreeMap::new();
+        let curve_members = self.curve_members();
         for e in &edges {
             let [a, b] = self.edges[e].v;
             let (x, y) = (vmap(&mut out, self, a), vmap(&mut out, self, b));
@@ -512,7 +838,7 @@ impl Mesh {
                 let mapped = *curve_map.entry(curve).or_insert_with(|| {
                     let id = crate::CurveId(out.reserve_id());
                     let mut descriptor = self.curves[&curve];
-                    if self.curve_edges(curve).iter().any(|id| !edges.contains(id)) {
+                    if curve_members[&curve].iter().any(|id| !edges.contains(id)) {
                         descriptor.kind = crate::CurveKind::Polyline;
                     }
                     out.curves.insert(id, descriptor);
@@ -536,8 +862,11 @@ impl Mesh {
         for f in &faces {
             self.faces.remove(f);
         }
+        let used: BTreeSet<_> =
+            self.faces.values().flat_map(|f| f.loop_edges()).map(|(a, b)| crate::mesh::key(a, b)).collect();
         for e in &edges {
-            if self.faces_of_edge(*e).is_empty() {
+            let [a, b] = self.edges[e].v;
+            if !used.contains(&crate::mesh::key(a, b)) {
                 self.remove_edge_raw(*e);
             }
         }

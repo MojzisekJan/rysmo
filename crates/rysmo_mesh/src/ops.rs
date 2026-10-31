@@ -39,18 +39,28 @@ impl Mesh {
         self.pick_face_with_hidden(ray, false)
     }
     pub fn pick_face_with_hidden(&self, ray: &Ray, show_hidden: bool) -> Option<(FaceId, f64)> {
+        self.pick_face_among(self.faces.keys().copied(), ray, show_hidden)
+    }
+
+    /// `pick_face_with_hidden` limited to some faces, given in id order.
+    pub fn pick_face_among(
+        &self,
+        faces: impl IntoIterator<Item = FaceId>,
+        ray: &Ray,
+        show_hidden: bool,
+    ) -> Option<(FaceId, f64)> {
         let mut best: Option<(FaceId, f64)> = None;
-        for id in self.faces.keys() {
-            if self.faces[id].hidden && !show_hidden {
+        for id in faces {
+            if self.faces[&id].hidden && !show_hidden {
                 continue;
             }
-            let Some(plane) = self.face_plane(*id) else { continue };
+            let Some(plane) = self.face_plane(id) else { continue };
             let Some(t) = plane.intersect_ray(ray) else { continue };
             if best.is_some_and(|(_, bt)| t >= bt) {
                 continue;
             }
-            if self.face_contains(*id, ray.at(t)) {
-                best = Some((*id, t));
+            if self.face_contains(id, ray.at(t)) {
+                best = Some((id, t));
             }
         }
         best
@@ -150,7 +160,8 @@ impl Mesh {
         let edge = self.edges.get_mut(&joined).expect("just made");
         edge.set_flags(flags);
         edge.curve = curve;
-        for f in self.faces.values_mut() {
+        for id in self.faces_of_vertex(v) {
+            let f = self.faces.get_mut(&id).expect("just listed");
             for l in std::iter::once(&mut f.outer).chain(f.holes.iter_mut()) {
                 l.retain(|x| *x != v);
             }

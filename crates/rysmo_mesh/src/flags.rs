@@ -124,6 +124,9 @@ impl Mesh {
     /// that vertex. Corners with no smooth edge get the face normal. Built in one pass
     /// for the viewport.
     pub fn smooth_normals(&self) -> HashMap<(FaceId, VertexId), DVec3> {
+        if !self.edges.values().any(|e| e.smooth) {
+            return HashMap::new();
+        }
         let mut edge_faces: HashMap<(VertexId, VertexId), Vec<FaceId>> = HashMap::new();
         let mut vertex_faces: HashMap<VertexId, Vec<FaceId>> = HashMap::new();
         for (id, f) in &self.faces {

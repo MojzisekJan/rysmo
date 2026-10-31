@@ -175,7 +175,7 @@ impl Scene {
                 for (id, guide) in &mut d.guides {
                     guide.set_hidden(state.hidden_guides.contains(id));
                 }
-                for (id, instance) in &mut d.instances {
+                for (id, instance) in d.instances.iter_mut() {
                     instance.hidden = state.hidden_instances.contains(id);
                 }
                 let edges: Vec<_> = d.mesh.edges().map(|(id, _)| id).collect();

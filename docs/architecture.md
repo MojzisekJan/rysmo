@@ -266,3 +266,34 @@ closed groups or components. Both are checked first (`solid_validation`: every e
 between two consistently facing faces, no self-intersections), the result is built
 with a BSP and becomes new groups in one undo step. Section planes clip the drawn
 model without changing it, and scenes store a camera with selected view settings.
+
+## Large models
+
+Editing and drawing avoid visiting the whole model once per element.
+
+- `rysmo_mesh::blocks::BlockMap` stores mesh elements and instances in small blocks
+  behind `Arc`. An undo snapshot copies a list of blocks; an edit copies the blocks it
+  writes to. Write through `get_mut` where only some entries change, since `values_mut`
+  unshares every block.
+- `rysmo_mesh::spatial` has box trees. Batch operations build one over the smaller set
+  (the lines being inserted, the edges being moved) and pass over the mesh once.
+  Results that depend on id order are sorted, so a tree never changes an outcome.
+- `Editor::content_revision` ignores selection changes. Anything built from the document
+  waits for it; `Editor::revision` also covers the selection.
+- Snapping keeps a scene per content revision and a `MeshIndex` per definition. A held
+  `Arc<Definition>` keeps its pointer valid as an identity, because an edit then has to
+  copy it. Meshes with evaluated openings depend on other definitions and are rebuilt.
+- `Mesh::vertex_edges` is kept with `edge_index` by `link_edge` and `remove_edge_raw`,
+  so an edge's neighbours need no search. Add edges only through those.
+- A copied closed shell that lands clear of everything is placed directly, and a move
+  of geometry attached to nothing else that lands clear only sets positions. Anything
+  that touches takes the full path of intersecting and finding faces.
+- The viewport keeps triangles per definition in chunks of a face id range and edge
+  lists per definition, reusing what `Mesh::changed_since` leaves untouched. The screen
+  is split into pieces, each with its own Bevy meshes, and a piece is rebuilt when its
+  signature changes. Style and material changes redraw all pieces. Selected and hovered
+  faces are a separate blended mesh, so a click does not rebuild the model.
+- A snap `MeshIndex` is shared trees of an earlier state plus small trees of the changes.
+
+`crates/rysmo_tools/examples/perf.rs` times whole-model operations on scenes of boxes
+and `crates/rysmo_io/examples/perf_scene.rs` writes such a scene to a file.

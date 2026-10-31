@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use rysmo_math::{DVec3, EPS, Plane};
 use serde::{Deserialize, Serialize};
 
+use crate::blocks::BlockMap;
 use crate::ids::{EdgeId, Element, FaceId, MaterialId, VertexId};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -160,25 +161,28 @@ pub enum MeshError {
 /// Vertices, edges and faces, keyed by stable ids.
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct Mesh {
-    pub(crate) vertices: BTreeMap<VertexId, Vertex>,
-    pub(crate) edges: BTreeMap<EdgeId, Edge>,
-    pub(crate) faces: BTreeMap<FaceId, Face>,
+    pub(crate) vertices: BlockMap<VertexId, Vertex>,
+    pub(crate) edges: BlockMap<EdgeId, Edge>,
+    pub(crate) faces: BlockMap<FaceId, Face>,
     #[serde(default)]
-    pub(crate) curves: BTreeMap<crate::CurveId, crate::Curve>,
+    pub(crate) curves: BlockMap<crate::CurveId, crate::Curve>,
     pub(crate) next_id: u64,
     #[serde(skip)]
-    pub(crate) edge_index: HashMap<(VertexId, VertexId), EdgeId>,
+    pub(crate) edge_index: BlockMap<(VertexId, VertexId), EdgeId>,
+    /// The edges at each vertex, in id order.
+    #[serde(skip)]
+    pub(crate) vertex_edges: BlockMap<VertexId, Vec<EdgeId>>,
 }
 
 impl<'de> Deserialize<'de> for Mesh {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Deserialize)]
         struct Stored {
-            vertices: BTreeMap<VertexId, Vertex>,
-            edges: BTreeMap<EdgeId, Edge>,
-            faces: BTreeMap<FaceId, Face>,
+            vertices: BlockMap<VertexId, Vertex>,
+            edges: BlockMap<EdgeId, Edge>,
+            faces: BlockMap<FaceId, Face>,
             #[serde(default)]
-            curves: BTreeMap<crate::CurveId, crate::Curve>,
+            curves: BlockMap<crate::CurveId, crate::Curve>,
             next_id: u64,
         }
         let stored = Stored::deserialize(deserializer)?;
@@ -202,7 +206,8 @@ impl<'de> Deserialize<'de> for Mesh {
             faces: stored.faces,
             curves: stored.curves,
             next_id: stored.next_id.max(minimum),
-            edge_index: HashMap::new(),
+            edge_index: BlockMap::new(),
+            vertex_edges: BlockMap::new(),
         };
         mesh.reindex();
         mesh.validate().map_err(serde::de::Error::custom)?;
@@ -221,14 +226,9 @@ impl Mesh {
 
     /// Rebuild a mesh with globally fresh identifiers while retaining exact topology.
     pub fn with_fresh_ids(&self, mut allocate: impl FnMut() -> u64) -> Result<Mesh, MeshError> {
-        Mesh::from_parts_with_curves(
-            self.vertices.clone(),
-            self.edges.clone(),
-            self.faces.clone(),
-            self.curves.clone(),
-        )?;
-        let vertices: BTreeMap<_, _> = self.vertices.keys().map(|id| (*id, VertexId(allocate()))).collect();
-        let curves: BTreeMap<_, _> = self.curves.keys().map(|id| (*id, crate::CurveId(allocate()))).collect();
+        self.validate()?;
+        let vertices: HashMap<_, _> = self.vertices.keys().map(|id| (*id, VertexId(allocate()))).collect();
+        let curves: HashMap<_, _> = self.curves.keys().map(|id| (*id, crate::CurveId(allocate()))).collect();
         let v = self.vertices.iter().map(|(id, v)| (vertices[id], v.clone())).collect();
         let e = self
             .edges
@@ -251,7 +251,7 @@ impl Mesh {
             })
             .collect();
         let c = self.curves.iter().map(|(id, c)| (curves[id], *c)).collect();
-        Mesh::from_parts_with_curves(v, e, f, c)
+        Self::assemble(v, e, f, c)
     }
 
     /// Builds a mesh from stored elements (for loading files) and checks it.
@@ -260,7 +260,12 @@ impl Mesh {
         edges: BTreeMap<EdgeId, Edge>,
         faces: BTreeMap<FaceId, Face>,
     ) -> Result<Self, MeshError> {
-        Self::from_parts_with_curves(vertices, edges, faces, BTreeMap::new())
+        Self::assemble(
+            vertices.into_iter().collect(),
+            edges.into_iter().collect(),
+            faces.into_iter().collect(),
+            BlockMap::new(),
+        )
     }
 
     pub fn from_parts_with_curves(
@@ -268,6 +273,20 @@ impl Mesh {
         edges: BTreeMap<EdgeId, Edge>,
         faces: BTreeMap<FaceId, Face>,
         curves: BTreeMap<crate::CurveId, crate::Curve>,
+    ) -> Result<Self, MeshError> {
+        Self::assemble(
+            vertices.into_iter().collect(),
+            edges.into_iter().collect(),
+            faces.into_iter().collect(),
+            curves.into_iter().collect(),
+        )
+    }
+
+    pub(crate) fn assemble(
+        vertices: BlockMap<VertexId, Vertex>,
+        edges: BlockMap<EdgeId, Edge>,
+        faces: BlockMap<FaceId, Face>,
+        curves: BlockMap<crate::CurveId, crate::Curve>,
     ) -> Result<Self, MeshError> {
         let max = vertices
             .keys()
@@ -277,7 +296,15 @@ impl Mesh {
             .chain(curves.keys().map(|k| k.0))
             .max()
             .unwrap_or(0);
-        let mut m = Mesh { vertices, edges, faces, curves, next_id: max + 1, edge_index: HashMap::new() };
+        let mut m = Mesh {
+            vertices,
+            edges,
+            faces,
+            curves,
+            next_id: max + 1,
+            edge_index: BlockMap::new(),
+            vertex_edges: BlockMap::new(),
+        };
         m.reindex();
         m.validate()?;
         Ok(m)
@@ -302,6 +329,13 @@ impl Mesh {
 
     pub(crate) fn reindex(&mut self) {
         self.edge_index = self.edges.iter().map(|(id, e)| (key(e.v[0], e.v[1]), *id)).collect();
+        let mut at_vertex: BTreeMap<VertexId, Vec<EdgeId>> = BTreeMap::new();
+        for (id, edge) in &self.edges {
+            for v in edge.v {
+                at_vertex.entry(v).or_default().push(*id);
+            }
+        }
+        self.vertex_edges = at_vertex.into_iter().collect();
     }
 
     /// Checks the invariants: edges join two distinct existing vertices, no two edges
@@ -390,13 +424,26 @@ impl Mesh {
         }
     }
 
+    /// The faces and vertices that differ from `older`, usually an earlier state of
+    /// this mesh, at a cost that follows the size of the change.
+    pub fn changed_since(&self, older: &Mesh) -> (Vec<FaceId>, Vec<VertexId>) {
+        (self.faces.changed_since(&older.faces), self.vertices.changed_since(&older.vertices))
+    }
+
+    /// The edges of this mesh that are new or differ from `older`.
+    pub fn changed_edges_since(&self, older: &Mesh) -> BTreeSet<EdgeId> {
+        self.edges.changed_since(&older.edges).into_iter().filter(|id| self.edges.contains_key(id)).collect()
+    }
+
     pub fn vertex_count(&self) -> usize {
         self.vertices.len()
     }
 
     /// Makes an evaluated opening ordinary editable boundary geometry.
     pub fn materialize_opening_edges(&mut self) {
-        for edge in self.edges.values_mut().filter(|edge| edge.procedural) {
+        let opening: Vec<_> = self.edges.iter().filter(|(_, edge)| edge.procedural).map(|(id, _)| *id).collect();
+        for id in opening {
+            let edge = self.edges.get_mut(&id).expect("just listed");
             edge.procedural = false;
             edge.hidden = false;
         }
@@ -436,7 +483,7 @@ impl Mesh {
     }
 
     pub fn edges_of_vertex(&self, v: VertexId) -> Vec<EdgeId> {
-        self.edges.iter().filter(|(_, e)| e.v.contains(&v)).map(|(id, _)| *id).collect()
+        self.vertex_edges.get(&v).cloned().unwrap_or_default()
     }
 
     pub fn faces_of_vertex(&self, v: VertexId) -> Vec<FaceId> {
@@ -476,6 +523,42 @@ impl Mesh {
     /// The vertex at `p`, if there is one within the tolerance.
     pub fn find_vertex(&self, p: DVec3) -> Option<VertexId> {
         self.vertices.iter().find(|(_, v)| v.pos.distance(p) < EPS).map(|(id, _)| *id)
+    }
+
+    /// `find_vertex` for many points in one pass over the vertices. `allowed` narrows
+    /// which vertices count.
+    pub fn locate(&self, points: &[DVec3], allowed: impl Fn(VertexId) -> bool) -> Vec<Option<VertexId>> {
+        const CELL: f64 = EPS * 4.0;
+        let cell = |p: DVec3| (p / CELL).floor().as_i64vec3().to_array();
+        // A point goes in every cell its tolerance reaches, so a vertex checks one cell.
+        let mut grid: HashMap<[i64; 3], Vec<usize>> = HashMap::with_capacity(points.len());
+        for (index, p) in points.iter().enumerate() {
+            let mut cells = [[0; 3]; 8];
+            for (k, slot) in cells.iter_mut().enumerate() {
+                let corner = DVec3::new(
+                    if k & 1 == 0 { -EPS } else { EPS },
+                    if k & 2 == 0 { -EPS } else { EPS },
+                    if k & 4 == 0 { -EPS } else { EPS },
+                );
+                *slot = cell(*p + corner);
+            }
+            cells.sort_unstable();
+            for (k, key) in cells.iter().enumerate() {
+                if k == 0 || cells[k - 1] != *key {
+                    grid.entry(*key).or_default().push(index);
+                }
+            }
+        }
+        let mut found = vec![None; points.len()];
+        for (id, vertex) in &self.vertices {
+            let Some(indices) = grid.get(&cell(vertex.pos)) else { continue };
+            for &index in indices {
+                if found[index].is_none() && vertex.pos.distance(points[index]) < EPS && allowed(*id) {
+                    found[index] = Some(*id);
+                }
+            }
+        }
+        found
     }
 
     pub fn bounds(&self) -> Option<(DVec3, DVec3)> {
@@ -518,6 +601,11 @@ impl Mesh {
         if let Some(v) = self.find_vertex(p) {
             return v;
         }
+        self.raw_vertex(p)
+    }
+
+    /// A vertex at `p`, without looking for one there already.
+    pub(crate) fn raw_vertex(&mut self, p: DVec3) -> VertexId {
         let id = VertexId(self.reserve_id());
         self.vertices.insert(id, Vertex { pos: p });
         id
@@ -530,9 +618,25 @@ impl Mesh {
             return e;
         }
         let id = EdgeId(self.reserve_id());
-        self.edges.insert(id, Edge::new(a, b));
-        self.edge_index.insert(key(a, b), id);
+        self.link_edge(id, Edge::new(a, b));
         id
+    }
+
+    /// Adds an edge to the map and to what indexes it.
+    pub(crate) fn link_edge(&mut self, id: EdgeId, edge: Edge) {
+        for v in edge.v {
+            match self.vertex_edges.get_mut(&v) {
+                Some(edges) => {
+                    let at = edges.partition_point(|e| *e < id);
+                    edges.insert(at, id);
+                }
+                None => {
+                    self.vertex_edges.insert(v, vec![id]);
+                }
+            }
+        }
+        self.edge_index.insert(key(edge.v[0], edge.v[1]), id);
+        self.edges.insert(id, edge);
     }
 
     pub(crate) fn raw_face(&mut self, face: Face) -> FaceId {
@@ -544,6 +648,15 @@ impl Mesh {
     pub(crate) fn remove_edge_raw(&mut self, e: EdgeId) {
         if let Some(edge) = self.edges.remove(&e) {
             self.edge_index.remove(&key(edge.v[0], edge.v[1]));
+            for v in edge.v {
+                let empty = self.vertex_edges.get_mut(&v).is_some_and(|edges| {
+                    edges.retain(|id| *id != e);
+                    edges.is_empty()
+                });
+                if empty {
+                    self.vertex_edges.remove(&v);
+                }
+            }
         }
     }
 
@@ -560,6 +673,18 @@ impl Mesh {
     /// Splits edge `e` at vertex `v`, which must lie on it, and threads `v` into the
     /// loops of the faces along it. Returns the two halves.
     pub(crate) fn split_edge(&mut self, e: EdgeId, v: VertexId) -> (EdgeId, EdgeId) {
+        let faces: Vec<_> = self.faces.keys().copied().collect();
+        self.split_edge_in(e, v, &faces).0
+    }
+
+    /// `split_edge` when `faces` are known to include all the faces along `e`. Also
+    /// returns the faces that took the vertex.
+    pub(crate) fn split_edge_in(
+        &mut self,
+        e: EdgeId,
+        v: VertexId,
+        faces: &[FaceId],
+    ) -> ((EdgeId, EdgeId), Vec<FaceId>) {
         let [a, b] = self.edges[&e].v;
         let flags = self.edges[&e].flags();
         let curve = self.edges[&e].curve;
@@ -571,7 +696,9 @@ impl Mesh {
             edge.set_flags(flags);
             edge.curve = curve;
         }
-        for f in self.faces.values_mut() {
+        let mut threaded = Vec::new();
+        for id in faces {
+            let Some(f) = self.faces.get_mut(id) else { continue };
             for l in std::iter::once(&mut f.outer).chain(f.holes.iter_mut()) {
                 let n = l.len();
                 let mut i = 0;
@@ -580,6 +707,7 @@ impl Mesh {
                     let y = l[(i + 1) % l.len()];
                     if (x == a && y == b) || (x == b && y == a) {
                         l.insert(i + 1, v);
+                        threaded.push(*id);
                         break;
                     }
                     i += 1;
@@ -587,7 +715,7 @@ impl Mesh {
                 debug_assert!(l.len() <= n + 1);
             }
         }
-        (e1, e2)
+        ((e1, e2), threaded)
     }
 
     /// Replaces vertex `from` by `to` everywhere, dropping edges and loop steps that
@@ -610,7 +738,8 @@ impl Mesh {
                 edge.curve = curve;
             }
         }
-        for f in self.faces.values_mut() {
+        for id in self.faces_of_vertex(from) {
+            let Some(f) = self.faces.get_mut(&id) else { continue };
             for l in std::iter::once(&mut f.outer).chain(f.holes.iter_mut()) {
                 for v in l.iter_mut() {
                     if *v == from {
@@ -623,8 +752,10 @@ impl Mesh {
                 }
             }
             f.holes.retain(|h| h.len() >= 3);
+            if f.outer.len() < 3 {
+                self.faces.remove(&id);
+            }
         }
-        self.faces.retain(|_, f| f.outer.len() >= 3);
         self.vertices.remove(&from);
     }
 }

@@ -517,8 +517,8 @@ fn from_parts_rejects_broken_loops() {
     let mut faces = m.faces.clone();
     let f = faces.values_mut().next().unwrap();
     f.outer.swap(0, 1);
-    assert!(Mesh::from_parts(m.vertices.clone(), m.edges.clone(), faces).is_err());
-    assert!(Mesh::from_parts(m.vertices.clone(), m.edges.clone(), m.faces.clone()).is_ok());
+    assert!(Mesh::assemble(m.vertices.clone(), m.edges.clone(), faces, Default::default()).is_err());
+    assert!(Mesh::assemble(m.vertices.clone(), m.edges.clone(), m.faces.clone(), Default::default()).is_ok());
 }
 
 #[test]

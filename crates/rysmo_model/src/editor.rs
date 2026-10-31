@@ -20,9 +20,8 @@ struct Step {
 /// A document being edited: history, selection, the editing context, and a revision
 /// counter that viewers use to know when to redraw.
 ///
-/// Undo keeps whole document snapshots. That is simple and always correct, and cheap
-/// for models of thousands of elements; storing diffs of changed elements is on the
-/// roadmap.
+/// Undo keeps document snapshots. That is simple and always correct, and cheap because
+/// definitions and the blocks of their meshes are shared until an edit writes to them.
 #[derive(Clone, Debug, Default)]
 pub struct Editor {
     doc: Document,
@@ -32,6 +31,8 @@ pub struct Editor {
     /// The groups and components being edited, outermost first. Empty: the model.
     context: Vec<InstanceId>,
     revision: u64,
+    /// How many of the revisions only changed the selection.
+    selection_changes: u64,
     /// Changes since the last save.
     dirty: bool,
 }
@@ -434,6 +435,12 @@ impl Editor {
         self.revision
     }
 
+    /// Changes when anything but the selection does. Geometry built from the document
+    /// can wait for this one, so a click does not have to rebuild it.
+    pub fn content_revision(&self) -> u64 {
+        self.revision - self.selection_changes
+    }
+
     pub fn is_dirty(&self) -> bool {
         self.dirty
     }
@@ -652,15 +659,20 @@ impl Editor {
         }
     }
 
+    fn note_selection_change(&mut self) {
+        self.revision += 1;
+        self.selection_changes += 1;
+    }
+
     pub fn set_selection(&mut self, elements: impl IntoIterator<Item = Element>) {
         self.selection = elements.into_iter().filter(|e| self.contains(*e)).collect();
-        self.revision += 1;
+        self.note_selection_change();
     }
 
     pub fn clear_selection(&mut self) {
         if !self.selection.is_empty() {
             self.selection.clear();
-            self.revision += 1;
+            self.note_selection_change();
         }
     }
 
@@ -670,7 +682,7 @@ impl Editor {
                 self.selection.insert(e);
             }
         }
-        self.revision += 1;
+        self.note_selection_change();
     }
 
     pub fn toggle_selection(&mut self, elements: impl IntoIterator<Item = Element>) {
@@ -679,14 +691,14 @@ impl Editor {
                 self.selection.insert(e);
             }
         }
-        self.revision += 1;
+        self.note_selection_change();
     }
 
     pub fn remove_from_selection(&mut self, elements: impl IntoIterator<Item = Element>) {
         for e in elements {
             self.selection.remove(&e);
         }
-        self.revision += 1;
+        self.note_selection_change();
     }
 
     /// Drops what no longer exists or can no longer be seen: a hidden instance, or one on

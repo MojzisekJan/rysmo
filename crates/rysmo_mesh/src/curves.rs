@@ -2,7 +2,7 @@
 use crate::{CurveId, EdgeId, Mesh, MeshError, VertexId};
 use rysmo_math::{DVec3, EPS};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -82,7 +82,25 @@ impl Mesh {
     pub fn curve_edges(&self, id: CurveId) -> Vec<EdgeId> {
         self.edges.iter().filter_map(|(id_e, e)| (e.curve == Some(id)).then_some(*id_e)).collect()
     }
+    /// The edges of every curve, in one pass over the edges.
+    pub(crate) fn curve_members(&self) -> BTreeMap<CurveId, Vec<EdgeId>> {
+        let mut members: BTreeMap<_, Vec<_>> = BTreeMap::new();
+        if !self.curves.is_empty() {
+            for (id, edge) in &self.edges {
+                if let Some(curve) = edge.curve {
+                    members.entry(curve).or_default().push(*id);
+                }
+            }
+        }
+        members
+    }
     pub fn register_curve(&mut self, edges: &[EdgeId], curve: Curve) -> Result<CurveId, MeshError> {
+        let id = self.register_curve_unpruned(edges, curve)?;
+        self.prune_curves();
+        Ok(id)
+    }
+    /// `register_curve` for callers adding many curves, which prune once at the end.
+    pub(crate) fn register_curve_unpruned(&mut self, edges: &[EdgeId], curve: Curve) -> Result<CurveId, MeshError> {
         curve.validate().map_err(|e| MeshError::Invalid(e.into()))?;
         if edges.is_empty() || edges.iter().any(|id| !self.edges.contains_key(id)) {
             return Err(MeshError::Invalid("curve needs existing edges".into()));
@@ -92,7 +110,6 @@ impl Mesh {
         for edge in edges {
             self.edges.get_mut(edge).unwrap().curve = Some(id);
         }
-        self.prune_curves();
         Ok(id)
     }
     pub fn set_curve_radius(&mut self, id: CurveId, radius: f64) -> Result<(), MeshError> {
@@ -305,8 +322,10 @@ impl Mesh {
 
     pub(crate) fn map_touched_curves(&mut self, vertices: &BTreeSet<VertexId>, f: &impl Fn(DVec3) -> DVec3) {
         let curves: Vec<_> = self.curves.keys().copied().collect();
+        let mut edges = self.curve_members();
         for id in curves {
-            let members: BTreeSet<_> = self.curve_edges(id).iter().flat_map(|e| self.edges[e].v).collect();
+            let members: BTreeSet<_> =
+                edges.remove(&id).unwrap_or_default().iter().flat_map(|e| self.edges[e].v).collect();
             if members.is_disjoint(vertices) {
                 continue;
             }
@@ -322,32 +341,38 @@ impl Mesh {
         }
     }
     pub(crate) fn edges_on_segments(&self, lines: &[(DVec3, DVec3)]) -> Vec<EdgeId> {
-        let on = |p: DVec3, a: DVec3, b: DVec3| {
-            let d = b - a;
-            if d.length_squared() < EPS * EPS {
-                return false;
-            }
-            let t = (p - a).dot(d) / d.length_squared();
-            (-EPS..=1.0 + EPS).contains(&t) && p.distance(a + d * t) < EPS * 2.0
-        };
         self.edges
             .keys()
             .copied()
             .filter(|id| {
                 let (p, q) = self.edge_points(*id);
-                lines.iter().any(|(a, b)| on(p, *a, *b) && on(q, *a, *b))
+                lines.iter().any(|(a, b)| on_segment(p, *a, *b) && on_segment(q, *a, *b))
             })
             .collect()
     }
     pub(crate) fn prune_curves(&mut self) {
-        let used: BTreeSet<_> = self.edges.values().filter_map(|e| e.curve).collect();
-        self.curves.retain(|id, _| used.contains(id));
-        let counts: std::collections::BTreeMap<_, _> =
-            self.curves.keys().copied().map(|id| (id, self.curve_edges(id).len() as u32)).collect();
-        for (id, curve) in &mut self.curves {
-            if curve.kind == CurveKind::Polyline {
-                curve.segments = counts[id];
+        let mut counts: BTreeMap<_, u32> = BTreeMap::new();
+        for curve in self.edges.values().filter_map(|e| e.curve) {
+            *counts.entry(curve).or_default() += 1;
+        }
+        self.curves.retain(|id, _| counts.contains_key(id));
+        for (id, count) in counts {
+            if let Some(curve) = self.curves.get(&id)
+                && curve.kind == CurveKind::Polyline
+                && curve.segments != count
+            {
+                self.curves.get_mut(&id).expect("just found").segments = count;
             }
         }
     }
+}
+
+/// Whether `p` lies on the segment `a..b`, the way a curve claims its edges.
+pub(crate) fn on_segment(p: DVec3, a: DVec3, b: DVec3) -> bool {
+    let d = b - a;
+    if d.length_squared() < EPS * EPS {
+        return false;
+    }
+    let t = (p - a).dot(d) / d.length_squared();
+    (-EPS..=1.0 + EPS).contains(&t) && p.distance(a + d * t) < EPS * 2.0
 }

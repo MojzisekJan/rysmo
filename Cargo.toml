@@ -45,6 +45,23 @@ opt-level = 1
 [profile.dev.package."*"]
 opt-level = 3
 
+# Geometry and tools run per element and per pointer event; a debug run is unusable on
+# large models without this, and these crates build in seconds.
+[profile.dev.package.rysmo_math]
+opt-level = 3
+
+[profile.dev.package.rysmo_mesh]
+opt-level = 3
+
+[profile.dev.package.rysmo_model]
+opt-level = 3
+
+[profile.dev.package.rysmo_infer]
+opt-level = 3
+
+[profile.dev.package.rysmo_tools]
+opt-level = 3
+
 [profile.release]
 lto = "thin"
 

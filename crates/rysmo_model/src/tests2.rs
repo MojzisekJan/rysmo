@@ -2127,3 +2127,19 @@ fn moved_face_splits_keep_the_moved_texture_on_every_region() {
     e.undo();
     assert_eq!(e.doc(), &before);
 }
+
+#[test]
+fn selecting_changes_no_content_revision() {
+    let mut editor = Editor::new();
+    editor.apply(Command::DrawLines { lines: vec![[DVec3::ZERO, DVec3::X]], facing: None }).unwrap();
+    let edge = editor.mesh().edges().next().unwrap().0;
+    let (revision, content) = (editor.revision(), editor.content_revision());
+    editor.set_selection([Element::Edge(edge)]);
+    editor.toggle_selection([Element::Edge(edge)]);
+    editor.add_to_selection([Element::Edge(edge)]);
+    editor.remove_from_selection([Element::Edge(edge)]);
+    assert_eq!(editor.revision(), revision + 4);
+    assert_eq!(editor.content_revision(), content);
+    editor.apply(Command::DrawLines { lines: vec![[DVec3::Y, DVec3::Z]], facing: None }).unwrap();
+    assert_eq!(editor.content_revision(), content + 1);
+}

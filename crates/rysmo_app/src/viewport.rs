@@ -251,23 +251,38 @@ fn draw_gizmos(
     let to_world = |p: DVec3| to_bevy(ctx_t.transform_point3(p));
     let eye = app.camera.eye();
     let forward = (app.camera.target - eye).normalize();
-    let mut active_seen = false;
     for [a, b] in &app.features.hatches.lines {
         section_lines.line(to_bevy(*a), to_bevy(*b), color3(doc.style.section_color));
     }
-    for occ in doc.occurrences(editor.context()) {
+    let view = app.camera.view(app.canvas_size());
+    let pixels_per_slope = view.size.y * 0.5 / (app.camera.fov_y * 0.5).tan();
+    let reach_slope = (app.camera.fov_y * 0.5).tan() * (1. + (view.size.x / view.size.y).powi(2)).sqrt();
+    // Too much selected to look up per edge is the rare case; none at all the common one.
+    let anything_lit = !marked.is_empty() || editor.selection().iter().any(|e| matches!(e, Element::Edge(_)));
+    for placed in &cache.placed {
+        let occ = &placed.occurrence;
         let Some(def) = doc.def(occ.definition) else { continue };
-        let is_active = occ.in_context && !active_seen;
-        if occ.in_context {
-            active_seen = true;
-        }
+        let is_active = placed.active;
         let t = occ.transform;
         let style = &doc.style;
-        let cuts = doc.section_planes(&occ.path);
-        let eye_local = t.inverse().transform_point3(eye);
-        if let Some(list) = cache.defs.get(&occ.definition) {
-            for info in list {
-                let lit = is_active && (editor.is_selected(Element::Edge(info.id)) || marked.contains(&info.id));
+        let cuts = &placed.cuts;
+        let eye_local = placed.inverse.transform_point3(eye);
+        if let Some(definition) = cache.defs.get(&occ.definition) {
+            // Occurrences out of view or smaller than a pixel have nothing to show.
+            let scale = t.x_axis.length().max(t.y_axis.length()).max(t.z_axis.length());
+            let radius = definition.radius * scale;
+            let to = t.transform_point3(definition.centre) - eye;
+            let depth = to.dot(forward);
+            let beside = (to - forward * depth).length();
+            let culled = !app.camera.parallel
+                && !(is_active && anything_lit)
+                && (depth < -radius
+                    || beside > depth.max(0.) * reach_slope + radius * 2.
+                    || (depth > radius && radius / depth * pixels_per_slope < 0.5));
+            for info in definition.list.iter().filter(|_| !culled) {
+                let lit = is_active
+                    && anything_lit
+                    && (editor.is_selected(Element::Edge(info.id)) || marked.contains(&info.id));
                 // Profiles: an edge with one face, or between a face turned to the eye and
                 // one turned away.
                 let profile = !info.ghost
@@ -281,10 +296,9 @@ fn draw_gizmos(
                 if !lit && !info.ghost && !profile && !style.edges && style.faces != FaceStyle::Wireframe {
                     continue;
                 }
-                let Some([a, b]) = rysmo_model::sections::clip_segment(
-                    [t.transform_point3(info.a), t.transform_point3(info.b)],
-                    &cuts,
-                ) else {
+                let Some([a, b]) =
+                    rysmo_model::sections::clip_segment([t.transform_point3(info.a), t.transform_point3(info.b)], cuts)
+                else {
                     continue;
                 };
                 let (a, b) = (to_bevy(a), to_bevy(b));
@@ -327,7 +341,7 @@ fn draw_gizmos(
                 }
                 for triangle in rysmo_mesh::triangulate_face(&mesh, fid) {
                     let points = triangle.map(|v| t.transform_point3(mesh.pos(v)));
-                    for plane in &cuts {
+                    for plane in cuts {
                         let mut crossings = Vec::new();
                         for i in 0..3 {
                             let (a, b) = (points[i], points[(i + 1) % 3]);
@@ -342,7 +356,7 @@ fn draw_gizmos(
                         crossings.dedup_by(|a, b| a.distance(*b) < 1e-9);
                         if crossings.len() == 2
                             && let Some([a, b]) =
-                                rysmo_model::sections::clip_segment([crossings[0], crossings[1]], &cuts)
+                                rysmo_model::sections::clip_segment([crossings[0], crossings[1]], cuts)
                         {
                             section_lines.line(to_bevy(a), to_bevy(b), color3(doc.style.section_color));
                         }

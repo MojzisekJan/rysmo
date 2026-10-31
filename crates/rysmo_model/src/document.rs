@@ -152,7 +152,7 @@ pub struct Definition {
     /// A group rather than a component.
     pub group: bool,
     pub mesh: Mesh,
-    pub instances: BTreeMap<InstanceId, Instance>,
+    pub instances: rysmo_mesh::blocks::BlockMap<InstanceId, Instance>,
     pub guides: BTreeMap<GuideId, Guide>,
     pub dimensions: BTreeMap<DimensionId, crate::dimensions::Dimension>,
     pub texts: BTreeMap<rysmo_mesh::TextId, crate::text::Text>,
@@ -336,6 +336,15 @@ impl Document {
         match id {
             None => Some(&self.root),
             Some(d) => self.definitions.get(&d).map(|d| &**d),
+        }
+    }
+
+    /// A definition's shared storage. An edit gives it a new pointer while any other
+    /// holder keeps one, so holding it tells whether a definition has changed.
+    pub fn def_arc(&self, id: Option<DefinitionId>) -> Option<&Arc<Definition>> {
+        match id {
+            None => Some(&self.root),
+            Some(d) => self.definitions.get(&d),
         }
     }
 

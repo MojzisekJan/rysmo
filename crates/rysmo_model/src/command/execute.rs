@@ -7,6 +7,7 @@ use super::types::{Command, CommandError, MAX_GLOW, Outcome, invalid};
 use super::{annotations, settings};
 use crate::{Definition, Document, Guide, Image, Instance, Material, Tag, Texture};
 use rysmo_math::{DMat4, DVec3, EPS, Plane};
+use rysmo_mesh::spatial::{Aabb, Bvh};
 use rysmo_mesh::{
     DefinitionId, EdgeId, Element, FaceId, GuideId, ImageId, InstanceId, MaterialId, Mesh, MeshError, TagId,
 };
@@ -963,6 +964,8 @@ impl Command {
                     out.changed = false;
                 } else {
                     let source_mesh = &doc.def(def).unwrap().mesh;
+                    // What was moved is found again by place; anything else stays as named.
+                    let mut followed = BTreeSet::new();
                     let moved_faces: Vec<_> = elements
                         .iter()
                         .filter_map(|element| {
@@ -970,21 +973,24 @@ impl Command {
                             let face = source_mesh.face(*id)?;
                             let outer: Vec<_> = face.outer.iter().map(|v| source_mesh.pos(*v) + offset).collect();
                             let plane = rysmo_math::Plane::from_polygon(&outer)?;
+                            let area = Aabb::of(outer.iter().copied()).expanded(EPS * 2.);
                             let outer: Vec<_> = outer.into_iter().map(|p| plane.to_2d(p)).collect();
                             let holes: Vec<Vec<_>> = face
                                 .holes
                                 .iter()
                                 .map(|hole| hole.iter().map(|v| plane.to_2d(source_mesh.pos(*v) + offset)).collect())
                                 .collect();
-                            Some((*id, plane, outer, holes))
+                            followed.insert(*element);
+                            Some((area, (plane, outer, holes)))
                         })
                         .collect();
                     let moved_edges: Vec<_> = elements
                         .iter()
                         .filter_map(|e| match e {
-                            Element::Edge(id) => doc.def(def).unwrap().mesh.edge(*id).map(|_| {
-                                let (a, b) = doc.def(def).unwrap().mesh.edge_points(*id);
-                                (*id, a + offset, b + offset)
+                            Element::Edge(id) => source_mesh.edge(*id).map(|_| {
+                                followed.insert(*e);
+                                let (a, b) = source_mesh.edge_points(*id);
+                                (a + offset, b + offset)
                             }),
                             _ => None,
                         })
@@ -1000,43 +1006,45 @@ impl Command {
                             face.uv = Some(crate::texture::moved(face.uv.unwrap_or_default(), n, offset));
                         }
                     }
+                    let counts = |mesh: &Mesh| (mesh.next_id(), mesh.edge_count(), mesh.face_count());
+                    let before = counts(&doc.def(def).expect("checked").mesh);
                     transform_items(doc, def, &elements, DMat4::from_translation(offset))?;
                     let mesh = &doc.def(def).expect("checked").mesh;
-                    out.created = elements
-                        .into_iter()
-                        .flat_map(|element| {
-                            if let Element::Edge(id) = element
-                                && let Some((_, a, b)) = moved_edges.iter().find(|(old, _, _)| *old == id)
-                            {
-                                return mesh.edges_along(*a, *b).into_iter().map(Element::Edge).collect::<Vec<_>>();
+                    // Nothing made or merged: the moved elements are still themselves.
+                    if counts(mesh) == before {
+                        out.created = elements.into_iter().collect::<BTreeSet<_>>().into_iter().collect();
+                    } else {
+                        let mut created: BTreeSet<_> =
+                            elements.into_iter().filter(|element| !followed.contains(element)).collect();
+                        created.extend(mesh.edges_along_each(&moved_edges).into_iter().flatten().map(Element::Edge));
+                        let tree = Bvh::new(moved_faces);
+                        for (id, face) in mesh.faces() {
+                            let area = Aabb::of(face.outer.iter().map(|v| mesh.pos(*v)));
+                            if !tree.any(area, |_| true) {
+                                continue;
                             }
-                            if let Element::Face(id) = element
-                                && let Some((_, plane, outer, holes)) = moved_faces.iter().find(|(old, ..)| *old == id)
-                            {
-                                return mesh
-                                    .faces()
-                                    .filter_map(|(id, _)| {
-                                        if !mesh.face_plane(id)?.same_surface(plane) {
-                                            return None;
-                                        }
-                                        let triangle = *rysmo_mesh::triangulate_face(mesh, id).first()?;
-                                        let point =
-                                            plane.to_2d(triangle.iter().map(|v| mesh.pos(*v)).sum::<DVec3>() / 3.);
-                                        let inside = rysmo_math::point_in_polygon_2d(point, outer, 1e-9)
-                                            != rysmo_math::PolygonSide::Outside
-                                            && holes.iter().all(|hole| {
-                                                rysmo_math::point_in_polygon_2d(point, hole, 1e-9)
-                                                    == rysmo_math::PolygonSide::Outside
-                                            });
-                                        inside.then_some(Element::Face(id))
+                            let (Some(surface), Some(triangle)) =
+                                (mesh.face_plane(id), rysmo_mesh::triangulate_face(mesh, id).first().copied())
+                            else {
+                                continue;
+                            };
+                            let centre = triangle.iter().map(|v| mesh.pos(*v)).sum::<DVec3>() / 3.;
+                            let inside = tree.any(Aabb::at(centre), |(plane, outer, holes)| {
+                                let point = plane.to_2d(centre);
+                                surface.same_surface(plane)
+                                    && rysmo_math::point_in_polygon_2d(point, outer, 1e-9)
+                                        != rysmo_math::PolygonSide::Outside
+                                    && holes.iter().all(|hole| {
+                                        rysmo_math::point_in_polygon_2d(point, hole, 1e-9)
+                                            == rysmo_math::PolygonSide::Outside
                                     })
-                                    .collect::<Vec<_>>();
+                            });
+                            if inside {
+                                created.insert(Element::Face(id));
                             }
-                            vec![element]
-                        })
-                        .collect::<BTreeSet<_>>()
-                        .into_iter()
-                        .collect();
+                        }
+                        out.created = created.into_iter().collect();
+                    }
                 }
             }
             Command::Copy { elements, offset, copies } => {

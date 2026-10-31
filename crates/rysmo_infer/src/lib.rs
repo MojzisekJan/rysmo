@@ -15,7 +15,9 @@
 use rysmo_math::{
     Axis, DMat4, DVec2, DVec3, EPS, Plane, Ray, View, closest_line_ray, closest_on_segment, distance_point_segment_2d,
 };
+use rysmo_mesh::spatial::{Aabb, Bvh};
 use rysmo_mesh::{EdgeId, Element, FaceId, GuideId, InstanceId, Mesh};
+use std::sync::Arc;
 
 /// Screen distance within which points snap, in pixels.
 pub const POINT_PX: f64 = 10.0;
@@ -178,9 +180,123 @@ pub struct Query<'a> {
     /// Other visible geometry (groups, components, the faded model around the context
     /// being edited), with transforms into the context's coordinates.
     pub others: &'a [Other<'a>],
+    /// Trees over the meshes, so a query does not have to visit all of them.
+    pub accel: Option<&'a Accel>,
     /// Construction guides of the context.
     pub guides: &'a [(GuideId, SnapGuide)],
     pub clips: Vec<Plane>,
+}
+
+/// Trees over one mesh's edges and faces.
+struct Trees {
+    edges: Bvh<EdgeId>,
+    faces: Bvh<FaceId>,
+    /// The mesh they were built from.
+    mesh: Mesh,
+}
+
+impl Trees {
+    fn over(
+        mesh: &Mesh,
+        edges: impl Iterator<Item = EdgeId>,
+        faces: impl Iterator<Item = FaceId>,
+    ) -> (Bvh<EdgeId>, Bvh<FaceId>) {
+        let margin = EPS * 4.;
+        let edges = edges.filter_map(|id| Some((Aabb::of(mesh.edge(id)?.v.map(|v| mesh.pos(v))).expanded(margin), id)));
+        let edges = Bvh::new(edges.collect());
+        let faces = faces
+            .filter_map(|id| Some((Aabb::of(mesh.face(id)?.outer.iter().map(|v| mesh.pos(*v))).expanded(margin), id)));
+        (edges, Bvh::new(faces.collect()))
+    }
+}
+
+/// Lookups in one mesh: full trees of an earlier state, shared between updates, and
+/// small trees of what has changed since. An element that moved or went is still in the
+/// full trees at its old place, which only costs callers a look at the mesh.
+pub struct MeshIndex {
+    base: Arc<Trees>,
+    edges: Bvh<EdgeId>,
+    faces: Bvh<FaceId>,
+    /// Everything a query can reach, curve centres included.
+    bounds: Aabb,
+}
+
+impl MeshIndex {
+    pub fn new(mesh: &Mesh) -> Self {
+        let (edges, faces) = Trees::over(mesh, mesh.edges().map(|(id, _)| id), mesh.faces().map(|(id, _)| id));
+        let base = Arc::new(Trees { edges, faces, mesh: mesh.clone() });
+        MeshIndex { base, edges: Bvh::default(), faces: Bvh::default(), bounds: Self::reach(mesh) }
+    }
+
+    /// The index of `mesh`, a later state of the one `self` was made for.
+    pub fn update(&self, mesh: &Mesh) -> Self {
+        let (mut faces, vertices) = mesh.changed_since(&self.base.mesh);
+        let mut edges: Vec<_> = mesh.changed_edges_since(&self.base.mesh).into_iter().collect();
+        if (edges.len() + faces.len()) * REBUILD_SHARE > self.base.edges.len() + self.base.faces.len() {
+            return Self::new(mesh);
+        }
+        edges.extend(vertices.iter().flat_map(|v| mesh.edges_of_vertex(*v)));
+        if !vertices.is_empty() {
+            let vertices: std::collections::HashSet<_> = vertices.into_iter().collect();
+            let touches = |(id, face): (FaceId, &rysmo_mesh::Face)| {
+                face.loops().flatten().any(|v| vertices.contains(v)).then_some(id)
+            };
+            faces.extend(mesh.faces().filter_map(touches));
+        }
+        let (edges, faces) = Trees::over(mesh, edges.into_iter(), faces.into_iter());
+        MeshIndex { base: self.base.clone(), edges, faces, bounds: self.bounds.union(Self::reach(mesh)) }
+    }
+
+    fn reach(mesh: &Mesh) -> Aabb {
+        let margin = EPS * 4.;
+        let lines = mesh.edges().map(|(_, e)| Aabb::of(e.v.map(|v| mesh.pos(v))));
+        let centres = mesh.curves().map(|(_, curve)| Aabb::at(curve.centre));
+        lines.chain(centres).fold(Aabb::EMPTY, Aabb::union).expanded(margin)
+    }
+
+    fn visit_edges(&self, mut enter: impl FnMut(&Aabb) -> bool, found: &mut Vec<EdgeId>) {
+        self.base.edges.visit(&mut enter, |id| found.push(*id));
+        self.edges.visit(&mut enter, |id| found.push(*id));
+        found.sort_unstable();
+        found.dedup();
+    }
+
+    fn visit_faces(&self, mut enter: impl FnMut(&Aabb) -> bool, found: &mut Vec<FaceId>) {
+        self.base.faces.visit(&mut enter, |id| found.push(*id));
+        self.faces.visit(&mut enter, |id| found.push(*id));
+        found.sort_unstable();
+        found.dedup();
+    }
+
+    pub fn bounds(&self) -> Aabb {
+        self.bounds
+    }
+}
+
+/// `MeshIndex::update` starts over once changes reach one part in this many.
+const REBUILD_SHARE: usize = 8;
+
+/// Indexes of a query's meshes, and a tree of where the other meshes sit. `others` and
+/// `from_local` run parallel to `Query::others`.
+pub struct Accel {
+    active: Arc<MeshIndex>,
+    others: Vec<Arc<MeshIndex>>,
+    from_local: Vec<DMat4>,
+    placed: Bvh<usize>,
+}
+
+impl Accel {
+    /// `others` pairs each mesh's index with the transform into the context.
+    pub fn new(active: Arc<MeshIndex>, others: Vec<(Arc<MeshIndex>, DMat4)>) -> Self {
+        let placed = others
+            .iter()
+            .enumerate()
+            .filter(|(_, (index, _))| index.bounds != Aabb::EMPTY)
+            .map(|(i, (index, t))| (Aabb::of(index.bounds.corners().map(|p| t.transform_point3(p))), i));
+        let placed = Bvh::new(placed.collect());
+        let from_local = others.iter().map(|(_, t)| t.inverse()).collect();
+        Accel { active, others: others.into_iter().map(|(index, _)| index).collect(), from_local, placed }
+    }
 }
 
 /// Geometry outside the mesh being edited that points can still snap to.
@@ -219,6 +335,7 @@ struct Src<'a> {
     instance: Option<InstanceId>,
     active: bool,
     clips: &'a [Plane],
+    index: Option<&'a MeshIndex>,
 }
 
 impl Src<'_> {
@@ -242,16 +359,45 @@ impl Src<'_> {
         }
         Some(line)
     }
+
+    /// The edges whose screen box comes within `tol` of the cursor, in id order.
+    fn edges_near_cursor(&self, q: &Query, tol: f64) -> Vec<EdgeId> {
+        let Some(index) = self.index else { return self.mesh.edges().map(|(id, _)| id).collect() };
+        let mut found = Vec::new();
+        index.visit_edges(|b| q.reaches(b.corners().map(|p| self.p(p)), tol), &mut found);
+        found
+    }
+
+    /// The edges through any of `points`, given in the context's coordinates, in id order.
+    fn edges_at(&self, points: &[DVec3]) -> Vec<EdgeId> {
+        let Some(index) = self.index else { return self.mesh.edges().map(|(id, _)| id).collect() };
+        let mut found = Vec::new();
+        for point in points {
+            let area = Aabb::at(self.from_local.transform_point3(*point));
+            index.visit_edges(|b| b.overlaps(&area), &mut found);
+        }
+        found
+    }
+
+    /// The faces whose box `ray` enters, in id order.
+    fn faces_on_ray(&self, ray: &Ray) -> Vec<FaceId> {
+        let Some(index) = self.index else { return self.mesh.faces().map(|(id, _)| id).collect() };
+        let mut found = Vec::new();
+        index.visit_faces(|b| b.entry(ray, f64::INFINITY).is_some(), &mut found);
+        found.retain(|id| self.mesh.face(*id).is_some());
+        found
+    }
+
     /// The nearest face the ray hits, with the distance along the context ray.
     fn pick_face(&self, ray: &Ray) -> Option<(FaceId, f64)> {
         if !self.clips.is_empty() {
             let local =
                 Ray::new(self.from_local.transform_point3(ray.origin), self.from_local.transform_vector3(ray.dir));
             return self
-                .mesh
-                .faces()
-                .filter(|(_, f)| self.show_hidden || !f.hidden)
-                .filter_map(|(id, _)| {
+                .faces_on_ray(&local)
+                .into_iter()
+                .filter(|id| self.show_hidden || self.mesh.face(*id).is_some_and(|f| !f.hidden))
+                .filter_map(|id| {
                     let plane = self.mesh.face_plane(id)?;
                     let distance = plane.intersect_ray(&local)?;
                     let point = local.at(distance);
@@ -264,14 +410,15 @@ impl Src<'_> {
                 .min_by(|a, b| a.1.total_cmp(&b.1));
         }
         if self.active {
-            return self.mesh.pick_face_with_hidden(ray, self.show_hidden);
+            return self.mesh.pick_face_among(self.faces_on_ray(ray), ray, self.show_hidden);
         }
         let o = self.from_local.transform_point3(ray.origin);
         let d = self.from_local.transform_vector3(ray.dir);
         if d.length() < 1e-12 {
             return None;
         }
-        let (f, t) = self.mesh.pick_face_with_hidden(&Ray::new(o, d), self.show_hidden)?;
+        let local = Ray::new(o, d);
+        let (f, t) = self.mesh.pick_face_among(self.faces_on_ray(&local), &local, self.show_hidden)?;
         let hit = self.to_local.transform_point3(Ray::new(o, d).at(t));
         Some((f, (hit - ray.origin).dot(ray.dir)))
     }
@@ -292,11 +439,28 @@ impl<'a> Query<'a> {
             hints: &[],
             scale,
             others: &[],
+            accel: None,
             guides: &[],
         }
     }
 
-    fn sources(&self) -> Vec<Src<'_>> {
+    fn source(&self, i: usize) -> Src<'_> {
+        let o = &self.others[i];
+        Src {
+            show_hidden: self.show_hidden,
+            mesh: &o.mesh,
+            to_local: o.to_local,
+            from_local: self.accel.map_or_else(|| o.to_local.inverse(), |a| a.from_local[i]),
+            instance: o.instance,
+            active: false,
+            clips: &o.clips,
+            index: self.accel.map(|a| a.others[i].as_ref()),
+        }
+    }
+
+    /// The mesh being edited, and the others where `enter` accepts their box. Without
+    /// trees that is every mesh.
+    fn sources_where(&self, enter: impl FnMut(&Aabb) -> bool) -> Vec<Src<'_>> {
         let mut out = vec![Src {
             show_hidden: self.show_hidden,
             mesh: self.mesh,
@@ -305,19 +469,42 @@ impl<'a> Query<'a> {
             instance: None,
             active: true,
             clips: &self.clips,
+            index: self.accel.map(|a| a.active.as_ref()),
         }];
-        for o in self.others {
-            out.push(Src {
-                show_hidden: self.show_hidden,
-                mesh: &o.mesh,
-                to_local: o.to_local,
-                from_local: o.to_local.inverse(),
-                instance: o.instance,
-                active: false,
-                clips: &o.clips,
-            });
-        }
+        let Some(accel) = self.accel else {
+            out.extend((0..self.others.len()).map(|i| self.source(i)));
+            return out;
+        };
+        let mut found = Vec::new();
+        accel.placed.visit(enter, |i| found.push(*i));
+        found.sort_unstable();
+        out.extend(found.into_iter().map(|i| self.source(i)));
         out
+    }
+
+    fn sources_near_cursor(&self, tol: f64) -> Vec<Src<'_>> {
+        self.sources_where(|b| self.reaches(b.corners(), tol))
+    }
+
+    fn sources_on_ray(&self, ray: &Ray, limit: f64) -> Vec<Src<'_>> {
+        self.sources_where(|b| b.entry(ray, limit).is_some())
+    }
+
+    fn sources_at(&self, points: &[DVec3]) -> Vec<Src<'_>> {
+        let area = Aabb::of(points.iter().copied());
+        self.sources_where(|b| b.overlaps(&area))
+    }
+
+    /// Whether a box with these corners can come within `tol` of the cursor on screen.
+    fn reaches(&self, corners: [DVec3; 8], tol: f64) -> bool {
+        let (mut lo, mut hi) = (DVec2::INFINITY, DVec2::NEG_INFINITY);
+        for corner in corners {
+            // A corner behind the eye has no place on screen to judge the box by.
+            let Some(s) = self.screen(corner) else { return true };
+            lo = lo.min(s);
+            hi = hi.max(s);
+        }
+        (self.cursor - lo).min_element() >= -tol && (hi - self.cursor).min_element() >= -tol
     }
 
     fn ray(&self) -> Ray {
@@ -336,7 +523,7 @@ impl<'a> Query<'a> {
             return false;
         }
         let ray = Ray::new(self.view.eye, to);
-        self.sources()
+        self.sources_on_ray(&ray, dist)
             .iter()
             .any(|s| s.pick_face(&ray).is_some_and(|(_, t)| t > 0.0 && t < dist - dist * 1e-6 - EPS * 10.0))
     }
@@ -383,15 +570,16 @@ fn point_snap(q: &Query) -> Option<Inference> {
             *best = Some((d, inf));
         }
     };
-    for src in q.sources() {
-        let visible_vertices: std::collections::BTreeSet<_> = src
-            .mesh
-            .edges()
+    for src in q.sources_near_cursor(tol) {
+        let near: Vec<_> = src
+            .edges_near_cursor(q, tol)
+            .into_iter()
+            .filter_map(|id| Some((id, src.mesh.edge(id)?)))
             .filter(|(_, e)| !e.procedural && (q.show_hidden || e.visible()))
-            .flat_map(|(_, e)| e.v)
             .collect();
-        for (_id, v) in src.mesh.vertices().filter(|(id, _)| visible_vertices.contains(id)) {
-            let p = src.p(v.pos);
+        let visible_vertices: std::collections::BTreeSet<_> = near.iter().flat_map(|(_, e)| e.v).collect();
+        for id in visible_vertices {
+            let p = src.p(src.mesh.pos(id));
             if !src.visible(p) {
                 continue;
             }
@@ -405,6 +593,10 @@ fn point_snap(q: &Query) -> Option<Inference> {
             }
         }
         for (id, curve) in src.mesh.curves() {
+            // Checked first: telling a curve's edges apart means walking all the edges.
+            if q.screen(src.p(curve.centre)).is_none_or(|s| q.cursor.distance(s) + 0.75 > tol) {
+                continue;
+            }
             if curve.kind == rysmo_mesh::CurveKind::Polyline
                 || !src
                     .mesh
@@ -431,10 +623,7 @@ fn point_snap(q: &Query) -> Option<Inference> {
                 consider(q.cursor.distance(screen) + 0.75, inf, &mut best);
             }
         }
-        for (id, e) in src.mesh.edges() {
-            if e.procedural || (!q.show_hidden && !e.visible()) {
-                continue;
-            }
+        for (id, e) in near {
             let m = src.p((src.mesh.pos(e.v[0]) + src.mesh.pos(e.v[1])) * 0.5);
             if !src.visible(m) {
                 continue;
@@ -477,8 +666,9 @@ fn edge_snap(q: &Query) -> Option<Inference> {
     let tol = LINE_PX * q.scale;
     let ray = q.ray();
     let mut best: Option<(f64, Inference)> = None;
-    for src in q.sources() {
-        for (id, e) in src.mesh.edges() {
+    for src in q.sources_near_cursor(tol) {
+        for id in src.edges_near_cursor(q, tol) {
+            let Some(e) = src.mesh.edge(id) else { continue };
             if e.procedural || (!q.show_hidden && !e.visible()) {
                 continue;
             }
@@ -566,7 +756,7 @@ fn axis_snaps(q: &Query, origin: DVec3) -> Vec<(DVec3, Axis, f64)> {
 fn surface(q: &Query) -> Inference {
     let ray = q.ray();
     let mut best: Option<(f64, Inference)> = None;
-    for src in q.sources() {
+    for src in q.sources_on_ray(&ray, f64::INFINITY) {
         if let Some((f, t)) = src.pick_face(&ray)
             && t > 0.0
             && best.as_ref().is_none_or(|(bt, _)| t < *bt)
@@ -684,8 +874,10 @@ fn directional_snap(q: &Query, plane: Option<Plane>) -> Option<Inference> {
             best = Some((distance, inf));
         }
     };
-    for src in q.sources() {
-        for (_, edge) in src.mesh.edges() {
+    let anchors: Vec<_> = std::iter::once(from).chain(q.hints.iter().copied()).collect();
+    for src in q.sources_at(&anchors) {
+        for id in src.edges_at(&anchors) {
+            let Some(edge) = src.mesh.edge(id) else { continue };
             if edge.procedural || (!q.show_hidden && !edge.visible()) {
                 continue;
             }
@@ -830,7 +1022,7 @@ pub fn pick(q: &Query) -> Pick {
     }
     let ray = q.ray();
     let mut best: Option<(f64, Pick)> = None;
-    for src in q.sources() {
+    for src in q.sources_on_ray(&ray, f64::INFINITY) {
         if let Some((f, t)) = src.pick_face(&ray)
             && t > 0.0
             && best.as_ref().is_none_or(|(bt, _)| t < *bt)

@@ -12,5 +12,8 @@ serde.workspace = true
 thiserror.workspace = true
 earcut = "0.4.11"
 
+[dev-dependencies]
+serde_json.workspace = true
+
 [lints]
 workspace = true

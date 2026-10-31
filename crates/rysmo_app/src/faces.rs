@@ -9,7 +9,10 @@
 //! Faces of a glowing material give off their light: lit, they shine with it, and each
 //! occurrence of them carries a point light of the same output at their centre.
 
-use std::collections::{BTreeSet, HashMap};
+use std::borrow::Cow;
+use std::collections::hash_map::DefaultHasher;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use bevy::asset::RenderAssetUsages;
@@ -18,9 +21,11 @@ use bevy::image::{
 };
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
-use rysmo_math::DVec3;
-use rysmo_mesh::{DefinitionId, EdgeId, Element, FaceId, ImageId, InstanceId, MaterialId, triangulate_face};
-use rysmo_model::{FaceStyle, Lighting};
+use rysmo_math::{DMat4, DVec3};
+use rysmo_mesh::spatial::Aabb;
+use rysmo_mesh::{DefinitionId, EdgeId, Element, FaceId, ImageId, InstanceId, MaterialId, VertexId, triangulate_face};
+use rysmo_model::sections::SectionPlane;
+use rysmo_model::{FaceStyle, Lighting, Occurrence};
 
 use crate::state::App3d;
 
@@ -31,7 +36,12 @@ pub const SELECTED: [f32; 3] = [0.35, 0.55, 1.0];
 pub fn plugin(app: &mut App) {
     app.init_resource::<FaceMeshes>()
         .init_resource::<EdgeCache>()
-        .add_systems(PostUpdate, (rebuild_faces, update_edge_cache).before(TransformSystems::Propagate));
+        .init_resource::<DrawnCache>()
+        .init_resource::<Highlight>()
+        .add_systems(
+            PostUpdate,
+            (update_edge_cache, (rebuild_faces, rebuild_highlight)).chain().before(TransformSystems::Propagate),
+        );
 }
 
 /// Which mesh a face's triangles go into.
@@ -45,6 +55,89 @@ enum Group {
     Glowing(MaterialId, Option<ImageId>),
 }
 
+/// What every piece of the viewport depends on, so a change to it redraws them all.
+#[derive(PartialEq)]
+struct Look {
+    style: rysmo_model::Style,
+    materials: BTreeMap<MaterialId, rysmo_model::Material>,
+    images: Vec<AssetId<Image>>,
+}
+
+/// The viewport is split into pieces, each with its own meshes, so an edit rebuilds only
+/// those it touches. Occurrences of one branch of the instance tree share a piece, and
+/// large meshes get a piece per chunk.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+struct PieceKey {
+    branch: u64,
+    owner: u64,
+    block: u64,
+}
+
+struct Piece {
+    signature: u64,
+    /// Keeps the chunks alive, so a pointer in a signature cannot come to mean another.
+    _chunks: Vec<Arc<FaceChunk>>,
+    entities: Vec<Entity>,
+    glows: Vec<((u64, MaterialId), (f64, DVec3))>,
+}
+
+struct PlanEntry {
+    placed: usize,
+    path: u64,
+    faces: Arc<DrawnFaces>,
+    chunk: Arc<FaceChunk>,
+}
+
+#[derive(Default)]
+struct PiecePlan {
+    entries: Vec<PlanEntry>,
+    signature: u64,
+}
+
+/// What each piece should hold now. Equal signatures mean equal triangles.
+fn plan_pieces(doc: &rysmo_model::Document, edges: &EdgeCache, drawn: &mut DrawnCache) -> HashMap<PieceKey, PiecePlan> {
+    let mut plans: HashMap<PieceKey, (PiecePlan, DefaultHasher)> = HashMap::new();
+    for (index, placed) in edges.placed.iter().enumerate() {
+        let occ = &placed.occurrence;
+        if doc.def(occ.definition).is_none() {
+            continue;
+        }
+        let faces = drawn.get(doc, occ.definition);
+        let branch = occ.path.first().map_or(0, |id| (id.0 >> PIECE_BITS) + 1);
+        let mut state = DefaultHasher::new();
+        occ.path.hash(&mut state);
+        let path = state.finish();
+        occ.transform.to_cols_array().map(f64::to_bits).hash(&mut state);
+        occ.material.hash(&mut state);
+        occ.in_context.hash(&mut state);
+        for cut in &placed.cuts {
+            for value in cut.origin.to_array().into_iter().chain(cut.normal.to_array()) {
+                value.to_bits().hash(&mut state);
+            }
+        }
+        let occurrence = state.finish();
+        for chunk in &faces.chunks {
+            let large = faces.chunks.len() > 1;
+            let key = PieceKey {
+                branch,
+                owner: if large { occ.definition.map_or(1, |id| id.0 + 2) } else { 0 },
+                block: if large { chunk.block + 1 } else { 0 },
+            };
+            let (plan, hasher) = plans.entry(key).or_default();
+            occurrence.hash(hasher);
+            Arc::as_ptr(chunk).hash(hasher);
+            plan.entries.push(PlanEntry { placed: index, path, faces: faces.clone(), chunk: chunk.clone() });
+        }
+    }
+    plans
+        .into_iter()
+        .map(|(key, (mut plan, hasher))| {
+            plan.signature = hasher.finish();
+            (key, plan)
+        })
+        .collect()
+}
+
 /// The most glowing occurrences that carry a light, the brightest first.
 const MAX_LIGHTS: usize = 64;
 /// How many of those lights cast shadows, when shadows are on.
@@ -54,14 +147,142 @@ type CachedImage = (Arc<Vec<u8>>, Handle<Image>);
 
 #[derive(Resource, Default)]
 struct FaceMeshes {
-    key: Option<(u64, u64, Vec<FaceId>, Vec<InstanceId>)>,
+    key: Option<(u64, u64, Vec<InstanceId>)>,
+    look: Option<Look>,
+    pieces: HashMap<PieceKey, Piece>,
+    materials: HashMap<(Group, Option<MaterialId>), Handle<StandardMaterial>>,
+    lights: Vec<Entity>,
     texture_settings: Option<(u32, u16)>,
-    entities: Vec<Entity>,
     /// Decoded images, by id, with the bytes they came from.
     images: HashMap<ImageId, CachedImage>,
     normals: HashMap<(ImageId, u32), CachedImage>,
     /// Metallic-roughness images, decoded as linear data.
     surfaces: HashMap<ImageId, CachedImage>,
+}
+
+/// Log2 of the id range a chunk of a definition's faces covers.
+const CHUNK_BITS: u32 = 12;
+/// Top-level instances that share a piece of the viewport, as a power of two.
+const PIECE_BITS: u32 = 7;
+/// Above this many changed vertices times chunks, rebuilding is cheaper than checking.
+const CHUNK_CHECK_LIMIT: usize = 4_000_000;
+
+/// Triangles of the faces in one id range, ready to place at each occurrence. A chunk
+/// stays while its faces and vertices do, so one edit leaves most of a mesh's alone.
+struct FaceChunk {
+    block: u64,
+    /// In id order.
+    faces: Vec<DrawnFace>,
+    vertices: HashSet<VertexId>,
+    smooth: HashMap<(FaceId, VertexId), DVec3>,
+}
+
+struct DrawnFace {
+    id: FaceId,
+    normal: DVec3,
+    triangles: Vec<[VertexId; 3]>,
+}
+
+impl FaceChunk {
+    fn new(mesh: &rysmo_mesh::Mesh, block: u64, ids: &[FaceId], smooth: HashMap<(FaceId, VertexId), DVec3>) -> Self {
+        let faces: Vec<_> = ids
+            .iter()
+            .filter_map(|id| {
+                Some(DrawnFace { id: *id, normal: mesh.face_normal(*id)?, triangles: triangulate_face(mesh, *id) })
+            })
+            .collect();
+        let vertices = ids.iter().filter_map(|id| mesh.face(*id)).flat_map(|f| f.loops().flatten().copied()).collect();
+        FaceChunk { block, faces, vertices, smooth }
+    }
+}
+
+/// The chunks of a definition's faces.
+struct DrawnFaces {
+    mesh: rysmo_mesh::Mesh,
+    /// By block number.
+    chunks: Vec<Arc<FaceChunk>>,
+}
+
+impl DrawnFaces {
+    /// Builds the chunks of `mesh`, keeping those of `older` that still hold.
+    fn new(mesh: rysmo_mesh::Mesh, older: Option<&DrawnFaces>) -> Self {
+        let mut by_block: BTreeMap<u64, Vec<FaceId>> = BTreeMap::new();
+        for (id, _) in mesh.faces() {
+            by_block.entry(id.0 >> CHUNK_BITS).or_default().push(id);
+        }
+        let mut smooth: HashMap<u64, HashMap<(FaceId, VertexId), DVec3>> = HashMap::new();
+        for ((face, vertex), normal) in mesh.smooth_normals() {
+            smooth.entry(face.0 >> CHUNK_BITS).or_default().insert((face, vertex), normal);
+        }
+        let changes = older.map(|older| mesh.changed_since(&older.mesh));
+        let dirty: BTreeSet<u64> = changes.iter().flat_map(|(faces, _)| faces).map(|id| id.0 >> CHUNK_BITS).collect();
+        let vertices = changes.as_ref().map_or(&[][..], |(_, vertices)| vertices.as_slice());
+        let check_vertices = vertices.len().saturating_mul(by_block.len()) <= CHUNK_CHECK_LIMIT;
+        let chunks = by_block
+            .into_iter()
+            .map(|(block, ids)| {
+                let smooth = smooth.remove(&block).unwrap_or_default();
+                let known = older
+                    .filter(|_| check_vertices && !dirty.contains(&block))
+                    .and_then(|older| older.chunk(block))
+                    .filter(|chunk| chunk.smooth == smooth && !vertices.iter().any(|v| chunk.vertices.contains(v)));
+                known.cloned().unwrap_or_else(|| Arc::new(FaceChunk::new(&mesh, block, &ids, smooth)))
+            })
+            .collect();
+        DrawnFaces { mesh, chunks }
+    }
+
+    fn chunk(&self, block: u64) -> Option<&Arc<FaceChunk>> {
+        let index = self.chunks.binary_search_by_key(&block, |chunk| chunk.block).ok()?;
+        Some(&self.chunks[index])
+    }
+
+    fn face(&self, id: FaceId) -> Option<&DrawnFace> {
+        let faces = &self.chunk(id.0 >> CHUNK_BITS)?.faces;
+        faces.binary_search_by_key(&id, |face| face.id).ok().map(|index| &faces[index])
+    }
+}
+
+/// Triangulations by definition. Holding the definition makes an edit copy it rather
+/// than change it in place, so an equal pointer means the same geometry. Evaluated
+/// meshes depend on other definitions and are looked at again each content revision.
+#[derive(Resource, Default)]
+struct DrawnCache {
+    kept: HashMap<Option<DefinitionId>, (Arc<rysmo_model::Definition>, Arc<DrawnFaces>)>,
+    /// Which evaluated meshes are up to date.
+    evaluated: HashSet<Option<DefinitionId>>,
+    revision: Option<(u64, u64)>,
+}
+
+impl DrawnCache {
+    fn prepare(&mut self, doc: &rysmo_model::Document, revision: (u64, u64)) {
+        if self.revision != Some(revision) {
+            self.revision = Some(revision);
+            self.evaluated.clear();
+            self.kept.retain(|owner, _| doc.def(*owner).is_some());
+        }
+    }
+
+    fn get(&mut self, doc: &rysmo_model::Document, owner: Option<DefinitionId>) -> Arc<DrawnFaces> {
+        let definition = doc.def_arc(owner).expect("an occurrence's definition");
+        let known = self.kept.get(&owner);
+        if let Some((held, faces)) = known
+            && (self.evaluated.contains(&owner) || (Arc::ptr_eq(held, definition) && !has_openings(definition)))
+        {
+            return faces.clone();
+        }
+        let evaluated = doc.effective_mesh(owner);
+        let faces = Arc::new(DrawnFaces::new(evaluated.into_owned(), known.map(|(_, faces)| faces.as_ref())));
+        if has_openings(definition) {
+            self.evaluated.insert(owner);
+        }
+        self.kept.insert(owner, (definition.clone(), faces.clone()));
+        faces
+    }
+}
+
+fn has_openings(definition: &rysmo_model::Definition) -> bool {
+    definition.instances.values().any(|instance| instance.glued_to.is_some())
 }
 
 /// An edge as the gizmos draw it: ends, the normals of its faces, a colour for
@@ -75,55 +296,151 @@ pub struct EdgeInfo {
     pub material: [f32; 3],
 }
 
-/// Visible edges of every definition, rebuilt when the document changes, so profiles
-/// can be found every frame without searching for faces.
+/// One place to draw a definition, with what that takes worked out once.
+pub struct Placed {
+    pub occurrence: Occurrence,
+    pub inverse: DMat4,
+    pub cuts: Vec<SectionPlane>,
+    /// The first occurrence inside the context, which is the context itself.
+    pub active: bool,
+}
+
+/// A definition's edges and the sphere around them.
+#[derive(Default)]
+pub struct DefinitionEdges {
+    pub list: Vec<EdgeInfo>,
+    pub centre: DVec3,
+    pub radius: f64,
+    /// Kept only for geometry that depends on nothing but its own definition.
+    source: Option<Arc<rysmo_model::Definition>>,
+    /// What the list was built from, to tell what has changed since.
+    mesh: rysmo_mesh::Mesh,
+}
+
+/// Visible edges of every definition and the occurrence list, rebuilt when the document
+/// changes, so profiles can be found every frame without searching for faces.
 #[derive(Resource, Default)]
 pub struct EdgeCache {
-    revision: Option<(u64, u64)>,
-    pub defs: HashMap<Option<DefinitionId>, Vec<EdgeInfo>>,
+    revision: Option<(u64, u64, Vec<InstanceId>)>,
+    edge_style: Option<(bool, Vec<[f32; 3]>)>,
+    pub defs: HashMap<Option<DefinitionId>, DefinitionEdges>,
+    pub placed: Vec<Placed>,
+}
+
+/// The edges of a definition. Those of `older` are kept where neither the edge, its
+/// ends nor the faces along it have changed.
+fn definition_edges(
+    doc: &rysmo_model::Document,
+    owner: Option<DefinitionId>,
+    older: Option<DefinitionEdges>,
+) -> DefinitionEdges {
+    type Key = (VertexId, VertexId);
+    let key = |a: VertexId, b: VertexId| if a < b { (a, b) } else { (b, a) };
+    let evaluated = doc.effective_mesh(owner);
+    let mesh = &*evaluated;
+    let (older, source_mesh) = match older {
+        Some(DefinitionEdges { list, mesh: known, .. }) => (list, Some(known)),
+        None => (Vec::new(), None),
+    };
+    let changes = source_mesh.as_ref().map(|known| {
+        let (faces, vertices) = mesh.changed_since(known);
+        let mut along: HashSet<Key> = HashSet::new();
+        for face in faces.iter().flat_map(|id| mesh.face(*id).into_iter().chain(known.face(*id))) {
+            along.extend(face.loop_edges().into_iter().map(|(a, b)| key(a, b)));
+        }
+        (along, vertices.into_iter().collect::<HashSet<_>>(), mesh.changed_edges_since(known))
+    });
+    let stale = |id: EdgeId, e: &rysmo_mesh::Edge| {
+        changes.as_ref().is_none_or(|(along, vertices, edges)| {
+            edges.contains(&id) || e.v.iter().any(|v| vertices.contains(v)) || along.contains(&key(e.v[0], e.v[1]))
+        })
+    };
+    let wanted: HashSet<Key> = mesh.edges().filter(|(id, e)| stale(*id, e)).map(|(_, e)| key(e.v[0], e.v[1])).collect();
+    let mut faces_of: HashMap<Key, Vec<FaceId>> = HashMap::new();
+    for (fid, f) in mesh.faces() {
+        for (a, b) in f.loop_edges() {
+            if wanted.contains(&key(a, b)) {
+                faces_of.entry(key(a, b)).or_default().push(fid);
+            }
+        }
+    }
+    let mut older = older.into_iter().peekable();
+    let list: Vec<_> = mesh
+        .edges()
+        .filter(|(_, e)| !e.procedural && (e.visible() || doc.style.show_hidden_geometry))
+        .map(|(eid, e)| {
+            while older.next_if(|info| info.id < eid).is_some() {}
+            let known = older.next_if(|info| info.id == eid);
+            if let Some(info) = known.filter(|_| !stale(eid, e)) {
+                return info;
+            }
+            let k = key(e.v[0], e.v[1]);
+            let fs = faces_of.get(&k).cloned().unwrap_or_default();
+            let material = e
+                .material
+                .and_then(|id| doc.materials.get(&id))
+                .map(|m| [m.color[0], m.color[1], m.color[2]])
+                .unwrap_or([0., 0., 0.]);
+            let (a, b) = mesh.edge_points(eid);
+            EdgeInfo {
+                ghost: !e.visible(),
+                id: eid,
+                a,
+                b,
+                normals: fs.iter().filter_map(|f| mesh.face_normal(*f)).collect(),
+                material,
+            }
+        })
+        .collect();
+    let bounds = Aabb::of(list.iter().flat_map(|e| [e.a, e.b]));
+    let (centre, radius) = if list.is_empty() {
+        (DVec3::ZERO, 0.0)
+    } else {
+        ((bounds.lo + bounds.hi) * 0.5, (bounds.hi - bounds.lo).length() * 0.5)
+    };
+    let source = matches!(evaluated, Cow::Borrowed(_)).then(|| doc.def_arc(owner).cloned()).flatten();
+    DefinitionEdges { list, centre, radius, source, mesh: evaluated.into_owned() }
 }
 
 pub fn update_edge_cache(app: Res<App3d>, mut cache: ResMut<EdgeCache>) {
-    let revision = (app.document_generation, app.editor.revision());
-    if cache.revision == Some(revision) {
+    let editor = &app.editor;
+    let revision = (app.document_generation, editor.content_revision(), editor.context().to_vec());
+    if cache.revision.as_ref() == Some(&revision) {
         return;
     }
-    let doc = app.editor.doc();
-    cache.defs.clear();
-    let defs = std::iter::once((None, &doc.root)).chain(doc.definitions.iter().map(|(id, d)| (Some(*id), d)));
-    for (id, _def) in defs {
-        let evaluated = doc.effective_mesh(id);
-        let mesh = &*evaluated;
-        let mut faces_of: HashMap<(rysmo_mesh::VertexId, rysmo_mesh::VertexId), Vec<FaceId>> = HashMap::new();
-        for (fid, f) in mesh.faces() {
-            for (a, b) in f.loop_edges() {
-                faces_of.entry(if a < b { (a, b) } else { (b, a) }).or_default().push(fid);
-            }
-        }
-        let list = mesh
-            .edges()
-            .filter(|(_, e)| !e.procedural && (e.visible() || doc.style.show_hidden_geometry))
-            .map(|(eid, e)| {
-                let k = if e.v[0] < e.v[1] { (e.v[0], e.v[1]) } else { (e.v[1], e.v[0]) };
-                let fs = faces_of.get(&k).cloned().unwrap_or_default();
-                let material = e
-                    .material
-                    .and_then(|id| doc.materials.get(&id))
-                    .map(|m| [m.color[0], m.color[1], m.color[2]])
-                    .unwrap_or([0., 0., 0.]);
-                let (a, b) = mesh.edge_points(eid);
-                EdgeInfo {
-                    ghost: !e.visible(),
-                    id: eid,
-                    a,
-                    b,
-                    normals: fs.iter().filter_map(|f| mesh.face_normal(*f)).collect(),
-                    material,
-                }
-            })
-            .collect();
-        cache.defs.insert(id, list);
+    let doc = editor.doc();
+    let colours = doc.materials.values().map(|m| [m.color[0], m.color[1], m.color[2]]).collect();
+    let edge_style = Some((doc.style.show_hidden_geometry, colours));
+    if cache.edge_style != edge_style {
+        cache.defs.clear();
+        cache.edge_style = edge_style;
     }
+    let owners = std::iter::once(None).chain(doc.definitions.keys().copied().map(Some));
+    let mut defs = HashMap::with_capacity(doc.definitions.len() + 1);
+    for owner in owners {
+        let known = cache.defs.remove(&owner);
+        let same = known.as_ref().is_some_and(|edges| {
+            edges.source.as_ref().is_some_and(|held| doc.def_arc(owner).is_some_and(|d| Arc::ptr_eq(held, d)))
+        });
+        let edges = match known {
+            Some(edges) if same => edges,
+            known => definition_edges(doc, owner, known),
+        };
+        defs.insert(owner, edges);
+    }
+    cache.defs = defs;
+    let mut active_seen = false;
+    cache.placed = doc
+        .occurrences(editor.context())
+        .into_iter()
+        .map(|occurrence| {
+            let active = occurrence.in_context && !active_seen;
+            active_seen |= occurrence.in_context;
+            let inverse = occurrence.transform.inverse();
+            let cuts = doc.section_planes(&occurrence.path);
+            Placed { occurrence, inverse, cuts, active }
+        })
+        .collect();
     cache.revision = Some(revision);
 }
 
@@ -132,15 +449,6 @@ fn shade(color: [f32; 4], normal: DVec3) -> [f32; 4] {
     let sun = DVec3::new(-0.35, -0.55, 0.76).normalize();
     let k = (0.62 + 0.38 * normal.dot(sun).max(0.0)) as f32;
     [color[0] * k, color[1] * k, color[2] * k, color[3]]
-}
-
-fn tint(c: [f32; 4]) -> [f32; 4] {
-    [
-        c[0] * 0.55 + SELECTED[0] * 0.45,
-        c[1] * 0.55 + SELECTED[1] * 0.45,
-        c[2] * 0.55 + SELECTED[2] * 0.45,
-        c[3].max(0.6),
-    ]
 }
 
 /// Geometry outside the context being edited is drawn faded.
@@ -155,6 +463,8 @@ struct Buffers {
     col: Vec<[f32; 4]>,
     uv: Vec<[f32; 2]>,
     idx: Vec<u32>,
+    /// The last colour converted. Faces repeat a colour, and conversion is slow.
+    colour: Option<([f32; 4], [f32; 4])>,
 }
 
 impl Buffers {
@@ -163,8 +473,15 @@ impl Buffers {
         self.idx.push(self.pos.len() as u32);
         self.pos.push([p.x as f32, p.y as f32, p.z as f32]);
         self.nrm.push([n.x as f32, n.y as f32, n.z as f32]);
-        let linear = LinearRgba::from(Color::srgba(c[0], c[1], c[2], c[3]));
-        self.col.push(linear.to_f32_array());
+        let linear = match self.colour {
+            Some((srgb, linear)) if srgb == c => linear,
+            _ => {
+                let linear = LinearRgba::from(Color::srgba(c[0], c[1], c[2], c[3])).to_f32_array();
+                self.colour = Some((c, linear));
+                linear
+            }
+        };
+        self.col.push(linear);
         self.uv.push([uv[0] as f32, uv[1] as f32]);
     }
 
@@ -248,14 +565,13 @@ fn rebuild_faces(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut images: ResMut<Assets<Image>>,
+    edges: Res<EdgeCache>,
+    mut drawn: ResMut<DrawnCache>,
 ) {
-    let preview = app.tools.preview(&app.editor);
-    let key = (app.document_generation, app.editor.revision(), preview.faces.clone(), preview.instances.clone());
+    let revision = (app.document_generation, app.editor.content_revision());
+    let key = (revision.0, revision.1, app.editor.context().to_vec());
     if state.key.as_ref() == Some(&key) {
         return;
-    }
-    for e in state.entities.drain(..) {
-        commands.entity(e).despawn();
     }
     let editor = &app.editor;
     let doc = editor.doc();
@@ -324,11 +640,34 @@ fn rebuild_faces(
             state.surfaces.insert(id, (image.bytes.clone(), handle));
         }
     }
-    let highlighted: BTreeSet<FaceId> = preview.faces.iter().copied().collect();
-    let lit_instances: BTreeSet<InstanceId> = preview.instances.iter().copied().collect();
-    let mut groups: HashMap<(Group, Option<MaterialId>), Buffers> = HashMap::new();
-    // Glowing area by occurrence and material: total area and area-weighted centre.
-    let mut glows: HashMap<(usize, MaterialId), (f64, DVec3)> = HashMap::new();
+    drawn.prepare(doc, revision);
+    // What every piece's colours and materials depend on.
+    let look = Look {
+        style,
+        materials: doc.materials.clone(),
+        images: state.images.values().map(|(_, handle)| handle.id()).collect(),
+    };
+    if state.look.as_ref() != Some(&look) {
+        for piece in std::mem::take(&mut state.pieces).into_values() {
+            for entity in piece.entities {
+                commands.entity(entity).despawn();
+            }
+        }
+        state.materials.clear();
+        state.look = Some(look);
+    }
+    let mut pieces = std::mem::take(&mut state.pieces);
+    let mut shared_materials = std::mem::take(&mut state.materials);
+    let plans = if style.faces == FaceStyle::Wireframe { HashMap::new() } else { plan_pieces(doc, &edges, &mut drawn) };
+    pieces.retain(|key, piece| {
+        let keep = plans.contains_key(key);
+        if !keep {
+            for entity in piece.entities.drain(..) {
+                commands.entity(entity).despawn();
+            }
+        }
+        keep
+    });
     let glowing = |m: Option<MaterialId>| {
         m.filter(|m| {
             lit && matches!(style.faces, FaceStyle::Shaded | FaceStyle::Textured)
@@ -353,31 +692,36 @@ fn rebuild_faces(
             },
         }
     };
-    if style.faces != FaceStyle::Wireframe {
-        let mut active_seen = false;
-        for (occ_index, occ) in doc.occurrences(editor.context()).into_iter().enumerate() {
-            let Some(_def) = doc.def(occ.definition) else { continue };
-            let evaluated = doc.effective_mesh(occ.definition);
-            let mesh = &*evaluated;
-            let is_active = occ.in_context && !active_seen;
-            if occ.in_context {
-                active_seen = true;
+    // The model is Z up; Bevy is Y up. One rotation on each mesh maps one to the other.
+    let to_y_up = Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2));
+    let unlit = !lit || style.faces == FaceStyle::HiddenLine;
+    for (key, plan) in plans {
+        if pieces.get(&key).is_some_and(|piece| piece.signature == plan.signature) {
+            continue;
+        }
+        if let Some(old) = pieces.remove(&key) {
+            for entity in old.entities {
+                commands.entity(entity).despawn();
             }
+        }
+        let mut groups: HashMap<(Group, Option<MaterialId>), Buffers> = HashMap::new();
+        // Glowing area by occurrence and material: total area and area-weighted centre.
+        let mut glows: HashMap<(u64, MaterialId), (f64, DVec3)> = HashMap::new();
+        for entry in &plan.entries {
+            let placed = &edges.placed[entry.placed];
+            let occ = &placed.occurrence;
+            let mesh = &entry.faces.mesh;
             let t = occ.transform;
-            let section_planes = doc.section_planes(&occ.path);
-            let nt = t.inverse().transpose();
+            let section_planes = &placed.cuts;
+            let inverse = placed.inverse;
+            let nt = inverse.transpose();
             let mirrored = t.determinant() < 0.0;
-            let selected_instance =
-                occ.top.is_some_and(|i| editor.is_selected(Element::Instance(i)) || lit_instances.contains(&i));
-            let smooth = mesh.smooth_normals();
-            for (fid, face) in mesh.faces() {
+            for drawn_face in &entry.chunk.faces {
+                let (fid, n, tris) = (drawn_face.id, drawn_face.normal, &drawn_face.triangles);
+                let Some(face) = mesh.face(fid) else { continue };
                 if face.hidden && !style.show_hidden_geometry {
                     continue;
                 }
-                let Some(n) = mesh.face_normal(fid) else { continue };
-                let selected = selected_instance
-                    || (is_active && (editor.is_selected(Element::Face(fid)) || highlighted.contains(&fid)));
-                let tris = triangulate_face(mesh, fid);
                 let placement = face.uv.unwrap_or_default();
                 for (side, material, default) in
                     [(1.0f64, face.material.or(occ.material), FRONT), (-1.0, face.back_material.or(occ.material), BACK)]
@@ -388,9 +732,6 @@ fn rebuild_faces(
                     }
                     if style.faces == FaceStyle::XRay {
                         color[3] = style.xray_opacity;
-                    }
-                    if selected {
-                        color = tint(color);
                     }
                     if !occ.in_context {
                         color = fade(color);
@@ -408,7 +749,6 @@ fn rebuild_faces(
                     let surface =
                         material.filter(|id| doc.materials.get(id).is_some_and(|m| m.pbr != Default::default()));
                     let buf = groups.entry((group, surface)).or_default();
-                    let inverse = t.inverse();
                     let perspective = placement
                         .pins
                         .and_then(rysmo_model::pin_mapping)
@@ -426,26 +766,30 @@ fn rebuild_faces(
                     });
                     let detail = if uv_size.is_some() && perspective { 8 } else { 1 };
                     let sample_weights = subdivided_weights(detail);
-                    for tri in &tris {
+                    for tri in tris {
                         let mut order = if side > 0.0 { [tri[0], tri[1], tri[2]] } else { [tri[0], tri[2], tri[1]] };
                         if mirrored {
                             order.swap(1, 2);
                         }
                         let points = order.map(|v| t.transform_point3(mesh.pos(v)));
                         let normals = order.map(|v| {
-                            nt.transform_vector3(smooth.get(&(fid, v)).copied().unwrap_or(n) * side)
-                                .normalize_or(DVec3::Z)
+                            let normal = if entry.chunk.smooth.is_empty() {
+                                n
+                            } else {
+                                entry.chunk.smooth.get(&(fid, v)).copied().unwrap_or(n)
+                            };
+                            nt.transform_vector3(normal * side).normalize_or(DVec3::Z)
                         });
                         let uvs = order.map(|v| {
                             uv_size.map(|size| rysmo_model::uv_at(mesh.pos(v), n, size, &placement)).unwrap_or([0., 0.])
                         });
-                        let polygon = rysmo_model::sections::clip_triangle(points, &section_planes);
+                        let polygon = rysmo_model::sections::clip_triangle(points, section_planes);
                         for i in 1..polygon.len().saturating_sub(1) {
                             let triangle = [polygon[0], polygon[i], polygon[i + 1]];
                             if let Some(m) = glow {
                                 let [a, b, c] = triangle.map(|p| p.0);
                                 let area = (b - a).cross(c - a).length() / 2.0;
-                                let entry = glows.entry((occ_index, m)).or_insert((0.0, DVec3::ZERO));
+                                let entry = glows.entry((entry.path, m)).or_insert((0.0, DVec3::ZERO));
                                 entry.0 += area;
                                 entry.1 += (a + b + c) / 3.0 * area;
                             }
@@ -482,61 +826,78 @@ fn rebuild_faces(
                 }
             }
         }
-    }
-    // The model is Z up; Bevy is Y up. One rotation on each mesh maps one to the other.
-    let to_y_up = Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2));
-    let unlit = !lit || style.faces == FaceStyle::HiddenLine;
-    for ((group, material_id), buf) in groups {
-        let pbr = material_id.and_then(|id| doc.materials.get(&id)).map(|m| m.pbr).unwrap_or_default();
-        if buf.idx.is_empty() {
-            continue;
-        }
-        let texture = match group {
-            Group::Textured(id) | Group::SeeThrough(Some(id)) | Group::Glowing(_, Some(id)) => {
-                state.images.get(&id).map(|(_, h)| h.clone())
+        let mut entities = Vec::new();
+        for ((group, material_id), buf) in groups {
+            let pbr = material_id.and_then(|id| doc.materials.get(&id)).map(|m| m.pbr).unwrap_or_default();
+            if buf.idx.is_empty() {
+                continue;
             }
-            _ => None,
-        };
-        // Emission in nits, scaled by the exposure like the lights.
-        let emissive = match group {
-            Group::Glowing(m, _) => doc.materials.get(&m).map_or(LinearRgba::BLACK, |m| {
-                let c = LinearRgba::from(Color::srgb(m.color[0], m.color[1], m.color[2]));
-                c * m.glow
-            }),
-            _ => LinearRgba::BLACK,
-        };
-        let material = materials.add(StandardMaterial {
-            base_color: Color::WHITE,
-            base_color_texture: texture.clone(),
-            emissive,
-            emissive_texture: texture.filter(|_| emissive != LinearRgba::BLACK),
-            unlit,
-            perceptual_roughness: pbr.roughness,
-            metallic: pbr.metallic,
-            normal_map_texture: pbr
-                .normal_map
-                .and_then(|id| state.normals.get(&(id, pbr.normal_scale.to_bits())).map(|(_, h)| h.clone())),
-            flip_normal_map_y: pbr.normal_flip_y,
-            metallic_roughness_texture: pbr
-                .metallic_roughness_map
-                .and_then(|id| state.surfaces.get(&id).map(|(_, h)| h.clone())),
-            reflectance: 0.2,
-            alpha_mode: match (group, pbr.alpha_cutoff) {
-                (Group::SeeThrough(_), _) => AlphaMode::Blend,
-                (Group::Textured(_) | Group::Glowing(_, Some(_)), Some(cutoff)) => AlphaMode::Mask(cutoff),
-                _ => AlphaMode::Opaque,
-            },
-            // Each side is its own triangles, wound to face its way; culling shows one.
-            ..default()
-        });
-        let mut mesh = buf.into_mesh();
-        if pbr.normal_map.is_some() {
-            let _ = mesh.generate_tangents();
+            let texture = match group {
+                Group::Textured(id) | Group::SeeThrough(Some(id)) | Group::Glowing(_, Some(id)) => {
+                    state.images.get(&id).map(|(_, h)| h.clone())
+                }
+                _ => None,
+            };
+            // Emission in nits, scaled by the exposure like the lights.
+            let emissive = match group {
+                Group::Glowing(m, _) => doc.materials.get(&m).map_or(LinearRgba::BLACK, |m| {
+                    let c = LinearRgba::from(Color::srgb(m.color[0], m.color[1], m.color[2]));
+                    c * m.glow
+                }),
+                _ => LinearRgba::BLACK,
+            };
+            let material = shared_materials
+                .entry((group, material_id))
+                .or_insert_with(|| {
+                    materials.add(StandardMaterial {
+                        base_color: Color::WHITE,
+                        base_color_texture: texture.clone(),
+                        emissive,
+                        emissive_texture: texture.filter(|_| emissive != LinearRgba::BLACK),
+                        unlit,
+                        perceptual_roughness: pbr.roughness,
+                        metallic: pbr.metallic,
+                        normal_map_texture: pbr.normal_map.and_then(|id| {
+                            state.normals.get(&(id, pbr.normal_scale.to_bits())).map(|(_, h)| h.clone())
+                        }),
+                        flip_normal_map_y: pbr.normal_flip_y,
+                        metallic_roughness_texture: pbr
+                            .metallic_roughness_map
+                            .and_then(|id| state.surfaces.get(&id).map(|(_, h)| h.clone())),
+                        reflectance: 0.2,
+                        alpha_mode: match (group, pbr.alpha_cutoff) {
+                            (Group::SeeThrough(_), _) => AlphaMode::Blend,
+                            (Group::Textured(_) | Group::Glowing(_, Some(_)), Some(cutoff)) => AlphaMode::Mask(cutoff),
+                            _ => AlphaMode::Opaque,
+                        },
+                        // Each side is its own triangles, wound to face its way; culling shows one.
+                        ..default()
+                    })
+                })
+                .clone();
+            let mut mesh = buf.into_mesh();
+            if pbr.normal_map.is_some() {
+                let _ = mesh.generate_tangents();
+            }
+            let e = commands.spawn((Mesh3d(meshes.add(mesh)), MeshMaterial3d(material), to_y_up)).id();
+            entities.push(e);
         }
-        let e = commands.spawn((Mesh3d(meshes.add(mesh)), MeshMaterial3d(material), to_y_up)).id();
-        state.entities.push(e);
+        let chunks = plan.entries.iter().map(|entry| entry.chunk.clone()).collect();
+        pieces.insert(
+            key,
+            Piece { signature: plan.signature, _chunks: chunks, entities, glows: glows.into_iter().collect() },
+        );
+    }
+    for entity in state.lights.drain(..) {
+        commands.entity(entity).despawn();
     }
     // A Lambertian face of luminance L and area A gives off π·L·A lumens.
+    let mut glows: HashMap<(u64, MaterialId), (f64, DVec3)> = HashMap::new();
+    for (key, (area, sum)) in pieces.values().flat_map(|piece| &piece.glows) {
+        let entry = glows.entry(*key).or_insert((0.0, DVec3::ZERO));
+        entry.0 += area;
+        entry.1 += *sum;
+    }
     let mut lights: Vec<(f32, Color, DVec3, f64)> = glows
         .into_iter()
         .filter(|(_, (area, _))| *area > 1e-9)
@@ -563,7 +924,103 @@ fn rebuild_faces(
             ..default()
         };
         let at = Vec3::new(centre.x as f32, centre.z as f32, -centre.y as f32);
-        state.entities.push(commands.spawn((light, Transform::from_translation(at))).id());
+        state.lights.push(commands.spawn((light, Transform::from_translation(at))).id());
+    }
+    state.pieces = pieces;
+    state.materials = shared_materials;
+    state.key = Some(key);
+}
+
+/// The selected and hovered faces, as a see-through blue skin over the model. Kept apart
+/// from the model's meshes so that a click or a hover does not rebuild them.
+#[derive(Resource, Default)]
+struct Highlight {
+    key: Option<(u64, u64, Vec<FaceId>, Vec<InstanceId>)>,
+    entity: Option<Entity>,
+}
+
+const HIGHLIGHT_OPACITY: f32 = 0.45;
+
+fn rebuild_highlight(
+    mut commands: Commands,
+    app: Res<App3d>,
+    mut state: ResMut<Highlight>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    edges: Res<EdgeCache>,
+    mut drawn: ResMut<DrawnCache>,
+) {
+    let preview = app.tools.preview(&app.editor);
+    let key = (app.document_generation, app.editor.revision(), preview.faces, preview.instances);
+    if state.key.as_ref() == Some(&key) {
+        return;
+    }
+    if let Some(entity) = state.entity.take() {
+        commands.entity(entity).despawn();
+    }
+    let editor = &app.editor;
+    let doc = editor.doc();
+    let mut faces: BTreeSet<FaceId> = key.2.iter().copied().collect();
+    let mut instances: BTreeSet<InstanceId> = key.3.iter().copied().collect();
+    for element in editor.selection() {
+        match element {
+            Element::Face(id) => {
+                faces.insert(*id);
+            }
+            Element::Instance(id) => {
+                instances.insert(*id);
+            }
+            _ => {}
+        }
+    }
+    let mut buffer = Buffers::default();
+    drawn.prepare(doc, (app.document_generation, editor.content_revision()));
+    if doc.style.faces != FaceStyle::Wireframe && (!faces.is_empty() || !instances.is_empty()) {
+        let colour = [SELECTED[0], SELECTED[1], SELECTED[2], HIGHLIGHT_OPACITY];
+        for placed in &edges.placed {
+            let occ = &placed.occurrence;
+            let whole = occ.top.is_some_and(|i| instances.contains(&i));
+            if (!whole && !placed.active) || doc.def(occ.definition).is_none() {
+                continue;
+            }
+            let drawn = drawn.get(doc, occ.definition);
+            let mut add = |face: &DrawnFace| {
+                if drawn.mesh.face(face.id).is_none_or(|f| f.hidden && !doc.style.show_hidden_geometry) {
+                    return;
+                }
+                for triangle in &face.triangles {
+                    let points = triangle.map(|v| occ.transform.transform_point3(drawn.mesh.pos(v)));
+                    let polygon = rysmo_model::sections::clip_triangle(points, &placed.cuts);
+                    for i in 1..polygon.len().saturating_sub(1) {
+                        for point in [polygon[0].0, polygon[i].0, polygon[i + 1].0] {
+                            buffer.push(point, DVec3::Z, colour, [0., 0.]);
+                        }
+                    }
+                }
+            };
+            if whole {
+                drawn.chunks.iter().flat_map(|chunk| &chunk.faces).for_each(&mut add);
+            } else {
+                for id in &faces {
+                    if let Some(face) = drawn.face(*id) {
+                        add(face);
+                    }
+                }
+            }
+        }
+    }
+    if !buffer.idx.is_empty() {
+        let material = materials.add(StandardMaterial {
+            base_color: Color::WHITE,
+            unlit: true,
+            alpha_mode: AlphaMode::Blend,
+            cull_mode: None,
+            depth_bias: 1.0,
+            ..default()
+        });
+        let to_y_up = Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2));
+        let entity = commands.spawn((Mesh3d(meshes.add(buffer.into_mesh())), MeshMaterial3d(material), to_y_up)).id();
+        state.entity = Some(entity);
     }
     state.key = Some(key);
 }
@@ -590,7 +1047,7 @@ mod edge_material_tests {
         let mut app = App::new();
         app.insert_resource(App3d::new(editor)).init_resource::<EdgeCache>().add_systems(Update, update_edge_cache);
         app.update();
-        assert!(app.world().resource::<EdgeCache>().defs[&None].iter().all(|e| e.material == [0., 0., 0.]));
+        assert!(app.world().resource::<EdgeCache>().defs[&None].list.iter().all(|e| e.material == [0., 0., 0.]));
         app.world_mut()
             .resource_mut::<App3d>()
             .editor
@@ -598,7 +1055,7 @@ mod edge_material_tests {
             .unwrap();
         app.update();
         let cache = app.world().resource::<EdgeCache>();
-        assert_eq!(cache.defs[&None].iter().find(|e| e.id == edge).unwrap().material, [0., 0., 1.]);
+        assert_eq!(cache.defs[&None].list.iter().find(|e| e.id == edge).unwrap().material, [0., 0., 1.]);
         assert_eq!(app.world().resource::<App3d>().editor.mesh().face(face).unwrap().material, red);
     }
 }
@@ -659,18 +1116,18 @@ mod document_cache_tests {
         let mut app = App::new();
         app.insert_resource(App3d::new(first)).init_resource::<EdgeCache>().add_systems(Update, update_edge_cache);
         app.update();
-        assert_eq!(app.world().resource::<EdgeCache>().defs[&None].len(), 1);
+        assert_eq!(app.world().resource::<EdgeCache>().defs[&None].list.len(), 1);
         let text = rysmo_io::save(second.doc());
         crate::files::open_text(&mut app.world_mut().resource_mut::<App3d>(), &text, "second.rysmo").unwrap();
         app.update();
-        assert_eq!(app.world().resource::<EdgeCache>().defs[&None].len(), 4);
+        assert_eq!(app.world().resource::<EdgeCache>().defs[&None].list.len(), 4);
         {
             let mut state = app.world_mut().resource_mut::<App3d>();
             let edges = state.editor.mesh().edges().map(|(id, _)| id).collect();
             state.editor.apply(Command::SetEdges { edges, soft: Some(true), smooth: None, hidden: None }).unwrap();
         }
         app.update();
-        assert!(app.world().resource::<EdgeCache>().defs[&None].is_empty());
+        assert!(app.world().resource::<EdgeCache>().defs[&None].list.is_empty());
         {
             let mut state = app.world_mut().resource_mut::<App3d>();
             let mut style = state.editor.doc().style;
@@ -678,8 +1135,8 @@ mod document_cache_tests {
             state.editor.apply(Command::SetStyle { style }).unwrap();
         }
         app.update();
-        assert_eq!(app.world().resource::<EdgeCache>().defs[&None].len(), 4);
-        assert!(app.world().resource::<EdgeCache>().defs[&None].iter().all(|edge| edge.ghost));
+        assert_eq!(app.world().resource::<EdgeCache>().defs[&None].list.len(), 4);
+        assert!(app.world().resource::<EdgeCache>().defs[&None].list.iter().all(|edge| edge.ghost));
     }
 }
 
