@@ -29,7 +29,7 @@ macro_rules! block_key {
     };
 }
 
-block_key!(VertexId, EdgeId, FaceId, InstanceId, crate::CurveId);
+block_key!(VertexId, EdgeId, FaceId, InstanceId, crate::CurveId, crate::DefinitionId);
 
 impl BlockKey for (VertexId, VertexId) {
     fn block(&self) -> u64 {
@@ -37,10 +37,34 @@ impl BlockKey for (VertexId, VertexId) {
     }
 }
 
+/// Sorted keys beside their values. Ids are handed out in order, so inserts mostly
+/// append, and a scan over the values never walks over the keys.
+#[derive(Clone, Debug, PartialEq)]
+struct Block<K, V> {
+    keys: Vec<K>,
+    values: Vec<V>,
+}
+
+impl<K, V> Default for Block<K, V> {
+    fn default() -> Self {
+        Block { keys: Vec::new(), values: Vec::new() }
+    }
+}
+
+impl<K: Ord, V> Block<K, V> {
+    fn get(&self, key: &K) -> Option<&V> {
+        self.keys.binary_search(key).ok().map(|at| &self.values[at])
+    }
+
+    fn iter(&self) -> impl DoubleEndedIterator<Item = (&K, &V)> + Clone {
+        self.keys.iter().zip(&self.values)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct BlockMap<K, V> {
     /// Sorted by block number; no block is empty.
-    blocks: Vec<(u64, Arc<BTreeMap<K, V>>)>,
+    blocks: Vec<(u64, Arc<Block<K, V>>)>,
     len: usize,
 }
 
@@ -107,15 +131,17 @@ impl<K: BlockKey, V: PartialEq> BlockMap<K, V> {
                 (Some((a, _)), Some((b, _))) => a.cmp(b),
             };
             match order {
-                std::cmp::Ordering::Less => changed.extend(new.next().into_iter().flat_map(|(_, x)| x.keys().copied())),
+                std::cmp::Ordering::Less => {
+                    changed.extend(new.next().into_iter().flat_map(|(_, x)| x.keys.iter().copied()))
+                }
                 std::cmp::Ordering::Greater => {
-                    changed.extend(old.next().into_iter().flat_map(|(_, x)| x.keys().copied()))
+                    changed.extend(old.next().into_iter().flat_map(|(_, x)| x.keys.iter().copied()))
                 }
                 std::cmp::Ordering::Equal => {
                     let ((_, x), (_, y)) = (new.next().expect("peeked"), old.next().expect("peeked"));
                     if !Arc::ptr_eq(x, y) {
                         changed.extend(x.iter().filter(|(k, v)| y.get(k) != Some(v)).map(|(k, _)| *k));
-                        changed.extend(y.keys().filter(|k| !x.contains_key(k)).copied());
+                        changed.extend(y.keys.iter().filter(|k| x.get(k).is_none()).copied());
                     }
                 }
             }
@@ -127,10 +153,8 @@ impl<K: BlockKey + Clone, V: Clone> BlockMap<K, V> {
     pub fn get_mut(&mut self, key: &K) -> Option<&mut V> {
         let slot = self.slot(key).ok()?;
         let block = &mut self.blocks[slot].1;
-        if !block.contains_key(key) {
-            return None;
-        }
-        Arc::make_mut(block).get_mut(key)
+        let at = block.keys.binary_search(key).ok()?;
+        Some(&mut Arc::make_mut(block).values[at])
     }
 
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
@@ -141,28 +165,38 @@ impl<K: BlockKey + Clone, V: Clone> BlockMap<K, V> {
                 slot
             }
         };
-        let old = Arc::make_mut(&mut self.blocks[slot].1).insert(key, value);
-        self.len += usize::from(old.is_none());
-        old
+        let block = Arc::make_mut(&mut self.blocks[slot].1);
+        match block.keys.binary_search(&key) {
+            Ok(at) => Some(std::mem::replace(&mut block.values[at], value)),
+            Err(at) => {
+                block.keys.insert(at, key);
+                block.values.insert(at, value);
+                self.len += 1;
+                None
+            }
+        }
     }
 
     pub fn remove(&mut self, key: &K) -> Option<V> {
         let slot = self.slot(key).ok()?;
-        if !self.blocks[slot].1.contains_key(key) {
-            return None;
-        }
-        let old = Arc::make_mut(&mut self.blocks[slot].1).remove(key);
+        let at = self.blocks[slot].1.keys.binary_search(key).ok()?;
+        let block = Arc::make_mut(&mut self.blocks[slot].1);
+        block.keys.remove(at);
+        let old = block.values.remove(at);
         self.len -= 1;
-        if self.blocks[slot].1.is_empty() {
+        if self.blocks[slot].1.keys.is_empty() {
             self.blocks.remove(slot);
         }
-        old
+        Some(old)
     }
 
     /// Writes to every block. Prefer `get_mut` for what actually changes, which keeps
     /// the other blocks shared with older snapshots.
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (&K, &mut V)> {
-        self.blocks.iter_mut().flat_map(|(_, block)| Arc::make_mut(block).iter_mut())
+        self.blocks.iter_mut().flat_map(|(_, block)| {
+            let block = Arc::make_mut(block);
+            block.keys.iter().zip(&mut block.values)
+        })
     }
 
     pub fn values_mut(&mut self) -> impl Iterator<Item = &mut V> {
@@ -172,16 +206,18 @@ impl<K: BlockKey + Clone, V: Clone> BlockMap<K, V> {
     /// Keeps the entries `keep` accepts. Blocks with nothing to drop stay shared.
     pub fn retain(&mut self, mut keep: impl FnMut(&K, &V) -> bool) {
         for (_, block) in &mut self.blocks {
-            let drop: Vec<K> = block.iter().filter(|(key, value)| !keep(key, value)).map(|(key, _)| *key).collect();
-            if !drop.is_empty() {
+            let kept: Vec<bool> = block.iter().map(|(key, value)| keep(key, value)).collect();
+            let dropped = kept.iter().filter(|kept| !**kept).count();
+            if dropped > 0 {
                 let block = Arc::make_mut(block);
-                for key in &drop {
-                    block.remove(key);
-                }
-                self.len -= drop.len();
+                let mut flags = kept.iter();
+                block.keys.retain(|_| *flags.next().expect("a flag per key"));
+                let mut flags = kept.iter();
+                block.values.retain(|_| *flags.next().expect("a flag per value"));
+                self.len -= dropped;
             }
         }
-        self.blocks.retain(|(_, block)| !block.is_empty());
+        self.blocks.retain(|(_, block)| !block.keys.is_empty());
     }
 }
 

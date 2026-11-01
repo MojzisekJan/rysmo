@@ -296,7 +296,8 @@ Editing and drawing avoid visiting the whole model once per element.
   to report what it did. It holds a snapshot of the element maps, compares the mesh with
   it through `BlockMap::changed_since` and adds small trees for the difference, so the
   cost follows the change. Results are checked against the mesh. Take a new view after
-  adding elements; the snapshot is replaced once changes reach an eighth of the mesh.
+  adding elements; the snapshot is replaced once changes reach an eighth of the mesh, or once
+  indexing the difference again and again has cost as much as a new snapshot.
 - Rebuilding a plane starts from the changed edges and takes what is connected to them
   plus whatever overlaps that, since anything else cannot share a region with them.
 

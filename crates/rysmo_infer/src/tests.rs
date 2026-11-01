@@ -305,7 +305,7 @@ fn snaps_to_a_placed_component_and_picks_it() {
     let t = rysmo_math::DMat4::from_translation(DVec3::new(2.0, 0.0, 0.0));
     let iid = rysmo_mesh::InstanceId(99);
     let others =
-        [Other { clips: Vec::new(), mesh: std::borrow::Cow::Borrowed(&comp), to_local: t, instance: Some(iid) }];
+        [Other { clips: Vec::new(), mesh: std::sync::Arc::new(comp.clone()), to_local: t, instance: Some(iid) }];
     let q = |at: DVec3| {
         let cursor = v.project(at).unwrap();
         Query {
@@ -335,7 +335,7 @@ fn snaps_to_a_placed_component_and_picks_it() {
     assert_eq!(pick(&q(DVec3::new(2.5, 0.5, 1.0))), Pick::Element(rysmo_mesh::Element::Instance(iid)));
     assert_eq!(pick(&q(DVec3::new(6.0, -3.0, 0.0))), Pick::Nothing);
     // Geometry outside the context is not selectable.
-    let outside = [Other { clips: Vec::new(), mesh: std::borrow::Cow::Borrowed(&comp), to_local: t, instance: None }];
+    let outside = [Other { clips: Vec::new(), mesh: std::sync::Arc::new(comp.clone()), to_local: t, instance: None }];
     let cursor = v.project(DVec3::new(2.5, 0.5, 1.0)).unwrap();
     let qo = Query {
         show_hidden: false,
@@ -447,13 +447,13 @@ fn overlapping_edge_pick_prefers_front_depth_in_either_source_order() {
     let mut others = [
         Other {
             clips: Vec::new(),
-            mesh: std::borrow::Cow::Borrowed(&line),
+            mesh: std::sync::Arc::new(line.clone()),
             to_local: rysmo_math::DMat4::IDENTITY,
             instance: Some(back),
         },
         Other {
             clips: Vec::new(),
-            mesh: std::borrow::Cow::Borrowed(&line),
+            mesh: std::sync::Arc::new(line.clone()),
             to_local: rysmo_math::DMat4::from_translation(DVec3::Z * 2.),
             instance: Some(front),
         },
@@ -583,7 +583,7 @@ fn accelerated_queries_find_what_a_full_scan_finds() {
         .iter()
         .map(|(instance, to_local)| Other {
             clips: Vec::new(),
-            mesh: std::borrow::Cow::Borrowed(&part),
+            mesh: std::sync::Arc::new(part.clone()),
             to_local: *to_local,
             instance: *instance,
         })

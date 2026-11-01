@@ -361,8 +361,11 @@ pub(crate) fn refresh_glue(doc: &mut Document, before: &BTreeMap<InstanceId, Glu
 pub fn validate_openings(doc: &Document) -> Result<(), CommandError> {
     for definition in std::iter::once(&doc.root).chain(doc.definitions.values()) {
         let mut mesh = Cow::Borrowed(&definition.mesh);
-        for instance in definition.instances.values().filter(|i| !i.hidden && doc.tag_visible(i.tag)) {
+        for instance in definition.instances.values() {
             let Some(face) = instance.glued_to else { continue };
+            if instance.hidden || !doc.tag_visible(instance.tag) {
+                continue;
+            }
             let Some(component) = doc.def(Some(instance.definition)).filter(|d| d.component.cut_opening) else {
                 continue;
             };

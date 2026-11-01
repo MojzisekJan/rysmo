@@ -1181,8 +1181,9 @@ impl Command {
                 } else {
                     doc.with_mesh(def, |m| m.erase(&geo));
                     let d = doc.def_mut(def).expect("checked");
-                    for i in inst {
-                        d.instances.remove(&i);
+                    // Backwards, so a block does not shift what is about to go too.
+                    for i in inst.iter().rev() {
+                        d.instances.remove(i);
                     }
                     for g in guides {
                         d.guides.remove(&g);

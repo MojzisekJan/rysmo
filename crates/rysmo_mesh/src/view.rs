@@ -5,7 +5,8 @@
 //! that snapshot and adds small trees for the difference. The comparison skips the blocks
 //! the two share, so its cost follows the size of the change, not of the mesh.
 
-use std::collections::{BTreeSet, HashMap};
+use rustc_hash::FxHashMap;
+use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
 use rysmo_math::{EPS, Plane};
@@ -29,14 +30,22 @@ struct Snapshot {
     vertex_tree: Bvh<VertexId>,
     edge_tree: Bvh<EdgeId>,
     face_tree: Bvh<FaceId>,
-    around: HashMap<VertexId, Vec<FaceId>>,
-    curves: HashMap<CurveId, Vec<EdgeId>>,
+    around: FxHashMap<VertexId, Vec<FaceId>>,
+    curves: FxHashMap<CurveId, Vec<EdgeId>>,
 }
 
 /// The latest snapshot, shared by a mesh and its clones. It is only ever an earlier
 /// state to compare with, so it plays no part in what a mesh is.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct SnapshotSlot(Arc<Mutex<Option<Arc<Snapshot>>>>);
+pub(crate) struct SnapshotSlot(Arc<Mutex<Slot>>);
+
+#[derive(Debug, Default)]
+struct Slot {
+    latest: Option<Arc<Snapshot>>,
+    /// Elements indexed again on top of `latest`. Once that matches what a new snapshot
+    /// costs, replacing it is the cheaper choice from then on.
+    redone: usize,
+}
 
 impl PartialEq for SnapshotSlot {
     fn eq(&self, _: &Self) -> bool {
@@ -58,8 +67,8 @@ fn face_box(mesh: &Mesh, id: FaceId) -> Option<(Aabb, FaceId)> {
     Some((Aabb::of(face.outer.iter().map(|v| mesh.pos(*v))).expanded(MARGIN), id))
 }
 
-fn faces_around<'a>(faces: impl Iterator<Item = (FaceId, &'a Face)>) -> HashMap<VertexId, Vec<FaceId>> {
-    let mut around: HashMap<VertexId, Vec<FaceId>> = HashMap::new();
+fn faces_around<'a>(faces: impl Iterator<Item = (FaceId, &'a Face)>) -> FxHashMap<VertexId, Vec<FaceId>> {
+    let mut around: FxHashMap<VertexId, Vec<FaceId>> = FxHashMap::default();
     for (id, face) in faces {
         for v in face.loops().flatten() {
             around.entry(*v).or_default().push(id);
@@ -68,8 +77,8 @@ fn faces_around<'a>(faces: impl Iterator<Item = (FaceId, &'a Face)>) -> HashMap<
     around
 }
 
-fn curve_lists<'a>(edges: impl Iterator<Item = (EdgeId, &'a Edge)>) -> HashMap<CurveId, Vec<EdgeId>> {
-    let mut curves: HashMap<CurveId, Vec<EdgeId>> = HashMap::new();
+fn curve_lists<'a>(edges: impl Iterator<Item = (EdgeId, &'a Edge)>) -> FxHashMap<CurveId, Vec<EdgeId>> {
+    let mut curves: FxHashMap<CurveId, Vec<EdgeId>> = FxHashMap::default();
     for (id, edge) in edges {
         if let Some(curve) = edge.curve {
             curves.entry(curve).or_default().push(id);
@@ -106,8 +115,8 @@ pub struct MeshView {
     vertices: Bvh<VertexId>,
     edges: Bvh<EdgeId>,
     faces: Bvh<FaceId>,
-    around: HashMap<VertexId, Vec<FaceId>>,
-    curves: HashMap<CurveId, Vec<EdgeId>>,
+    around: FxHashMap<VertexId, Vec<FaceId>>,
+    curves: FxHashMap<CurveId, Vec<EdgeId>>,
 }
 
 fn sorted<T: Ord>(mut found: Vec<T>) -> Vec<T> {
@@ -200,20 +209,22 @@ impl Mesh {
     /// Lookups in this mesh as it is now.
     pub fn view(&self) -> MeshView {
         let mut slot = self.snapshot.0.lock().expect("no panic while the snapshot is replaced");
-        let base = slot.get_or_insert_with(|| Arc::new(Snapshot::of(self))).clone();
+        let base = slot.latest.get_or_insert_with(|| Arc::new(Snapshot::of(self))).clone();
         let vertices: Vec<_> = self.vertices.changed_since(&base.vertices);
         let edges: Vec<_> = self.edges.changed_since(&base.edges);
         let faces: Vec<_> = self.faces.changed_since(&base.faces);
-        if (vertices.len() + edges.len() + faces.len()) * REBUILD_SHARE > base.size() {
+        let changed = vertices.len() + edges.len() + faces.len();
+        slot.redone += changed;
+        if changed * REBUILD_SHARE > base.size() || slot.redone > base.size() {
             let base = Arc::new(Snapshot::of(self));
-            *slot = Some(base.clone());
+            *slot = Slot { latest: Some(base.clone()), redone: 0 };
             return MeshView {
                 base,
                 vertices: Bvh::default(),
                 edges: Bvh::default(),
                 faces: Bvh::default(),
-                around: HashMap::new(),
-                curves: HashMap::new(),
+                around: FxHashMap::default(),
+                curves: FxHashMap::default(),
             };
         }
         drop(slot);

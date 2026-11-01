@@ -616,7 +616,7 @@ impl Default for ToolBox {
 pub(crate) struct Scene {
     pub mesh: rysmo_mesh::Mesh,
     pub clips: Vec<Plane>,
-    pub others: Vec<Other<'static>>,
+    pub others: Vec<Other>,
     pub accel: Accel,
     pub guides: Vec<(GuideId, SnapGuide)>,
 }
@@ -669,7 +669,7 @@ pub(crate) fn scene(cache: &Mutex<SceneCache>, editor: &Editor) -> Arc<Scene> {
     let to_local = editor.context_transform().inverse();
     let mut others = Vec::new();
     let mut placed = Vec::new();
-    let mut evaluated: HashMap<Option<DefinitionId>, (rysmo_mesh::Mesh, Arc<MeshIndex>)> = HashMap::new();
+    let mut evaluated: HashMap<Option<DefinitionId>, (Arc<rysmo_mesh::Mesh>, Arc<MeshIndex>)> = HashMap::new();
     let mut active_seen = false;
     for occ in doc.occurrences(context) {
         // The first occurrence inside the context is the context itself.
@@ -681,7 +681,7 @@ pub(crate) fn scene(cache: &Mutex<SceneCache>, editor: &Editor) -> Arc<Scene> {
             let (mesh, index) = evaluated.entry(occ.definition).or_insert_with(|| {
                 let mesh = doc.effective_mesh(occ.definition);
                 let index = cache.index(doc, occ.definition, &mesh, matches!(mesh, Cow::Owned(_)));
-                (mesh.into_owned(), index)
+                (Arc::new(mesh.into_owned()), index)
             });
             let placement = to_local * occ.transform;
             placed.push((index.clone(), placement));
@@ -692,7 +692,7 @@ pub(crate) fn scene(cache: &Mutex<SceneCache>, editor: &Editor) -> Arc<Scene> {
                     .map(|p| p.transformed(to_local))
                     .map(|p| Plane::new(p.normal, p.origin))
                     .collect(),
-                mesh: Cow::Owned(mesh.clone()),
+                mesh: mesh.clone(),
                 to_local: placement,
                 instance: occ.top,
             });

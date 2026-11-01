@@ -1,6 +1,7 @@
 //! The mesh container, its elements, and the low-level edits the operations build on.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use rustc_hash::FxHashMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use rysmo_math::{DVec3, EPS, Plane};
 use serde::{Deserialize, Serialize};
@@ -234,8 +235,8 @@ impl Mesh {
     /// Rebuild a mesh with globally fresh identifiers while retaining exact topology.
     pub fn with_fresh_ids(&self, mut allocate: impl FnMut() -> u64) -> Result<Mesh, MeshError> {
         self.validate()?;
-        let vertices: HashMap<_, _> = self.vertices.keys().map(|id| (*id, VertexId(allocate()))).collect();
-        let curves: HashMap<_, _> = self.curves.keys().map(|id| (*id, crate::CurveId(allocate()))).collect();
+        let vertices: FxHashMap<_, _> = self.vertices.keys().map(|id| (*id, VertexId(allocate()))).collect();
+        let curves: FxHashMap<_, _> = self.curves.keys().map(|id| (*id, crate::CurveId(allocate()))).collect();
         let v = self.vertices.iter().map(|(id, v)| (vertices[id], v.clone())).collect();
         let e = self
             .edges

@@ -173,7 +173,7 @@ pub struct Document {
     /// The model's own geometry and its top-level groups and components. Definitions are
     /// shared copy-on-write, so undo snapshots copy only the definitions an edit changes.
     pub root: Arc<Definition>,
-    pub definitions: BTreeMap<DefinitionId, Arc<Definition>>,
+    pub definitions: rysmo_mesh::blocks::BlockMap<DefinitionId, Arc<Definition>>,
     pub materials: BTreeMap<MaterialId, Material>,
     pub images: BTreeMap<rysmo_mesh::ImageId, crate::Image>,
     pub tags: BTreeMap<TagId, Tag>,
@@ -198,7 +198,7 @@ impl Default for Document {
     fn default() -> Self {
         Document {
             root: Arc::new(Definition { name: "Model".into(), mesh: Mesh::new(), ..Default::default() }),
-            definitions: BTreeMap::new(),
+            definitions: Default::default(),
             materials: BTreeMap::new(),
             images: BTreeMap::new(),
             tags: BTreeMap::new(),

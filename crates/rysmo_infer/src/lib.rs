@@ -179,7 +179,7 @@ pub struct Query<'a> {
     pub scale: f64,
     /// Other visible geometry (groups, components, the faded model around the context
     /// being edited), with transforms into the context's coordinates.
-    pub others: &'a [Other<'a>],
+    pub others: &'a [Other],
     /// Trees over the meshes, so a query does not have to visit all of them.
     pub accel: Option<&'a Accel>,
     /// Construction guides of the context.
@@ -232,9 +232,9 @@ impl Accel {
 
 /// Geometry outside the mesh being edited that points can still snap to.
 #[derive(Clone)]
-pub struct Other<'a> {
+pub struct Other {
     pub clips: Vec<Plane>,
-    pub mesh: std::borrow::Cow<'a, Mesh>,
+    pub mesh: Arc<Mesh>,
     /// The other mesh's coordinates to the context's.
     pub to_local: DMat4,
     /// The child of the context it belongs to (what a click selects), or `None` for

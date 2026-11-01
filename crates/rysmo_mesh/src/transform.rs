@@ -1,7 +1,8 @@
 //! Moving, rotating, scaling and copying geometry, with auto-fold, and
 //! moving geometry between meshes (making groups and exploding them).
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
+use std::collections::{BTreeMap, BTreeSet};
 
 use rysmo_math::{DVec3, EPS, Plane, closest_on_segment, segment_intersection};
 
@@ -85,7 +86,7 @@ impl Template {
         }
         let curve_ids: BTreeSet<_> = edges.iter().filter_map(|id| mesh.edges[id].curve).collect();
         let mut curve_members = mesh.curve_members();
-        let curve_slots: HashMap<_, _> = curve_ids.iter().enumerate().map(|(slot, id)| (*id, slot)).collect();
+        let curve_slots: FxHashMap<_, _> = curve_ids.iter().enumerate().map(|(slot, id)| (*id, slot)).collect();
         for id in curve_ids {
             let all = curve_members.remove(&id).unwrap_or_default();
             let members: Vec<_> = all.iter().copied().filter(|id| edges.contains(id)).collect();
@@ -128,8 +129,8 @@ impl Template {
     /// The connected pieces that are closed shells: every line has two faces of the
     /// template along it, so copying one cannot leave a loop for a new face to fill.
     pub(crate) fn shells(&self) -> Vec<Shell> {
-        let mut parent: HashMap<VertexId, VertexId> = HashMap::new();
-        fn find(parent: &mut HashMap<VertexId, VertexId>, v: VertexId) -> VertexId {
+        let mut parent: FxHashMap<VertexId, VertexId> = FxHashMap::default();
+        fn find(parent: &mut FxHashMap<VertexId, VertexId>, v: VertexId) -> VertexId {
             let mut root = *parent.entry(v).or_insert(v);
             while parent[&root] != root {
                 root = parent[&root];
@@ -141,7 +142,7 @@ impl Template {
             let (a, b) = (find(&mut parent, line.ends[0]), find(&mut parent, line.ends[1]));
             parent.insert(a, b);
         }
-        let mut uses: HashMap<(VertexId, VertexId), u32> = HashMap::new();
+        let mut uses: FxHashMap<(VertexId, VertexId), u32> = FxHashMap::default();
         for face in &self.faces {
             for l in &face.loops {
                 for k in 0..l.len() {
@@ -151,7 +152,7 @@ impl Template {
         }
         let mut pieces: BTreeMap<VertexId, Shell> = BTreeMap::new();
         let mut open = BTreeSet::new();
-        let mut curve_piece: HashMap<usize, VertexId> = HashMap::new();
+        let mut curve_piece: FxHashMap<usize, VertexId> = FxHashMap::default();
         for (index, line) in self.lines.iter().enumerate() {
             let root = find(&mut parent, line.ends[0]);
             pieces.entry(root).or_default().lines.push(index);
@@ -177,9 +178,9 @@ impl Template {
 
     /// The lines, faces and curves outside `shells`.
     fn without(&self, shells: &[&Shell]) -> Template {
-        let lines: HashSet<_> = shells.iter().flat_map(|s| s.lines.iter().copied()).collect();
-        let faces: HashSet<_> = shells.iter().flat_map(|s| s.faces.iter().copied()).collect();
-        let curves: HashSet<_> = shells.iter().flat_map(|s| s.curves.iter().copied()).collect();
+        let lines: FxHashSet<_> = shells.iter().flat_map(|s| s.lines.iter().copied()).collect();
+        let faces: FxHashSet<_> = shells.iter().flat_map(|s| s.faces.iter().copied()).collect();
+        let curves: FxHashSet<_> = shells.iter().flat_map(|s| s.curves.iter().copied()).collect();
         Template {
             lines: self.lines.iter().enumerate().filter(|(i, _)| !lines.contains(i)).map(|(_, l)| l.clone()).collect(),
             faces: self.faces.iter().enumerate().filter(|(i, _)| !faces.contains(i)).map(|(_, f)| f.clone()).collect(),
@@ -539,8 +540,8 @@ impl Mesh {
         f: &impl Fn(DVec3) -> DVec3,
     ) -> Result<Vec<Element>, MeshError> {
         let mut out = Vec::with_capacity(shell.lines.len() + shell.faces.len());
-        let mut vertices: HashMap<VertexId, VertexId> = HashMap::new();
-        let mut members: HashMap<usize, Vec<EdgeId>> = HashMap::new();
+        let mut vertices: FxHashMap<VertexId, VertexId> = FxHashMap::default();
+        let mut members: FxHashMap<usize, Vec<EdgeId>> = FxHashMap::default();
         for line in shell.lines.iter().map(|i| &t.lines[*i]) {
             let mut end = |mesh: &mut Mesh, old: VertexId, at: DVec3| {
                 *vertices.entry(old).or_insert_with(|| mesh.raw_vertex(f(at)))

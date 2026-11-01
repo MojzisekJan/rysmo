@@ -999,7 +999,7 @@ mod tests {
         let Element::Instance(result) = result.created[0] else { panic!() };
         assert!((volume(&editor, result) - 8.).abs() < 1e-7);
         assert!(editor.doc().root.instances.contains_key(&shared));
-        for (id, definition) in definitions {
+        for (id, definition) in definitions.iter().map(|(id, definition)| (*id, definition.clone())) {
             if editor.doc().definitions.contains_key(&id) {
                 assert_eq!(&editor.doc().definitions[&id], &definition);
             }

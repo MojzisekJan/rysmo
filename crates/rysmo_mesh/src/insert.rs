@@ -1,7 +1,8 @@
 //! Drawing lines into the mesh: splitting at crossings, then rebuilding the faces of
 //! every plane the new lines lie in.
 
-use std::collections::{BTreeSet, HashMap};
+use rustc_hash::FxHashMap;
+use std::collections::BTreeSet;
 
 use rysmo_math::{DVec3, EPS, Plane, closest_on_segment, parallel, segment_intersection};
 
@@ -78,7 +79,7 @@ impl Mesh {
             edges.extend(view.edges_in(self, reach(*p, *q)));
             vertices.extend(view.vertices_in(self, reach(*p, *q)));
         }
-        let mut around: HashMap<VertexId, Vec<FaceId>> = HashMap::new();
+        let mut around: FxHashMap<VertexId, Vec<FaceId>> = FxHashMap::default();
         let edges: Vec<_> = edges
             .into_iter()
             .map(|id| {
@@ -282,7 +283,7 @@ pub(crate) struct LineIndex {
     vertices: DynamicBvh<VertexId>,
     edges: DynamicBvh<EdgeId>,
     /// The faces at each nearby vertex.
-    around: HashMap<VertexId, Vec<FaceId>>,
+    around: FxHashMap<VertexId, Vec<FaceId>>,
 }
 
 /// Distinct planes in the order found. Planes that match have nearly the same distance
@@ -292,7 +293,7 @@ struct PlaneSet {
     list: Vec<Plane>,
     /// The seeds that led to each plane.
     seeds: Vec<Vec<EdgeId>>,
-    buckets: HashMap<i64, Vec<usize>>,
+    buckets: FxHashMap<i64, Vec<usize>>,
 }
 
 impl PlaneSet {

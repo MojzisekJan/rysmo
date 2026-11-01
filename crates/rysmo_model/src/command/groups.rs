@@ -387,14 +387,22 @@ pub(super) fn make_unique(
 /// Removes definitions no instance uses any more (after erasing or exploding).
 pub(super) fn purge_unused(doc: &mut Document) {
     loop {
-        let used: BTreeSet<DefinitionId> = std::iter::once(&doc.root)
+        let mut used: Vec<DefinitionId> = std::iter::once(&doc.root)
             .chain(doc.definitions.values())
             .flat_map(|d| d.instances.values().map(|i| i.definition))
             .collect();
-        let before = doc.definitions.len();
-        doc.definitions.retain(|id, definition| !definition.group || used.contains(id));
-        if doc.definitions.len() == before {
+        used.sort_unstable();
+        let unused: Vec<DefinitionId> = doc
+            .definitions
+            .iter()
+            .filter(|(id, definition)| definition.group && used.binary_search(id).is_err())
+            .map(|(id, _)| *id)
+            .collect();
+        if unused.is_empty() {
             break;
+        }
+        for id in &unused {
+            doc.definitions.remove(id);
         }
     }
 }

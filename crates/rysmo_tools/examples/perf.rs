@@ -5,6 +5,9 @@
 //! `raw` keeps every box in the model's own mesh, `groups` gives each box its own group
 //! and `component` places one shared box many times. An operation that passes the time
 //! limit is skipped at the larger sizes.
+//!
+//! With `PERF_ONLY=groups/move` only the operations containing that text run, for a few
+//! seconds each, which gives a profiler something to sample.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -133,20 +136,29 @@ fn view(count: usize) -> View {
 
 struct Bench {
     over: BTreeSet<&'static str>,
+    only: Option<String>,
 }
 
 impl Bench {
+    fn wanted(&self, key: &str) -> bool {
+        self.only.as_ref().is_none_or(|only| key.contains(only.as_str()))
+    }
+
     fn time(&mut self, scene: &'static str, name: &'static str, mut run: impl FnMut()) {
         let key: &'static str = Box::leak(format!("{scene}/{name}").into_boxed_str());
         if self.over.contains(key) {
             println!("  {name:<24} skipped");
             return;
         }
+        if !self.wanted(key) {
+            return;
+        }
+        let least = if self.only.is_some() { Duration::from_secs(5) } else { Duration::from_millis(100) };
         // The best of several, because the first run can pay for caches the rest reuse.
         let begun = Instant::now();
         let mut each = Duration::MAX;
         let mut rounds = 0;
-        while rounds < 3 || begun.elapsed() < Duration::from_millis(100) {
+        while rounds < 3 || begun.elapsed() < least {
             let start = Instant::now();
             run();
             each = each.min(start.elapsed());
@@ -212,19 +224,21 @@ fn scene(bench: &mut Bench, name: &'static str, count: usize, editor: &Editor) {
     bench.time(name, "hover with Line", || {
         tools.pointer(&mut line, &at(DVec2::new(800., 500.)), Pointer::Move);
     });
-    let mut edited = editor.clone();
-    let mut steps = 0;
-    let mut spent = Duration::ZERO;
-    tools.pointer(&mut edited, &at(DVec2::new(800., 500.)), Pointer::Move);
-    while steps < 5 {
-        steps += 1;
-        let step = DVec3::Z * 3. * if steps % 2 == 0 { -1. } else { 1. };
-        edited.apply(Command::Move { elements: single.clone(), offset: step }).expect("command runs");
-        let start = Instant::now();
+    if bench.wanted(&format!("{name}/hover after an edit")) {
+        let mut edited = editor.clone();
+        let mut steps = 0;
+        let mut spent = Duration::ZERO;
         tools.pointer(&mut edited, &at(DVec2::new(800., 500.)), Pointer::Move);
-        spent += start.elapsed();
+        while steps < 5 || (bench.only.is_some() && spent < Duration::from_secs(5)) {
+            steps += 1;
+            let step = DVec3::Z * 3. * if steps % 2 == 0 { -1. } else { 1. };
+            edited.apply(Command::Move { elements: single.clone(), offset: step }).expect("command runs");
+            let start = Instant::now();
+            tools.pointer(&mut edited, &at(DVec2::new(800., 500.)), Pointer::Move);
+            spent += start.elapsed();
+        }
+        println!("  {:<24} {:>12.3} ms", "hover after an edit", spent.as_secs_f64() * 1e3 / steps as f64);
     }
-    println!("  {:<24} {:>12.3} ms", "hover after an edit", spent.as_secs_f64() * 1e3 / steps as f64);
     bench.time(name, "smooth normals", || drop(editor.mesh().smooth_normals()));
     bench.time(name, "box select", || {
         let mut e = editor.clone();
@@ -239,11 +253,18 @@ fn scene(bench: &mut Bench, name: &'static str, count: usize, editor: &Editor) {
 fn main() {
     let sizes: Vec<usize> = std::env::args().skip(1).map(|a| a.parse().expect("a box count")).collect();
     let sizes = if sizes.is_empty() { vec![250, 1000] } else { sizes };
-    let mut bench = Bench { over: BTreeSet::new() };
+    let mut bench = Bench { over: BTreeSet::new(), only: std::env::var("PERF_ONLY").ok() };
     for count in sizes {
-        scene(&mut bench, "raw", count, &raw(count));
-        scene(&mut bench, "groups", count, &instanced(count, false));
-        scene(&mut bench, "component", count, &instanced(count, true));
-        scene(&mut bench, "cylinders", count, &cylinders(count));
+        let builds: [(&'static str, &dyn Fn() -> Editor); 4] = [
+            ("raw", &|| raw(count)),
+            ("groups", &|| instanced(count, false)),
+            ("component", &|| instanced(count, true)),
+            ("cylinders", &|| cylinders(count)),
+        ];
+        for (name, build) in builds {
+            if bench.only.as_ref().is_none_or(|only| only.starts_with(name)) {
+                scene(&mut bench, name, count, &build());
+            }
+        }
     }
 }

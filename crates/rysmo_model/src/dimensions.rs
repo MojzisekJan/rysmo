@@ -1264,18 +1264,15 @@ impl Dimension {
 
 impl Document {
     pub(crate) fn refresh_dimensions(&mut self) {
-        let owners: Vec<_> = std::iter::once(None).chain(self.definitions.keys().copied().map(Some)).collect();
         let document = &*self;
-        let updates: Vec<_> = owners
-            .into_iter()
-            .flat_map(|owner| {
-                document
-                    .def(owner)
-                    .unwrap()
+        let updates: Vec<_> = std::iter::once((None, &document.root))
+            .chain(document.definitions.iter().map(|(id, d)| (Some(*id), d)))
+            .filter(|(_, definition)| !definition.dimensions.is_empty())
+            .flat_map(|(owner, definition)| {
+                definition
                     .dimensions
                     .iter()
                     .map(move |(id, dimension)| (owner, *id, dimension.refreshed(document, owner)))
-                    .collect::<Vec<_>>()
             })
             .collect();
         for (owner, id, dimension) in updates {

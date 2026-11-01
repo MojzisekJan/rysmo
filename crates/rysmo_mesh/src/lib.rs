@@ -50,6 +50,7 @@ mod tests2;
 pub use curves::{Curve, CurveKind};
 pub use divide::EdgeDivision;
 pub use fillet::Fillet;
+pub use flags::SmoothNormals;
 pub use ids::{
     CurveId, DefinitionId, DimensionId, EdgeId, Element, FaceId, GuideId, ImageId, InstanceId, MaterialId, TagId,
     TextId, VertexId,

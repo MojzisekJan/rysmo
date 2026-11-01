@@ -305,7 +305,7 @@ pub fn run() {
     #[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
     if std::env::var_os("RYSMO_SCREENSHOT").is_some()
         && std::env::var_os("RYSMO_COMPONENTS_PREVIEW").is_some()
-        && let Some(definition) = app3d.editor.doc().definitions.iter().find(|(_, d)| !d.group).map(|(id, _)| *id)
+        && let Some(definition) = first_component(app3d.editor.doc())
     {
         let instances = app3d.editor.doc().root.instances.keys().copied().collect::<Vec<_>>();
         if let Some(id) = instances.first() {
@@ -1172,4 +1172,9 @@ fn demo(app: &mut App3d) {
     app.camera.frame(DVec3::new(-0.5, -0.5, 0.0), DVec3::new(8.5, 2.5, 1.2));
     app.camera.distance *= 0.85;
     app.set_tool(ToolKind::Select);
+}
+
+#[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
+fn first_component(doc: &rysmo_model::Document) -> Option<rysmo_model::DefinitionId> {
+    doc.definitions.iter().find(|(_, d)| !d.group).map(|(id, _)| *id)
 }

@@ -176,7 +176,7 @@ struct FaceChunk {
     /// In id order.
     faces: Vec<DrawnFace>,
     vertices: HashSet<VertexId>,
-    smooth: HashMap<(FaceId, VertexId), DVec3>,
+    smooth: rysmo_mesh::SmoothNormals,
 }
 
 struct DrawnFace {

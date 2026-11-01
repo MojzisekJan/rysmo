@@ -5048,6 +5048,7 @@ name = "rysmo_mesh"
 version = "0.1.0"
 dependencies = [
  "earcut",
+ "rustc-hash 2.1.3",
  "rysmo_math",
  "serde",
  "serde_json",
