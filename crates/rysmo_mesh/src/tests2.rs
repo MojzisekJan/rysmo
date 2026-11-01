@@ -451,3 +451,34 @@ fn local_plane_rebuilds_match_whole_plane_rebuilds() {
     whole.rebuild_plane_in(&plane, &BTreeSet::new(), None, &mut Default::default(), &[]);
     assert_eq!(shape(&fast), shape(&whole));
 }
+
+#[test]
+fn moving_the_whole_mesh_matches_moving_it_past_a_bystander() {
+    let mut whole = unit_box();
+    let edges: Vec<_> = {
+        circle(&mut whole, v(5.0, 0.0, 0.0), 1.0, 12);
+        whole.edges().filter(|(_, e)| whole.pos(e.v[0]).x > 3.0).map(|(id, _)| id).collect()
+    };
+    let curve = Curve {
+        kind: CurveKind::Circle,
+        centre: v(5.0, 0.0, 0.0),
+        normal: DVec3::Z,
+        start: DVec3::X,
+        radius: 1.0,
+        segments: 12,
+        sweep: 360.0,
+        faceted: false,
+    };
+    let id = whole.register_curve(&edges, curve).unwrap();
+    let elements = all(&whole);
+    let mut watched = whole.clone();
+    watched.add_line(v(0.0, 0.0, 90.0), v(1.0, 0.0, 90.0), None).unwrap();
+    let turn = DMat4::from_rotation_z(0.3) * DMat4::from_translation(v(0.2, 0.0, 1.0));
+    whole.transform_elements(&elements, |p| turn.transform_point3(p)).unwrap();
+    watched.transform_elements(&elements, |p| turn.transform_point3(p)).unwrap();
+    assert_eq!(whole.curve(id), watched.curve(id));
+    assert!((whole.curve(id).unwrap().radius - 1.0).abs() < 1e-9);
+    let spot = |m: &Mesh| -> Vec<_> { m.vertices().filter(|(_, x)| x.pos.z < 50.0).map(|(k, x)| (k, x.pos)).collect() };
+    assert_eq!(spot(&whole), spot(&watched));
+    assert_eq!(whole.face_count(), watched.face_count());
+}

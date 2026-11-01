@@ -290,21 +290,25 @@ impl Mesh {
     /// the rest, their faces stay flat, and they land clear of everything else, so
     /// there is nothing to fold, weld or split. Returns whether it did.
     fn move_clear_of_the_rest(&mut self, vertices: &BTreeSet<VertexId>, f: &impl Fn(DVec3) -> DVec3) -> bool {
-        let mut moved_edges = BTreeSet::new();
+        // With every vertex moving there is no rest to attach to or land on.
+        let whole = self.is_every_vertex(vertices);
+        let mut moved_edges = Vec::new();
         for v in vertices {
             for id in self.vertex_edges.get(v).into_iter().flatten() {
-                if !self.edges[id].v.iter().all(|end| vertices.contains(end)) {
+                if !whole && !self.edges[id].v.iter().all(|end| vertices.contains(end)) {
                     return false;
                 }
-                moved_edges.insert(*id);
+                moved_edges.push(*id);
             }
         }
-        let view = self.view();
-        let touched = view.faces_touching(self, vertices);
+        moved_edges.sort_unstable();
+        moved_edges.dedup();
+        let touched =
+            if whole { self.faces.keys().copied().collect() } else { self.view().faces_touching(self, vertices) };
         let mapped = |v: &VertexId| self.vertices.get(v).map(|x| f(x.pos));
         for id in &touched {
             let face = &self.faces[id];
-            if !face.loops().flatten().all(|v| vertices.contains(v)) {
+            if !whole && !face.loops().flatten().all(|v| vertices.contains(v)) {
                 return false;
             }
             let Some(outer) = face.outer.iter().map(mapped).collect::<Option<Vec<_>>>() else { return false };
@@ -323,13 +327,16 @@ impl Mesh {
             }
             boxes.push(Aabb::of([a, b]).expanded(EPS * 4.0));
         }
-        for area in boxes {
-            let edges = view.edges_in(self, area);
-            if edges.iter().any(|id| !moved_edges.contains(id)) {
-                return false;
-            }
-            if view.faces_in(self, area).iter().any(|id| !touched.contains(id)) {
-                return false;
+        if !whole {
+            let view = self.view();
+            for area in boxes {
+                let edges = view.edges_in(self, area);
+                if edges.iter().any(|id| moved_edges.binary_search(id).is_err()) {
+                    return false;
+                }
+                if view.faces_in(self, area).iter().any(|id| !touched.contains(id)) {
+                    return false;
+                }
             }
         }
         self.map_touched_curves(vertices, f);

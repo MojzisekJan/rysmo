@@ -193,9 +193,7 @@ impl MeshView {
         let Some(edge) = mesh.edge(e) else { return Vec::new() };
         let k = crate::mesh::key(edge.v[0], edge.v[1]);
         let mut found = self.faces_at(mesh, edge.v[0]);
-        found.retain(|f| {
-            mesh.face(*f).is_some_and(|f| f.loop_edges().iter().any(|(a, b)| crate::mesh::key(*a, *b) == k))
-        });
+        found.retain(|f| mesh.face(*f).is_some_and(|f| f.has_side(k)));
         found
     }
 

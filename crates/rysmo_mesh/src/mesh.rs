@@ -128,6 +128,11 @@ impl Face {
         out
     }
 
+    /// Whether a loop runs along `side`, a pair from `key`.
+    pub(crate) fn has_side(&self, side: (VertexId, VertexId)) -> bool {
+        self.loops().any(|l| l.iter().zip(l.iter().cycle().skip(1)).any(|(a, b)| key(*a, *b) == side))
+    }
+
     pub fn has_vertex(&self, v: VertexId) -> bool {
         self.loops().any(|l| l.contains(&v))
     }
@@ -557,8 +562,12 @@ impl Mesh {
     }
 
     /// The vertices an element set touches.
+    pub(crate) fn is_every_vertex(&self, vertices: &BTreeSet<VertexId>) -> bool {
+        vertices.len() == self.vertices.len() && self.vertices.keys().eq(vertices.iter())
+    }
+
     pub fn vertices_of(&self, elements: &[Element]) -> BTreeSet<VertexId> {
-        let mut out = BTreeSet::new();
+        let mut out = Vec::new();
         for e in elements {
             match e {
                 Element::Edge(id) => {
@@ -580,7 +589,7 @@ impl Mesh {
                 | Element::Section(_) => {}
             }
         }
-        out
+        out.into_iter().collect()
     }
 
     // ----- low-level edits -----

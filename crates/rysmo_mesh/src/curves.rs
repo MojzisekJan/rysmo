@@ -324,6 +324,12 @@ impl Mesh {
     }
 
     pub(crate) fn map_touched_curves(&mut self, vertices: &BTreeSet<VertexId>, f: &impl Fn(DVec3) -> DVec3) {
+        if self.is_every_vertex(vertices) {
+            for curve in self.curves.values_mut() {
+                *curve = curve.mapped(f);
+            }
+            return;
+        }
         let curves: BTreeSet<_> =
             vertices.iter().flat_map(|v| self.edges_of_vertex(*v)).filter_map(|e| self.edges[&e].curve).collect();
         let view = self.view();
