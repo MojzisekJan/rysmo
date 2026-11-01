@@ -491,7 +491,7 @@ mod tests {
         for (query, operation) in
             [("trim", BooleanOp::Trim), ("split", BooleanOp::Split), ("outer shell", BooleanOp::OuterShell)]
         {
-            let first = entries(&app).into_iter().find(|entry| matches(entry, query)).unwrap();
+            let first = ranked(entries(&app), query).into_iter().next().unwrap();
             assert_eq!(first.command, Command::Solid(operation));
         }
         open(&mut app);
