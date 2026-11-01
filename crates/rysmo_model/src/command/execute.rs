@@ -963,38 +963,7 @@ impl Command {
                 if offset.length() < EPS {
                     out.changed = false;
                 } else {
-                    let source_mesh = &doc.def(def).unwrap().mesh;
-                    // What was moved is found again by place; anything else stays as named.
-                    let mut followed = BTreeSet::new();
-                    let moved_faces: Vec<(Aabb, _)> = elements
-                        .iter()
-                        .filter_map(|element| {
-                            let Element::Face(id) = element else { return None };
-                            let face = source_mesh.face(*id)?;
-                            let outer: Vec<_> = face.outer.iter().map(|v| source_mesh.pos(*v) + offset).collect();
-                            let plane = rysmo_math::Plane::from_polygon(&outer)?;
-                            let area = Aabb::of(outer.iter().copied()).expanded(EPS * 2.);
-                            let outer: Vec<_> = outer.into_iter().map(|p| plane.to_2d(p)).collect();
-                            let holes: Vec<Vec<_>> = face
-                                .holes
-                                .iter()
-                                .map(|hole| hole.iter().map(|v| plane.to_2d(source_mesh.pos(*v) + offset)).collect())
-                                .collect();
-                            followed.insert(*element);
-                            Some((area, (plane, outer, holes)))
-                        })
-                        .collect();
-                    let moved_edges: Vec<_> = elements
-                        .iter()
-                        .filter_map(|e| match e {
-                            Element::Edge(id) => source_mesh.edge(*id).map(|_| {
-                                followed.insert(*e);
-                                let (a, b) = source_mesh.edge_points(*id);
-                                (a + offset, b + offset)
-                            }),
-                            _ => None,
-                        })
-                        .collect();
+                    let source_mesh = doc.def(def).unwrap().mesh.clone();
                     // Apply placement before topology splits so every resulting
                     // region inherits the moved texture frame.
                     let mesh = &mut doc.def_mut(def).expect("checked").mesh;
@@ -1012,8 +981,44 @@ impl Command {
                     let mesh = &doc.def(def).expect("checked").mesh;
                     // Nothing made or merged: the moved elements are still themselves.
                     if counts(mesh) == before {
-                        out.created = elements.into_iter().collect::<BTreeSet<_>>().into_iter().collect();
+                        let mut moved = elements;
+                        moved.sort_unstable();
+                        moved.dedup();
+                        out.created = moved;
                     } else {
+                        // What was moved is found again by place; anything else stays as named.
+                        let mut followed = BTreeSet::new();
+                        let moved_faces: Vec<(Aabb, _)> = elements
+                            .iter()
+                            .filter_map(|element| {
+                                let Element::Face(id) = element else { return None };
+                                let face = source_mesh.face(*id)?;
+                                let outer: Vec<_> = face.outer.iter().map(|v| source_mesh.pos(*v) + offset).collect();
+                                let plane = rysmo_math::Plane::from_polygon(&outer)?;
+                                let area = Aabb::of(outer.iter().copied()).expanded(EPS * 2.);
+                                let outer: Vec<_> = outer.into_iter().map(|p| plane.to_2d(p)).collect();
+                                let holes: Vec<Vec<_>> = face
+                                    .holes
+                                    .iter()
+                                    .map(|hole| {
+                                        hole.iter().map(|v| plane.to_2d(source_mesh.pos(*v) + offset)).collect()
+                                    })
+                                    .collect();
+                                followed.insert(*element);
+                                Some((area, (plane, outer, holes)))
+                            })
+                            .collect();
+                        let moved_edges: Vec<_> = elements
+                            .iter()
+                            .filter_map(|e| match e {
+                                Element::Edge(id) => source_mesh.edge(*id).map(|_| {
+                                    followed.insert(*e);
+                                    let (a, b) = source_mesh.edge_points(*id);
+                                    (a + offset, b + offset)
+                                }),
+                                _ => None,
+                            })
+                            .collect();
                         let mut created: BTreeSet<_> =
                             elements.into_iter().filter(|element| !followed.contains(element)).collect();
                         created.extend(mesh.edges_along_each(&moved_edges).into_iter().flatten().map(Element::Edge));

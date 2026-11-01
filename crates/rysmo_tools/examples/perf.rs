@@ -114,6 +114,25 @@ fn everything(editor: &Editor) -> Vec<Element> {
 }
 
 /// One object: a box's faces and edges, or one instance.
+/// Everything except the first object, which stays behind clear of the rest.
+fn all_but_the_first(editor: &Editor, all: &[Element]) -> Vec<Element> {
+    let mesh = editor.mesh();
+    let Some((first, _)) = mesh.vertices().next() else { return all[1..].to_vec() };
+    let mut first_object = BTreeSet::from([first]);
+    let mut pending = vec![first];
+    while let Some(vertex) = pending.pop() {
+        for edge in mesh.edges_of_vertex(vertex) {
+            for end in mesh.edge(edge).expect("an edge at a vertex").v {
+                if first_object.insert(end) {
+                    pending.push(end);
+                }
+            }
+        }
+    }
+    let away = |element: &&Element| mesh.vertices_of(std::slice::from_ref(*element)).is_disjoint(&first_object);
+    all.iter().filter(away).copied().collect()
+}
+
 fn one(editor: &Editor) -> Vec<Element> {
     let all = everything(editor);
     if editor.mesh().face_count() == 0 { all[..1].to_vec() } else { select_box(editor) }
@@ -191,6 +210,8 @@ fn scene(bench: &mut Bench, name: &'static str, count: usize, editor: &Editor) {
     bench.time(name, "occurrences", || drop(doc.occurrences(&[])));
     bench.time(name, "move one", || apply(Command::Move { elements: single.clone(), offset }));
     bench.time(name, "move all", || apply(Command::Move { elements: all.clone(), offset }));
+    let most = all_but_the_first(editor, &all);
+    bench.time(name, "move most", || apply(Command::Move { elements: most.clone(), offset: far }));
     bench.time(name, "rotate all", || {
         apply(Command::Rotate { elements: all.clone(), centre: DVec3::ZERO, axis: DVec3::Z, angle: 15., copies: 0 })
     });

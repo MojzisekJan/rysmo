@@ -482,3 +482,23 @@ fn moving_the_whole_mesh_matches_moving_it_past_a_bystander() {
     assert_eq!(spot(&whole), spot(&watched));
     assert_eq!(whole.face_count(), watched.face_count());
 }
+
+#[test]
+fn moving_most_of_the_mesh_still_meets_what_stays() {
+    let after = |bystanders: usize| {
+        let mut m = unit_box();
+        let elements = all(&m);
+        m.copy_elements(&elements, v(2.0, 0.0, 0.0), 1).unwrap();
+        let elements = all(&m);
+        m.add_line(v(0.0, 0.5, 4.5), v(0.0, 0.5, 5.5), None).unwrap();
+        for k in 0..bystanders {
+            let x = k as f64 * 2.0;
+            m.add_line(v(x, 50.0, 0.0), v(x + 1.0, 50.0, 0.0), None).unwrap();
+        }
+        m.transform_elements(&elements, |p| p + DVec3::Z * 4.0).unwrap();
+        (m.edge_count() - bystanders, m.face_count())
+    };
+    let (mostly_moved, half_moved) = (after(0), after(50));
+    assert_eq!(mostly_moved, half_moved);
+    assert!(mostly_moved.0 > 25, "the moved edge splits the line, got {mostly_moved:?}");
+}
