@@ -1,0 +1,148 @@
+{
+  "tool": "cargo-llvm-cov 0.9.1",
+  "scope": [
+    "rysmo_app",
+    "rysmo_infer",
+    "rysmo_io",
+    "rysmo_library",
+    "rysmo_math",
+    "rysmo_mcp",
+    "rysmo_mesh",
+    "rysmo_model",
+    "rysmo_tools"
+  ],
+  "native_only": true,
+  "inline_tests_included": true,
+  "branches_measured": false,
+  "totals": {
+    "branches": {
+      "count": 0,
+      "covered": 0,
+      "notcovered": 0,
+      "percent": 0
+    },
+    "functions": {
+      "count": 6360,
+      "covered": 4792,
+      "percent": 75.34591194968553
+    },
+    "instantiations": {
+      "count": 16348,
+      "covered": 9628,
+      "percent": 58.89405431857108
+    },
+    "lines": {
+      "count": 60267,
+      "covered": 46373,
+      "percent": 76.94592397165945
+    },
+    "mcdc": {
+      "count": 0,
+      "covered": 0,
+      "notcovered": 0,
+      "percent": 0
+    },
+    "regions": {
+      "count": 130016,
+      "covered": 100800,
+      "notcovered": 29216,
+      "percent": 77.52891951759784
+    }
+  },
+  "crates": {
+    "rysmo_app": {
+      "lines": {
+        "covered": 12423,
+        "count": 23395
+      },
+      "functions": {
+        "covered": 1086,
+        "count": 2141
+      }
+    },
+    "rysmo_infer": {
+      "lines": {
+        "covered": 652,
+        "count": 728
+      },
+      "functions": {
+        "covered": 98,
+        "count": 113
+      }
+    },
+    "rysmo_io": {
+      "lines": {
+        "covered": 5391,
+        "count": 5993
+      },
+      "functions": {
+        "covered": 521,
+        "count": 637
+      }
+    },
+    "rysmo_library": {
+      "lines": {
+        "covered": 191,
+        "count": 191
+      },
+      "functions": {
+        "covered": 35,
+        "count": 35
+      }
+    },
+    "rysmo_math": {
+      "lines": {
+        "covered": 713,
+        "count": 731
+      },
+      "functions": {
+        "covered": 80,
+        "count": 82
+      }
+    },
+    "rysmo_mcp": {
+      "lines": {
+        "covered": 930,
+        "count": 1182
+      },
+      "functions": {
+        "covered": 104,
+        "count": 142
+      }
+    },
+    "rysmo_mesh": {
+      "lines": {
+        "covered": 4845,
+        "count": 5063
+      },
+      "functions": {
+        "covered": 793,
+        "count": 831
+      }
+    },
+    "rysmo_model": {
+      "lines": {
+        "covered": 16963,
+        "count": 17987
+      },
+      "functions": {
+        "covered": 1686,
+        "count": 1907
+      }
+    },
+    "rysmo_tools": {
+      "lines": {
+        "covered": 4265,
+        "count": 4997
+      },
+      "functions": {
+        "covered": 389,
+        "count": 472
+      }
+    }
+  },
+  "date": "2026-11-04",
+  "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+  "target": "x86_64-unknown-linux-gnu",
+  "tests_passed": 963
+}

@@ -150,11 +150,10 @@ values and placing implementations before test modules. The texture pin width
 keeps its previous NaN fallback. Boolean assembly retains the shared identifier
 sequence for edges and faces. No blanket warning suppression was added.
 
-`scripts/check-rust.sh` is the shared local/CI entry point. It checks formatting,
-strict workspace Clippy, eight headless library suites and browser compilation.
-The new Linux workflow pins actions to commits, uses read-only repository token
-permissions, installs the native dependencies and runs the web helper tests too.
-The hosted workflow needs its first GitHub run after publication.
+`scripts/check-rust.sh` is the local verification entry point. At this review it
+checked formatting, strict workspace Clippy, eight headless library suites and
+browser compilation. The project now uses local checks only; hosted workflows
+were removed on 2026-11-04.
 
 
 Verification on Rust 1.98.1:
@@ -168,9 +167,7 @@ Verification on Rust 1.98.1:
 - Browser compilation passed with `wasm32-unknown-unknown` and `web-release`.
 - All 10 JavaScript tests and four Python packaging/server tests passed. The local
   server test needs permission to bind a loopback port in a sandboxed environment.
-- Formatting, diff checks and workflow YAML validation passed. Action references
-  were checked against the official repository tags and are pinned to full hashes.
+- Formatting and diff checks passed.
 
-The full GPU-linked app tests and a GUI session were not executed. The GitHub
-workflow was prepared and checked locally, but has not run on a hosted runner.
+The full GPU-linked app tests and a GUI session were not executed in this review.
 No browser release package was linked, rebuilt or published by this pass.

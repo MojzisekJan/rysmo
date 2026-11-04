@@ -35,3 +35,6 @@ Thumbs.db
 *~
 *.swp
 *.swo
+
+# Browser test dependencies; reports and screenshots are under target/.
+/tests/web/node_modules/

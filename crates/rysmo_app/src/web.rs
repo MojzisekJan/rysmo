@@ -449,7 +449,7 @@ fn render_diagnostics(
         .single()
         .is_ok_and(|camera| camera.translation.distance(crate::state::to_bevy(app.camera.eye())) < 0.01);
     set_render_diagnostics(&format!(
-        "Editor updates: {:.1} FPS\nEditor frame: {} / revision {}\nRoot instances: {} / mesh entities: {}\nCamera synced: {} / 3D scale: {:.0}%",
+        "Editor updates: {:.1} FPS\nEditor frame: {} / revision {}\nRoot instances: {} / mesh entities: {}\nCamera synced: {} / 3D scale: {:.0}%\nModel: {} faces / {} edges\nTool: {:?} / welcome: {}\nHistory: undo {} / redo {} / dirty {}",
         (sample.0 - sample.2) as f64 / elapsed,
         sample.0,
         app.editor.revision(),
@@ -457,6 +457,13 @@ fn render_diagnostics(
         meshes.iter().count(),
         camera_synced,
         app.editor.doc().style.render_scale * 100.,
+        app.editor.mesh().face_count(),
+        app.editor.mesh().edge_count(),
+        app.tools.active(),
+        app.welcome,
+        app.editor.undo_depth(),
+        app.editor.redo_label().is_some(),
+        app.editor.is_dirty(),
     ));
     sample.1 = now;
     sample.2 = sample.0;
