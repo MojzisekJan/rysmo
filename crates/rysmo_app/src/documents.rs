@@ -12,10 +12,12 @@ pub fn generation() -> u64 {
 pub struct Documents {
     pub active: u64,
     inactive: BTreeMap<u64, Box<App3d>>,
+    // Close decisions apply to a revision, not to the document's saved state.
+    close_discards: BTreeMap<u64, u64>,
 }
 impl Default for Documents {
     fn default() -> Self {
-        Self { active: generation(), inactive: BTreeMap::new() }
+        Self { active: generation(), inactive: BTreeMap::new(), close_discards: BTreeMap::new() }
     }
 }
 impl Documents {
@@ -37,8 +39,19 @@ impl Documents {
     pub fn full(&self) -> bool {
         self.inactive.len() >= 15
     }
+    pub fn discard_for_close(&mut self, revision: u64) {
+        self.close_discards.insert(self.active, revision);
+    }
+    pub fn discarded_for_close(&self, revision: u64) -> bool {
+        self.close_discards.get(&self.active) == Some(&revision)
+    }
+    pub fn cancel_close(&mut self) {
+        self.close_discards.clear();
+    }
     pub fn first_dirty(&self) -> Option<u64> {
-        self.inactive.iter().find_map(|(id, app)| app.editor.is_dirty().then_some(*id))
+        self.inactive.iter().find_map(|(id, app)| {
+            (app.editor.is_dirty() && self.close_discards.get(id) != Some(&app.editor.revision())).then_some(*id)
+        })
     }
 }
 

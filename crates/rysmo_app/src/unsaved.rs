@@ -36,7 +36,9 @@ pub fn request(app: &mut App3d, action: Action) {
     }
     if matches!(action, Action::New | Action::NewWithUnits(_) | Action::Open | Action::Recent(_)) {
         perform(app, action);
-    } else if app.editor.is_dirty() {
+    } else if app.editor.is_dirty()
+        && !(action == Action::Close && app.documents.discarded_for_close(app.editor.revision()))
+    {
         app.unsaved.pending = Some(action);
     } else {
         perform(app, action);
@@ -97,11 +99,6 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
     if app.unsaved.saving && app.portable_files.is_some() {
         return;
     }
-    enum Choice {
-        Save,
-        Discard,
-        Cancel,
-    }
     let mut choice = None;
     egui::Modal::new(egui::Id::unique("unsaved_changes")).frame(egui::Frame::window(&ctx.global_style())).show(
         ctx,
@@ -127,25 +124,37 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
     if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
         choice = Some(Choice::Cancel);
     }
+    if let Some(choice) = choice {
+        choose(app, choice);
+    }
+}
+
+enum Choice {
+    Save,
+    Discard,
+    Cancel,
+}
+
+fn choose(app: &mut App3d, choice: Choice) {
     match choice {
-        Some(Choice::Save) => {
+        Choice::Save => {
             app.unsaved.saving = true;
             files::save(app, false);
         }
-        Some(Choice::Discard) => {
+        Choice::Discard => {
             if let Some(action) = app.unsaved.pending.take() {
                 app.unsaved.saving = false;
                 if action == Action::Close {
-                    app.editor.mark_saved();
+                    app.documents.discard_for_close(app.editor.revision());
                 }
                 perform(app, action);
             }
         }
-        Some(Choice::Cancel) => {
+        Choice::Cancel => {
             app.unsaved.pending = None;
             app.unsaved.saving = false;
+            app.documents.cancel_close();
         }
-        None => {}
     }
 }
 
@@ -161,6 +170,37 @@ mod tests {
         assert_eq!(app.unsaved.pending, Some(Action::CloseTab));
         assert!(app.editor.is_dirty());
         assert!(!app.unsaved.close_ready);
+    }
+    #[test]
+    fn cancelling_multi_document_close_keeps_discarded_models_dirty() {
+        let mut app = App3d::new(rysmo_model::Editor::new());
+        app.editor.mark_dirty();
+        let first = app.documents.active;
+        assert!(crate::documents::create(&mut app));
+        app.editor.mark_dirty();
+        let second = app.documents.active;
+        request(&mut app, Action::Close);
+        choose(&mut app, Choice::Discard);
+        assert_eq!(app.documents.active, first);
+        assert!(app.unsaved.active());
+        choose(&mut app, Choice::Cancel);
+        crate::documents::switch(&mut app, second);
+        assert!(app.editor.is_dirty());
+        request(&mut app, Action::Close);
+        assert!(app.unsaved.active());
+        choose(&mut app, Choice::Discard);
+        choose(&mut app, Choice::Discard);
+        assert!(app.unsaved.close_ready);
+        assert!(app.editor.is_dirty());
+    }
+    #[test]
+    fn editing_invalidates_a_close_discard_decision() {
+        let mut app = App3d::new(rysmo_model::Editor::new());
+        app.editor.mark_dirty();
+        app.documents.discard_for_close(app.editor.revision());
+        app.editor.apply(rysmo_model::Command::SetUnits { units: rysmo_model::Units::Metres }).unwrap();
+        request(&mut app, Action::Close);
+        assert!(app.unsaved.active());
     }
     #[test]
     fn clean_model_can_close_immediately() {
