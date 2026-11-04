@@ -116,7 +116,8 @@ impl Dialog {
                 }
             }
             Operation::Save => {
-                std::fs::write(&path, crate::files::document_text(app)).map_err(|e| e.to_string())?;
+                rysmo_io::atomic::write(&path, crate::files::document_text(app).as_bytes())
+                    .map_err(|e| e.to_string())?;
                 app.path = Some(path.clone());
                 app.editor.mark_saved();
             }

@@ -515,7 +515,7 @@ pub fn call(s: &mut Session, name: &str, args: &Value) -> R {
                 Some(p) => std::path::PathBuf::from(p),
                 None => s.path.clone().ok_or("no path: give one, the model was never saved")?,
             };
-            std::fs::write(&path, rysmo_io::save(s.editor.doc()))
+            rysmo_io::atomic::write(&path, rysmo_io::save(s.editor.doc()).as_bytes())
                 .map_err(|e| format!("cannot save {}: {e}", path.display()))?;
             s.editor.mark_saved();
             s.path = Some(path.clone());

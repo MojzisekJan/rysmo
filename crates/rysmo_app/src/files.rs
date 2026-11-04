@@ -173,7 +173,7 @@ mod imp {
 
     pub fn save_path(app: &mut App3d, path: &Path) -> Result<String, String> {
         let text = document_text(app);
-        std::fs::write(path, text).map_err(|e| format!("Cannot save {}: {e}", path.display()))?;
+        rysmo_io::atomic::write(path, text.as_bytes()).map_err(|e| format!("Cannot save {}: {e}", path.display()))?;
         app.editor.mark_saved();
         app.path = Some(path.to_path_buf());
         app.preferences.remember(&path.to_string_lossy());
@@ -241,6 +241,22 @@ mod imp {
             .map(|_| format!("Exported {}.", path.display()))
             .map_err(|e| format!("Cannot export: {e}"));
         report(app, r);
+    }
+    #[cfg(test)]
+    mod save_tests {
+        use super::*;
+        #[test]
+        fn failed_save_keeps_dirty_state_and_the_existing_path() {
+            let mut app = App3d::new(rysmo_model::Editor::new());
+            app.editor.mark_dirty();
+            app.path = Some("original.rysmo".into());
+            // A directory cannot be replaced by a model file.
+            let directory = std::env::temp_dir();
+            assert!(save_path(&mut app, &directory).is_err());
+            assert!(directory.is_dir());
+            assert!(app.editor.is_dirty());
+            assert_eq!(app.path, Some("original.rysmo".into()));
+        }
     }
 }
 
@@ -445,7 +461,7 @@ mod imp {
     }
     pub fn save(app: &mut App3d, save_as: bool) {
         if !save_as && let Some(path) = app.path.clone() {
-            let result = std::fs::write(&path, super::document_text(app));
+            let result = rysmo_io::atomic::write(&path, super::document_text(app).as_bytes());
             match result {
                 Ok(()) => {
                     app.editor.mark_saved();

@@ -14,6 +14,7 @@
 #![forbid(unsafe_code)]
 
 pub mod archive;
+pub mod atomic;
 pub mod collada;
 pub mod collection;
 pub mod drawing;
