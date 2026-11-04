@@ -96,3 +96,6 @@ mod history_tests;
 
 #[cfg(test)]
 mod numeric_validation_tests;
+
+#[cfg(test)]
+mod occurrence_tests;

@@ -444,7 +444,20 @@ impl Document {
     /// the path being edited.
     pub fn occurrences(&self, context: &[InstanceId]) -> Vec<Occurrence> {
         let mut out = Vec::new();
-        self.walk(None, DMat4::IDENTITY, &[], context, None, None, &mut out, 0);
+        self.walk(None, DMat4::IDENTITY, &mut Vec::new(), context, None, None, &mut out, 0, false);
+        out
+    }
+
+    /// Visible occurrences with text or dimensions, preserving context and inherited materials.
+    /// Models without annotations do not need a traversal of their instance hierarchy.
+    pub fn annotation_occurrences(&self, context: &[InstanceId]) -> Vec<Occurrence> {
+        let has_annotations = std::iter::once(&self.root)
+            .chain(self.definitions.values())
+            .any(|definition| !definition.texts.is_empty() || !definition.dimensions.is_empty());
+        let mut out = Vec::new();
+        if has_annotations {
+            self.walk(None, DMat4::IDENTITY, &mut Vec::new(), context, None, None, &mut out, 0, true);
+        }
         out
     }
 
@@ -453,29 +466,43 @@ impl Document {
         &self,
         def: Option<DefinitionId>,
         t: DMat4,
-        path: &[InstanceId],
+        path: &mut Vec<InstanceId>,
         context: &[InstanceId],
         top: Option<InstanceId>,
         material: Option<MaterialId>,
         out: &mut Vec<Occurrence>,
         depth: usize,
+        annotations_only: bool,
     ) {
         let Some(d) = self.def(def) else { return };
         if depth > 64 {
             return;
         }
         let in_context = path.len() >= context.len() && path[..context.len()] == *context;
-        out.push(Occurrence { definition: def, path: path.to_vec(), transform: t, in_context, top, material });
+        if !annotations_only || !d.texts.is_empty() || !d.dimensions.is_empty() {
+            out.push(Occurrence { definition: def, path: path.clone(), transform: t, in_context, top, material });
+        }
         for (id, inst) in &d.instances {
             if inst.hidden || !self.tag_visible(inst.tag) {
                 continue;
             }
-            let mut p = path.to_vec();
-            p.push(*id);
+            path.push(*id);
             // The instance a click selects: the child of the active context on this path.
-            let top = if p.len() == context.len() + 1 && p[..context.len()] == *context { Some(*id) } else { top };
+            let top =
+                if path.len() == context.len() + 1 && path[..context.len()] == *context { Some(*id) } else { top };
             let material = inst.material.or(material);
-            self.walk(Some(inst.definition), t * inst.transform, &p, context, top, material, out, depth + 1);
+            self.walk(
+                Some(inst.definition),
+                t * inst.transform,
+                path,
+                context,
+                top,
+                material,
+                out,
+                depth + 1,
+                annotations_only,
+            );
+            path.pop();
         }
     }
 

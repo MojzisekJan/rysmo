@@ -960,8 +960,9 @@ fn overlay(mut contexts: EguiContexts, mut app: ResMut<App3d>) -> Result {
     crate::features::parametric::grips(ctx, &mut app);
     crate::features::component_data::markers(ctx, &app);
     let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Background, egui::Id::unique("overlay")));
-    app.dimension_text_sizes = draw_dimensions(&painter, &app);
-    app.text_sizes = draw_texts(&painter, &app);
+    let annotations = app.editor.doc().annotation_occurrences(app.editor.context());
+    app.dimension_text_sizes = draw_dimensions(&painter, &app, &annotations);
+    app.text_sizes = draw_texts(&painter, &app, &annotations);
     crate::text3d_tool::draw(&painter, &app);
     crate::component_panel::draw(&painter, &app);
     crate::object_clipboard::draw(&painter, &app);
@@ -1125,11 +1126,12 @@ fn overlay(mut contexts: EguiContexts, mut app: ResMut<App3d>) -> Result {
 fn draw_dimensions(
     painter: &egui::Painter,
     app: &App3d,
+    occurrences: &[rysmo_model::Occurrence],
 ) -> std::collections::BTreeMap<rysmo_model::dimensions::DimensionTextKey, DVec2> {
     let mut sizes = std::collections::BTreeMap::new();
     let document = app.editor.doc();
     let view = app.view();
-    for occurrence in document.occurrences(app.editor.context()) {
+    for occurrence in occurrences {
         let Some(definition) = document.def(occurrence.definition) else { continue };
         for (id, dimension) in &definition.dimensions {
             let location =
@@ -1199,12 +1201,16 @@ fn draw_dimensions(
     sizes
 }
 
-fn draw_texts(painter: &egui::Painter, app: &App3d) -> std::collections::BTreeMap<rysmo_model::text::TextKey, DVec2> {
+fn draw_texts(
+    painter: &egui::Painter,
+    app: &App3d,
+    occurrences: &[rysmo_model::Occurrence],
+) -> std::collections::BTreeMap<rysmo_model::text::TextKey, DVec2> {
     let mut sizes = std::collections::BTreeMap::new();
     let doc = app.editor.doc();
     let view = app.view();
     let preview = app.tools.preview(&app.editor);
-    for occurrence in doc.occurrences(app.editor.context()) {
+    for occurrence in occurrences {
         let Some(definition) = doc.def(occurrence.definition) else { continue };
         for (id, text) in &definition.texts {
             let Some(layout) = text.layout(doc, occurrence.definition, occurrence.transform, &view) else { continue };
@@ -1379,7 +1385,8 @@ mod dimension_font_tests {
                 ..Default::default()
             },
             |ui| {
-                app.dimension_text_sizes = draw_dimensions(ui.painter(), &app);
+                app.dimension_text_sizes =
+                    draw_dimensions(ui.painter(), &app, &app.editor.doc().annotation_occurrences(app.editor.context()));
             },
         );
         output.textures_delta.clear();
@@ -1402,7 +1409,10 @@ mod dimension_font_tests {
         assert!(app.pick_annotation(point).is_none());
         assert!(app.dimension_box(DVec2::ZERO, app.viewport).is_empty());
         let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
-            assert!(draw_dimensions(ui.painter(), &app).is_empty());
+            assert!(
+                draw_dimensions(ui.painter(), &app, &app.editor.doc().annotation_occurrences(app.editor.context()))
+                    .is_empty()
+            );
         });
         output.textures_delta.clear();
     }
@@ -1487,7 +1497,8 @@ mod text_paint_tests {
                     ..Default::default()
                 },
                 |ui| {
-                    app.text_sizes = draw_texts(ui.painter(), &app);
+                    app.text_sizes =
+                        draw_texts(ui.painter(), &app, &app.editor.doc().annotation_occurrences(app.editor.context()));
                 },
             );
             output.textures_delta.clear();

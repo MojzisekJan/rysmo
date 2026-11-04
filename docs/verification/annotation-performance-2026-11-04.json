@@ -1,0 +1,123 @@
+{
+  "date": "2026-11-04",
+  "scope": "Native CPU hierarchy traversal only; does not measure browser frame rate, GPU time, annotation layout, or rendering.",
+  "fixture": "Visible instances of one shared empty definition; isolates hierarchy work independently of geometry size.",
+  "baseline_commit": "1327b6d",
+  "method": {
+    "samples": 31,
+    "warmups": 3,
+    "model_opt_level": 3,
+    "harness_opt_level": 3,
+    "own_builds_running": false
+  },
+  "reproduce_current": "cargo run --offline -p rysmo_model --example perf_annotations -- 10000 50000",
+  "baseline": [
+    {
+      "instances": 10000,
+      "annotations": "without annotations",
+      "timings": {
+        "full hierarchy twice": {
+          "median_ms": 2.687,
+          "p95_ms": 3.602
+        }
+      }
+    },
+    {
+      "instances": 50000,
+      "annotations": "without annotations",
+      "timings": {
+        "full hierarchy twice": {
+          "median_ms": 13.821,
+          "p95_ms": 17.486
+        }
+      }
+    }
+  ],
+  "optimized": [
+    {
+      "instances": 10000,
+      "annotations": "without annotations",
+      "timings": {
+        "full hierarchy twice": {
+          "median_ms": 2.686856,
+          "p95_ms": 4.727665
+        },
+        "annotation hierarchy once": {
+          "median_ms": 0.001396,
+          "p95_ms": 0.001467
+        }
+      }
+    },
+    {
+      "instances": 10000,
+      "annotations": "with one root annotation",
+      "timings": {
+        "full hierarchy twice": {
+          "median_ms": 1.989405,
+          "p95_ms": 2.981802
+        },
+        "annotation hierarchy once": {
+          "median_ms": 0.335176,
+          "p95_ms": 0.352707
+        }
+      }
+    },
+    {
+      "instances": 10000,
+      "annotations": "with annotations on every instance",
+      "timings": {
+        "full hierarchy twice": {
+          "median_ms": 1.765279,
+          "p95_ms": 2.821233
+        },
+        "annotation hierarchy once": {
+          "median_ms": 0.879322,
+          "p95_ms": 1.826741
+        }
+      }
+    },
+    {
+      "instances": 50000,
+      "annotations": "without annotations",
+      "timings": {
+        "full hierarchy twice": {
+          "median_ms": 10.877959,
+          "p95_ms": 14.003708
+        },
+        "annotation hierarchy once": {
+          "median_ms": 0.001397,
+          "p95_ms": 0.001467
+        }
+      }
+    },
+    {
+      "instances": 50000,
+      "annotations": "with one root annotation",
+      "timings": {
+        "full hierarchy twice": {
+          "median_ms": 10.823762,
+          "p95_ms": 13.275107
+        },
+        "annotation hierarchy once": {
+          "median_ms": 1.983188,
+          "p95_ms": 2.267379
+        }
+      }
+    },
+    {
+      "instances": 50000,
+      "annotations": "with annotations on every instance",
+      "timings": {
+        "full hierarchy twice": {
+          "median_ms": 10.472661,
+          "p95_ms": 11.611729
+        },
+        "annotation hierarchy once": {
+          "median_ms": 5.194984,
+          "p95_ms": 6.17439
+        }
+      }
+    }
+  ],
+  "interpretation": "The original overlay traversed all occurrences twice. The optimized overlay shares one annotation-only traversal and skips the instance hierarchy when no definition contains text or dimensions. The current full-hierarchy control also includes the shared working-path optimization."
+}
