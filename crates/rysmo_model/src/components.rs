@@ -348,7 +348,9 @@ pub(crate) fn refresh_glue(doc: &mut Document, before: &BTreeMap<InstanceId, Glu
                         .map(|_| host)
                 })
             };
-            updates.push((owner, *id, transform, target));
+            if transform != instance.transform || target != instance.glued_to {
+                updates.push((owner, *id, transform, target));
+            }
         }
     }
     for (owner, id, transform, target) in updates {
@@ -422,6 +424,17 @@ mod opening_tests {
         let Element::Instance(id) = made.created[0] else { panic!() };
         id
     }
+    #[test]
+    fn unrelated_edits_keep_glued_definition_snapshots_shared() {
+        let (mut editor, definition, face) = fixture();
+        place(&mut editor, definition, face);
+        let root = editor.doc().root.clone();
+        editor.apply(Command::SetUnits { units: crate::Units::Metres }).unwrap();
+        assert!(std::sync::Arc::ptr_eq(&root, &editor.doc().root));
+        assert!(editor.undo());
+        assert!(std::sync::Arc::ptr_eq(&root, &editor.doc().root));
+    }
+
     #[test]
     fn opening_is_shared_by_surface_picking_and_heals_after_move_delete_and_undo() {
         let (mut e, definition, face) = fixture();
