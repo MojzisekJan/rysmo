@@ -10,9 +10,7 @@ pub struct Session {
     pub face: FaceId,
     context: Vec<InstanceId>,
     revision: u64,
-    depth: usize,
-    was_dirty: bool,
-    original: Option<TexturePlacement>,
+    before: rysmo_model::Editor,
     placement: TexturePlacement,
     size: [f64; 2],
     plane: Plane,
@@ -83,9 +81,7 @@ pub fn begin(app: &mut App3d) {
         face,
         context: app.editor.context().to_vec(),
         revision: app.editor.revision(),
-        depth: app.editor.undo_depth(),
-        was_dirty: app.editor.is_dirty(),
-        original,
+        before: app.editor.clone(),
         placement: original.unwrap_or_default(),
         size: texture.size,
         plane,
@@ -125,22 +121,12 @@ fn valid(app: &App3d, session: &Session) -> bool {
     app.editor.revision() == session.revision
         && app.editor.context() == session.context
         && app.editor.mesh().face(session.face).is_some()
-        && (app.editor.undo_depth() == session.depth || app.editor.undo_depth() == session.depth + 1)
 }
 
 pub fn finish(app: &mut App3d, cancel: bool) {
     let Some(session) = app.texture_session.take() else { return };
-    if cancel && valid(app, &session) && app.editor.undo_depth() == session.depth + 1 {
-        if let Err(error) = app
-            .editor
-            .amend_last(Command::SetTexturePlacement { faces: vec![session.face], placement: session.original })
-        {
-            app.message = Some(error.to_string());
-            return;
-        }
-        if !session.was_dirty && app.editor.undo_depth() == session.depth {
-            app.editor.mark_saved();
-        }
+    if valid(app, &session) && (cancel || app.editor.history_position() == session.before.history_position()) {
+        app.editor.restore_checkpoint(session.before);
     }
     app.message = None;
 }
@@ -148,7 +134,7 @@ pub fn finish(app: &mut App3d, cancel: bool) {
 fn update(app: &mut App3d, session: &mut Session, pins: [[f64; 2]; 4]) -> bool {
     let placement = TexturePlacement { pins: Some(pins), ..session.placement };
     let command = Command::SetTexturePlacement { faces: vec![session.face], placement: Some(placement) };
-    let result = if app.editor.undo_depth() == session.depth + 1 {
+    let result = if app.editor.history_position() != session.before.history_position() {
         app.editor.amend_last(command)
     } else {
         app.editor.apply(command)
@@ -296,7 +282,7 @@ pub fn reset(app: &mut App3d) {
         return;
     }
     let command = Command::SetTexturePlacement { faces: vec![session.face], placement: None };
-    let result = if app.editor.undo_depth() == session.depth + 1 {
+    let result = if app.editor.history_position() != session.before.history_position() {
         app.editor.amend_last(command)
     } else {
         app.editor.apply(command)
@@ -311,9 +297,6 @@ pub fn reset(app: &mut App3d) {
             session.handles = crate::texture_pins::TILE.map(|p| (DVec2::from_array(p) + origin).to_array());
             session.placement.pins = Some(session.handles);
             session.revision = app.editor.revision();
-            if !session.was_dirty && app.editor.undo_depth() == session.depth {
-                app.editor.mark_saved();
-            }
             session.dragging = None;
             session.relocating = None;
         }
@@ -655,5 +638,86 @@ mod tests {
         let face = app.editor.mesh().faces().next().unwrap().0;
         assert_eq!(saved.root.mesh.face(face).unwrap().uv, app.editor.mesh().face(face).unwrap().uv);
         std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn cancel_texture_at_history_limit_restores_model() {
+        let mut app = fixture();
+        while app.editor.undo_depth() < rysmo_model::UNDO_LIMIT {
+            let units = if app.editor.doc().units == rysmo_model::Units::Metres {
+                rysmo_model::Units::Centimetres
+            } else {
+                rysmo_model::Units::Metres
+            };
+            app.editor.apply(Command::SetUnits { units }).unwrap();
+        }
+        let before = app.editor.doc().clone();
+        begin(&mut app);
+        move_pin(&mut app, 0, DVec3::X * 0.2);
+        assert_ne!(app.editor.doc(), &before);
+        finish(&mut app, true);
+        assert_eq!(app.editor.doc(), &before, "Cancel kept the texture edit after the Undo limit");
+        assert_eq!(app.editor.undo_depth(), rysmo_model::UNDO_LIMIT);
+        for _ in 0..rysmo_model::UNDO_LIMIT {
+            assert!(app.editor.undo());
+        }
+        assert_eq!(app.editor.mesh().face_count(), 0);
+    }
+    #[test]
+    fn cancel_texture_preserves_redo_branch() {
+        let mut app = fixture();
+        app.editor.apply(Command::SetUnits { units: rysmo_model::Units::Metres }).unwrap();
+        app.editor.undo();
+        let before = app.editor.doc().clone();
+        let redo = app.editor.redo_label().map(str::to_owned);
+        assert!(redo.is_some());
+        begin(&mut app);
+        move_pin(&mut app, 0, DVec3::X * 0.2);
+        finish(&mut app, true);
+        assert_eq!(app.editor.doc(), &before);
+        assert_eq!(app.editor.redo_label(), redo.as_deref(), "Cancelled preview erased Redo");
+        assert!(app.editor.redo());
+        let mut expected = before;
+        expected.units = rysmo_model::Units::Metres;
+        assert_eq!(app.editor.doc(), &expected);
+    }
+
+    #[test]
+    fn texture_edits_at_the_history_limit_have_one_undo_step() {
+        let mut app = fixture();
+        while app.editor.undo_depth() < rysmo_model::UNDO_LIMIT {
+            let units = if app.editor.doc().units == rysmo_model::Units::Metres {
+                rysmo_model::Units::Centimetres
+            } else {
+                rysmo_model::Units::Metres
+            };
+            app.editor.apply(Command::SetUnits { units }).unwrap();
+        }
+        let before = app.editor.doc().clone();
+        begin(&mut app);
+        move_pin(&mut app, 0, DVec3::X * 0.2);
+        move_pin(&mut app, 1, DVec3::Y * 0.2);
+        let edited = app.editor.doc().clone();
+        finish(&mut app, false);
+        assert_eq!(app.editor.undo_depth(), rysmo_model::UNDO_LIMIT);
+        app.editor.undo();
+        assert_eq!(app.editor.doc(), &before);
+        app.editor.redo();
+        assert_eq!(app.editor.doc(), &edited);
+    }
+    #[test]
+    fn cancelling_preview_restores_clean_state_and_advances_revision() {
+        let mut app = fixture();
+        app.editor.mark_saved();
+        let before = app.editor.doc().clone();
+        let depth = app.editor.undo_depth();
+        begin(&mut app);
+        move_pin(&mut app, 0, DVec3::X * 0.2);
+        let revision = app.editor.revision();
+        finish(&mut app, true);
+        assert_eq!(app.editor.doc(), &before);
+        assert_eq!(app.editor.undo_depth(), depth);
+        assert!(!app.editor.is_dirty());
+        assert!(app.editor.revision() > revision);
     }
 }
