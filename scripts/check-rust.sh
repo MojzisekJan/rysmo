@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# The Rust checks used locally and in GitHub Actions. GUI code is type-checked;
-# the headless libraries run tests without a GPU or desktop session.
+# The Rust checks used locally and in GitHub Actions. Application unit tests
+# exercise editor/UI state without opening a window or creating a GPU device.
 set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
 if [[ $# -gt 1 || ( $# -eq 1 && "$1" != --offline ) ]]; then
@@ -14,8 +14,6 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets "${cargo_options[@]}" -- -D warnings
 cargo test --lib -p rysmo_math -p rysmo_mesh -p rysmo_model -p rysmo_infer \
     -p rysmo_tools -p rysmo_io -p rysmo_mcp -p rysmo_library "${cargo_options[@]}"
-# Exercise browser recovery scheduling without linking Bevy's GPU test binary.
-mkdir -p target/checks
-rustc --edition=2024 --test -D warnings crates/rysmo_app/src/autosave.rs -o target/checks/autosave-tests
-target/checks/autosave-tests
+# The portable profile avoids multi-gigabyte debug symbols in the linked app suite.
+cargo test --lib -p rysmo_app --profile portable "${cargo_options[@]}"
 cargo check -p rysmo_app --target wasm32-unknown-unknown --profile web-release "${cargo_options[@]}"

@@ -36,11 +36,12 @@ scripts/check-rust.sh --offline
 ```
 
 The script checks formatting, runs workspace Clippy with `-D warnings`, executes
-all eight headless library suites, and checks the browser app with `web-release`.
-The script also runs the browser recovery module's standalone tests.
-Clippy also type-checks native application tests and examples. Running the full
-GPU-linked application tests or checking GUI behaviour requires a suitable host;
-these are additional checks for changes to the application.
+all eight core library suites and the application unit tests, and checks the
+browser app with `web-release`. The application suite uses the `portable` profile
+to limit debug symbols and disk use. It links renderer dependencies but does not
+open a window or create a GPU device; no desktop session is required. Browser
+recovery scheduling is included in that suite. Clippy also checks examples.
+Interactive GUI verification remains a separate check on a suitable host.
 
 GitHub Actions runs the same script with Rust 1.98.1 on Linux, plus the JavaScript
 file/storage tests and Python web packaging/server tests. The declared minimum

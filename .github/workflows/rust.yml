@@ -16,7 +16,7 @@ concurrency:
 jobs:
   rust:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       CARGO_TERM_COLOR: always
       CARGO_BUILD_JOBS: 2
