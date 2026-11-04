@@ -65,3 +65,6 @@ pub use view::MeshView;
 /// Edges between faces that meet at less than this angle (degrees) are softened and
 /// smoothed when push/pull or Follow Me makes them, so curved surfaces look round.
 pub const SOFTEN_ANGLE_DEG: f64 = 25.0;
+
+#[cfg(test)]
+mod transform_validation_tests;

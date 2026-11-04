@@ -214,6 +214,12 @@ impl Mesh {
         vertices: &BTreeSet<VertexId>,
         f: impl Fn(DVec3) -> DVec3,
     ) -> Result<(), MeshError> {
+        for id in vertices {
+            let vertex = self.vertex(*id).ok_or(MeshError::Missing(id.0))?;
+            if !f(vertex.pos).is_finite() {
+                return Err(MeshError::Invalid("transform produced a non-finite point".into()));
+            }
+        }
         if self.move_clear_of_the_rest(vertices, &f) {
             return Ok(());
         }

@@ -74,7 +74,7 @@ pub fn read(name: &str, bytes: &[u8], options: Options) -> Result<Imported> {
     if imported.document.definition_bounds(None).is_none() {
         return error("The file contains no supported geometry.");
     }
-    imported.document.fix_next_id();
+    imported.document.fix_next_id().map_err(|e| ImportError(e.to_string()))?;
     Ok(imported)
 }
 

@@ -530,6 +530,9 @@ pub fn load(text: &str) -> Result<Document, IoError> {
         {
             return Err(IoError::Format(format!("material {} uses image {}, which is not defined", m.id, t.image)));
         }
+        if m.texture.is_some_and(|texture| !texture.size.iter().all(|v| v.is_finite() && *v > 0.0)) {
+            return Err(IoError::Format(format!("material {} has an invalid texture size", m.id)));
+        }
         if !m.glow.is_finite() || m.glow < 0.0 {
             return Err(IoError::Format(format!("material {} has an invalid glow", m.id)));
         }
@@ -766,6 +769,9 @@ pub fn load(text: &str) -> Result<Document, IoError> {
         let axis = |a: [f64; 3]| DVec4::new(a[0], a[1], a[2], 0.0);
         let o = DVec3::from_array(i.o) * scale;
         let transform = DMat4::from_cols(axis(i.x), axis(i.y), axis(i.z), DVec4::new(o.x, o.y, o.z, 1.0));
+        if !transform.is_finite() || !transform.inverse().is_finite() {
+            return Err(IoError::Format(format!("instance {} has a singular or non-finite transform", i.id)));
+        }
         rysmo_model::component_data::validate_attributes(&i.attributes).map_err(|e| IoError::Format(e.to_string()))?;
         let inst = Instance {
             glued_to: i.glued_to,
@@ -858,7 +864,7 @@ pub fn load(text: &str) -> Result<Document, IoError> {
             return Err(IoError::Format("Invalid section hatch".into()));
         }
     }
-    doc.fix_next_id();
+    doc.fix_next_id().map_err(|e| IoError::Format(e.to_string()))?;
     Ok(doc)
 }
 

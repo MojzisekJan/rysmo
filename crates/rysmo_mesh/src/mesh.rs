@@ -314,7 +314,7 @@ impl Mesh {
             edges,
             faces,
             curves,
-            next_id: max + 1,
+            next_id: max.checked_add(1).ok_or_else(|| MeshError::Invalid("Mesh identifier overflow".into()))?,
             edge_index: BlockMap::new(),
             vertex_edges: BlockMap::new(),
             snapshot: Default::default(),

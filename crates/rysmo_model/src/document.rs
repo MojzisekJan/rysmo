@@ -299,7 +299,7 @@ impl Document {
     }
 
     /// Raises the id counter above every id in use (after loading).
-    pub fn fix_next_id(&mut self) {
+    pub fn fix_next_id(&mut self) -> Result<(), crate::CommandError> {
         let mut top = self.next_id.saturating_sub(1);
         let mut see = |x: u64| top = top.max(x);
         for d in std::iter::once(&self.root).chain(self.definitions.values()) {
@@ -329,7 +329,11 @@ impl Document {
                 context.hidden_instances.iter().for_each(|id| see(id.0));
             }
         }
+        if top > u64::MAX - 2_000_000 {
+            return Err(crate::CommandError::Invalid("Document identifiers leave no room for editing".into()));
+        }
         self.next_id = top + 1;
+        Ok(())
     }
 
     pub fn def(&self, id: Option<DefinitionId>) -> Option<&Definition> {

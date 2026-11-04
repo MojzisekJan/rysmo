@@ -107,7 +107,7 @@ pub fn evaluate(procedure: &Procedure) -> Result<Clipboard, CommandError> {
     doc.scenes.clear();
     doc.camera = None;
     doc.photo_match = None;
-    doc.fix_next_id();
+    doc.fix_next_id()?;
     match &procedure.operation {
         Operation::Array { options } => {
             if doc.root.instances.len() != 1 || doc.root.mesh.face_count() != 0 {
