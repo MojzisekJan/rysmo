@@ -90,3 +90,6 @@ pub mod section_hatching;
 pub mod sheets;
 
 pub mod procedures;
+
+#[cfg(test)]
+mod history_tests;

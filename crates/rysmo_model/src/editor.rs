@@ -12,9 +12,29 @@ use crate::{command, dimensions, text};
 struct Step {
     label: String,
     before: Document,
+    state: u64,
     /// Whether the command itself moved the camera. Otherwise Undo/Redo keep the current
     /// view, which saves record in the document without adding history.
     camera: bool,
+}
+
+/// State identities survive Undo/Redo and are never reused on a new branch.
+#[derive(Clone, Debug)]
+struct HistoryState {
+    current: u64,
+    next: u64,
+    saved: Option<u64>,
+}
+impl Default for HistoryState {
+    fn default() -> Self {
+        Self { current: 0, next: 1, saved: Some(0) }
+    }
+}
+impl HistoryState {
+    fn advance(&mut self) {
+        self.current = self.next;
+        self.next += 1;
+    }
 }
 
 /// A document being edited: history, selection, the editing context, and a revision
@@ -33,8 +53,7 @@ pub struct Editor {
     revision: u64,
     /// How many of the revisions only changed the selection.
     selection_changes: u64,
-    /// Changes since the last save.
-    dirty: bool,
+    history: HistoryState,
 }
 
 /// How many steps the history keeps.
@@ -442,16 +461,16 @@ impl Editor {
     }
 
     pub fn is_dirty(&self) -> bool {
-        self.dirty
+        self.history.saved != Some(self.history.current)
     }
 
     pub fn mark_saved(&mut self) {
-        self.dirty = false;
+        self.history.saved = Some(self.history.current);
     }
 
     /// Marks unsaved changes (a document brought back from an autosave).
     pub fn mark_dirty(&mut self) {
-        self.dirty = true;
+        self.history.saved = None;
     }
 
     /// Replaces the document (opening a file), clearing history, selection and context.
@@ -478,12 +497,12 @@ impl Editor {
                     self.doc.refresh_dimensions();
                     self.doc.refresh_texts();
                     let camera = before.camera != self.doc.camera;
-                    self.undo.push(Step { label, before, camera });
+                    self.undo.push(Step { label, before, camera, state: self.history.current });
                     if self.undo.len() > UNDO_LIMIT {
                         self.undo.remove(0);
                     }
                     self.redo.clear();
-                    self.dirty = true;
+                    self.history.advance();
                     self.fix_context();
                     self.prune_selection();
                     if reselect_curve {
@@ -506,15 +525,26 @@ impl Editor {
     pub fn amend_last(&mut self, cmd: Command) -> Result<Outcome, CommandError> {
         let step = self.undo.last().ok_or_else(|| CommandError::Invalid("There is no operation to correct.".into()))?;
         let mut document = step.before.clone();
+        let baseline_camera = document.camera;
+        let previous_camera_change = step.camera;
+        let baseline_state = step.state;
         let label = cmd.label().to_string();
         document.refresh_dimensions();
         document.refresh_texts();
         let outcome = cmd.run(&mut document, self.active_definition())?;
+        let camera = document.camera != baseline_camera;
+        if !camera && !previous_camera_change {
+            document.camera = self.doc.camera;
+        }
         if !outcome.changed {
-            self.doc = self.undo.last().unwrap().before.clone();
+            let mut baseline = self.undo.last().unwrap().before.clone();
+            if !previous_camera_change {
+                baseline.camera = self.doc.camera;
+            }
+            self.doc = baseline;
             self.undo.pop();
             self.redo.clear();
-            self.dirty = true;
+            self.history.current = baseline_state;
             self.revision += 1;
             self.fix_context();
             self.prune_selection();
@@ -523,13 +553,31 @@ impl Editor {
         document.refresh_dimensions();
         document.refresh_texts();
         self.doc = document;
-        self.undo.last_mut().unwrap().label = label;
+        let step = self.undo.last_mut().unwrap();
+        step.label = label;
+        step.camera = camera;
         self.redo.clear();
-        self.dirty = true;
+        self.history.advance();
         self.revision += 1;
         self.fix_context();
         self.prune_selection();
         Ok(outcome)
+    }
+
+    /// Opaque document state identity, independent of the bounded history length.
+    pub fn history_position(&self) -> u64 {
+        self.history.current
+    }
+
+    /// Restore a preview's editor and history while retaining the latest saved point,
+    /// current view and monotonic revision/state counters.
+    pub fn restore_checkpoint(&mut self, mut checkpoint: Self) {
+        checkpoint.doc.camera = self.doc.camera;
+        checkpoint.revision = self.revision + 1;
+        checkpoint.selection_changes = self.selection_changes;
+        checkpoint.history.next = checkpoint.history.next.max(self.history.next);
+        checkpoint.history.saved = self.history.saved;
+        *self = checkpoint;
     }
 
     /// Number of operations currently available to Undo.
@@ -547,17 +595,19 @@ impl Editor {
     }
 
     pub fn undo(&mut self) -> bool {
-        let Some(Step { label, before, camera }) = self.undo.pop() else { return false };
+        let Some(Step { label, before, camera, state }) = self.undo.pop() else { return false };
         let after = self.restore(before, camera);
-        self.redo.push(Step { label, before: after, camera });
+        self.redo.push(Step { label, before: after, camera, state: self.history.current });
+        self.history.current = state;
         self.after_history_move();
         true
     }
 
     pub fn redo(&mut self) -> bool {
-        let Some(Step { label, before: after, camera }) = self.redo.pop() else { return false };
+        let Some(Step { label, before: after, camera, state }) = self.redo.pop() else { return false };
         let before = self.restore(after, camera);
-        self.undo.push(Step { label, before, camera });
+        self.undo.push(Step { label, before, camera, state: self.history.current });
+        self.history.current = state;
         self.after_history_move();
         true
     }
@@ -571,7 +621,6 @@ impl Editor {
     }
 
     fn after_history_move(&mut self) {
-        self.dirty = true;
         self.fix_context();
         self.prune_selection();
         self.revision += 1;
