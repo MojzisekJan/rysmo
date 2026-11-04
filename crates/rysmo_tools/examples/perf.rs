@@ -205,7 +205,9 @@ fn scene(bench: &mut Bench, name: &'static str, count: usize, editor: &Editor) {
     let apply = |command: Command| {
         let mut e = editor.clone();
         e.apply(command).expect("command runs");
+        std::hint::black_box(e);
     };
+    bench.time(name, "change units", || apply(Command::SetUnits { units: rysmo_model::Units::Metres }));
     bench.time(name, "clone editor", || drop(editor.clone()));
     bench.time(name, "occurrences", || drop(doc.occurrences(&[])));
     bench.time(name, "move one", || apply(Command::Move { elements: single.clone(), offset }));

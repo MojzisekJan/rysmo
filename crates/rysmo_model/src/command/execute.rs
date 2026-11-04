@@ -31,14 +31,13 @@ impl Command {
             return invalid("transforming selected text is not implemented yet");
         }
         let mut out = Outcome { changed: true, ..Default::default() };
-        let faces_before: BTreeSet<FaceId> = doc.def(def).expect("checked").mesh.faces().map(|(f, _)| f).collect();
-        let new_faces = |doc: &Document| -> Vec<Element> {
+        let new_faces = |doc: &Document, before: &Mesh| -> Vec<Element> {
             doc.def(def)
                 .expect("checked")
                 .mesh
                 .faces()
                 .map(|(f, _)| f)
-                .filter(|f| !faces_before.contains(f))
+                .filter(|f| before.face(*f).is_none())
                 .map(Element::Face)
                 .collect()
         };
@@ -273,6 +272,7 @@ impl Command {
                 return Command::DrawLines { lines, facing: Some(axes.z()) }.run(doc, def);
             }
             Command::StampOnFace { sources, target, offset, height } => {
+                let faces_before = doc.def(def).expect("checked").mesh.clone();
                 let parent = doc.def(def).unwrap();
                 let region = crate::terrain_region::connected(&parent.mesh, target).map_err(CommandError::Invalid)?;
                 if sources.iter().any(|source| matches!(source, Element::Face(face) if region.face(*face).is_some())) {
@@ -321,7 +321,7 @@ impl Command {
                 let mesh =
                     crate::terrain_region::replace(&parent.mesh, &region, &stamped).map_err(CommandError::Invalid)?;
                 doc.with_mesh(def, |target| *target = mesh).expect("checked");
-                out.created = new_faces(doc);
+                out.created = new_faces(doc, &faces_before);
             }
             Command::StampTerrainInstance { sources, target, offset, height } => {
                 if sources.contains(&Element::Instance(target)) {
@@ -361,6 +361,7 @@ impl Command {
                 return Command::StampTerrainRings { outlines: vec![outline], offset, height }.run(doc, def);
             }
             Command::StampTerrainRings { outlines, offset, height } => {
+                let faces_before = doc.def(def).expect("checked").mesh.clone();
                 let source = doc.def(def).unwrap();
                 let axes = source.axes;
                 let basis = axes.basis();
@@ -377,13 +378,14 @@ impl Command {
                 .map_err(CommandError::Invalid)?;
                 stamped.map_all(|p| axes.origin + basis.transform_vector3(p));
                 doc.with_mesh(def, |mesh| *mesh = stamped).expect("checked");
-                out.created = new_faces(doc);
+                out.created = new_faces(doc, &faces_before);
             }
             Command::AddTerrainDetail { face, point, offset } => {
+                let faces_before = doc.def(def).expect("checked").mesh.clone();
                 let (_, changed) =
                     doc.with_mesh(def, |mesh| mesh.add_terrain_detail(face, point, offset)).expect("checked")?;
                 out.changed = changed;
-                out.created = new_faces(doc);
+                out.created = new_faces(doc, &faces_before);
             }
             Command::FlipTerrainEdge { edge } => {
                 let new_edge = doc.with_mesh(def, |mesh| mesh.flip_terrain_edge(edge)).expect("checked")?;
@@ -569,6 +571,7 @@ impl Command {
                 mesh_op(doc, &mut |mesh| mesh.set_curve_radius(curve, radius).map(|_| Vec::new()))?;
             }
             Command::DrawFreehand { points, normal } => {
+                let faces_before = doc.def(def).expect("checked").mesh.clone();
                 if points.len() < 2
                     || !points.iter().all(|p| p.is_finite())
                     || !normal.is_finite()
@@ -594,24 +597,27 @@ impl Command {
                     )?;
                     Ok(edges(members))
                 })?;
-                out.created.extend(new_faces(doc));
+                out.created.extend(new_faces(doc, &faces_before));
             }
             Command::DrawLines { lines, facing } => {
+                let faces_before = doc.def(def).expect("checked").mesh.clone();
                 let lines: Vec<_> = lines.into_iter().map(|[a, b]| (a, b)).collect();
                 out.created = mesh_op(doc, &mut |m| m.add_lines(&lines, facing).map(edges))?;
-                out.created.extend(new_faces(doc));
+                out.created.extend(new_faces(doc, &faces_before));
             }
             Command::DrawRectangle { corner, u, v, facing } => {
+                let faces_before = doc.def(def).expect("checked").mesh.clone();
                 if u.length() < EPS || v.length() < EPS || u.cross(v).length() < EPS * EPS {
                     return invalid("the rectangle has no area");
                 }
                 let p = [corner, corner + u, corner + u + v, corner + v];
                 let lines: Vec<_> = (0..4).map(|i| (p[i], p[(i + 1) % 4])).collect();
                 out.created = mesh_op(doc, &mut |m| m.add_lines(&lines, facing).map(edges))?;
-                out.created.extend(new_faces(doc));
+                out.created.extend(new_faces(doc, &faces_before));
             }
             Command::DrawCircle { centre, normal, radius, segments, start }
             | Command::DrawPolygon { centre, normal, radius, segments, start } => {
+                let faces_before = doc.def(def).expect("checked").mesh.clone();
                 if !radius.is_finite()
                     || !centre.is_finite()
                     || !normal.is_finite()
@@ -654,9 +660,10 @@ impl Command {
                     )?;
                     Ok(edges(members))
                 })?;
-                out.created.extend(new_faces(doc));
+                out.created.extend(new_faces(doc, &faces_before));
             }
             Command::DrawArc { start, end, normal, bulge, segments } => {
+                let faces_before = doc.def(def).expect("checked").mesh.clone();
                 let pts = arc_points(start, end, normal, bulge, segments)
                     .ok_or_else(|| CommandError::Invalid("the arc needs a chord, a bulge and segments".into()))?;
                 let lines: Vec<_> = pts.windows(2).map(|w| (w[0], w[1])).collect();
@@ -682,7 +689,7 @@ impl Command {
                     )?;
                     Ok(edges(members))
                 })?;
-                out.created.extend(new_faces(doc));
+                out.created.extend(new_faces(doc, &faces_before));
             }
             Command::FilletEdges { edges, radius, segments } => {
                 out.created = doc
@@ -691,6 +698,7 @@ impl Command {
                     .map_err(CommandError::Invalid)?;
             }
             Command::DrawThreePointArc { start, through, end, normal, segments } => {
+                let faces_before = doc.def(def).expect("checked").mesh.clone();
                 let (arc, points) =
                     crate::arcs::three_point_points(start, through, end, normal, segments).ok_or_else(|| {
                         CommandError::Invalid(
@@ -715,9 +723,10 @@ impl Command {
                     )?;
                     Ok(edges(members))
                 })?;
-                out.created.extend(new_faces(doc));
+                out.created.extend(new_faces(doc, &faces_before));
             }
             Command::DrawCentreArc { centre, normal, start, radius, sweep, segments, pie } => {
+                let faces_before = doc.def(def).expect("checked").mesh.clone();
                 let points=centre_arc_points(centre,normal,start,radius,sweep,segments)
                     .ok_or_else(||CommandError::Invalid("arc needs a finite centre/radius, perpendicular start, 2-4096 segments and a nonzero sweep below 360 degrees".into()))?;
                 let lines: Vec<_> = points.windows(2).map(|p| (p[0], p[1])).collect();
@@ -746,7 +755,7 @@ impl Command {
                     all.dedup();
                     Ok(edges(all))
                 })?;
-                out.created.extend(new_faces(doc));
+                out.created.extend(new_faces(doc, &faces_before));
             }
             Command::PushPull { face, distance, keep_base } => {
                 out.created = mesh_op(doc, &mut |m| {
@@ -1152,12 +1161,14 @@ impl Command {
                 out.created = elements;
             }
             Command::OffsetFace { face, distance } => {
+                let faces_before = doc.def(def).expect("checked").mesh.clone();
                 out.created = mesh_op(doc, &mut |m| m.offset_face(face, distance).map(edges))?;
-                out.created.extend(new_faces(doc));
+                out.created.extend(new_faces(doc, &faces_before));
             }
             Command::OffsetEdges { edges: chain, normal, distance } => {
+                let faces_before = doc.def(def).expect("checked").mesh.clone();
                 out.created = mesh_op(doc, &mut |m| m.offset_chain(&chain, normal, distance).map(edges))?;
-                out.created.extend(new_faces(doc));
+                out.created.extend(new_faces(doc, &faces_before));
             }
             Command::FollowMe { face, path } => {
                 out.created = mesh_op(doc, &mut |m| {
@@ -1668,6 +1679,7 @@ impl Command {
                 sections.active = id;
             }
             Command::IntersectFaces { elements, with_model, context } => {
+                let faces_before = doc.def(def).expect("checked").mesh.clone();
                 if doc
                     .resolve(&context)
                     .map_err(|error| CommandError::Invalid(format!("invalid intersection context: {error}")))?
@@ -1682,7 +1694,7 @@ impl Command {
                     out.changed = false;
                 } else {
                     out.created = mesh_op(doc, &mut |m| m.add_lines(&lines, None).map(edges))?;
-                    out.created.extend(new_faces(doc));
+                    out.created.extend(new_faces(doc, &faces_before));
                     out.changed = before != doc.def(def).unwrap().mesh;
                 }
             }
