@@ -41,3 +41,19 @@ fn invertible_mirrored_instances_remain_supported() {
     let round_trip = crate::load(&crate::save(&doc)).unwrap();
     assert_eq!(round_trip, doc);
 }
+
+#[test]
+fn native_guides_reject_directions_that_overflow_normalization() {
+    let text = r#"{"format":"rysmo","version":2,"guides":[{"id":1,"line":{"origin":[0,0,0],"dir":[1e308,1e308,0]}}]}"#;
+    assert!(crate::load(&text.replace("1e308", "1")).is_ok());
+    assert!(crate::load(text).is_err());
+}
+
+#[test]
+fn saving_large_finite_coordinates_keeps_them_finite() {
+    let source = r#"{"format":"rysmo","version":2,"guides":[{"id":1,"point":{"p":[1e308,0,0]}}]}"#;
+    let doc = crate::load(source).unwrap();
+    let saved = crate::save(&doc);
+    let loaded = crate::load(&saved).expect("Saving finite coordinates must not replace them with null");
+    assert_eq!(loaded, doc);
+}

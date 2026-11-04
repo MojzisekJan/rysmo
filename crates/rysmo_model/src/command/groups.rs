@@ -80,7 +80,10 @@ pub(super) fn make_definition(
         x.transform = back * x.transform;
         (k, x)
     });
-    let guides = moved_guides.into_iter().map(|(k, g)| (k, map_guide(&g, &back)));
+    let guides = moved_guides
+        .into_iter()
+        .map(|(k, g)| Ok((k, map_guide(&g, &back)?)))
+        .collect::<Result<BTreeMap<_, _>, CommandError>>()?;
     let instance_map = inst.iter().map(|id| (*id, *id)).collect();
     let dimensions = moved_dimensions
         .into_iter()
@@ -105,7 +108,7 @@ pub(super) fn make_definition(
             group,
             mesh,
             instances: children.collect(),
-            guides: guides.collect(),
+            guides,
             sections,
             component: Default::default(),
             parametric: None,
@@ -260,7 +263,7 @@ pub(crate) fn explode(
     }
     for g in source.guides.values() {
         let id = GuideId(doc.reserve_id());
-        doc.def_mut(def).expect("checked").guides.insert(id, map_guide(g, &t));
+        doc.def_mut(def).expect("checked").guides.insert(id, map_guide(g, &t)?);
         out.push(Element::Guide(id));
     }
     for (old, plane) in &source.sections.planes {

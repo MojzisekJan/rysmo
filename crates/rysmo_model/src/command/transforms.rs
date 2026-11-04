@@ -43,17 +43,29 @@ pub(super) fn split(
     (geo, inst, guides, dimensions)
 }
 
-pub(super) fn map_guide(g: &Guide, m: &DMat4) -> Guide {
-    match g {
-        Guide::Line { origin, dir, hidden } => Guide::Line {
-            origin: m.transform_point3(*origin),
-            dir: m.transform_vector3(*dir).normalize_or(*dir),
-            hidden: *hidden,
-        },
+pub(super) fn map_guide(g: &Guide, m: &DMat4) -> Result<Guide, CommandError> {
+    let mapped = match g {
+        Guide::Line { origin, dir, hidden } => {
+            Guide::Line { origin: m.transform_point3(*origin), dir: m.transform_vector3(*dir), hidden: *hidden }
+        }
         Guide::Point { p, origin, hidden } => {
             Guide::Point { p: m.transform_point3(*p), origin: origin.map(|p| m.transform_point3(p)), hidden: *hidden }
         }
+    };
+    if !mapped.valid() {
+        return invalid("transformed guide has invalid coordinates or direction");
     }
+    Ok(match mapped {
+        Guide::Line { origin, dir, hidden } => Guide::Line { origin, dir: dir.normalize(), hidden },
+        point => point,
+    })
+}
+
+fn instance_transform(transform: DMat4) -> Result<DMat4, CommandError> {
+    if !transform.is_finite() || !transform.inverse().is_finite() {
+        return invalid("transformed component needs a finite, invertible matrix");
+    }
+    Ok(transform)
 }
 /// Applies an affine map to geometry, instances and guides of a definition.
 pub(crate) fn transform_items(
@@ -119,17 +131,21 @@ pub(crate) fn transform_items(
             .planes
             .get_mut(&id)
             .ok_or_else(|| CommandError::Invalid("section plane is missing".into()))?;
-        *plane = plane.transformed(m);
+        let transformed = plane.transformed(m);
+        if !transformed.valid() {
+            return invalid("transformed section plane has invalid placement");
+        }
+        *plane = transformed;
     }
     let d = doc.def_mut(def).expect("checked");
     for i in inst.iter() {
         if let Some(x) = d.instances.get_mut(i) {
-            x.transform = m * x.transform;
+            x.transform = instance_transform(m * x.transform)?;
         }
     }
     for g in guides {
         if let Some(x) = d.guides.get_mut(&g) {
-            *x = map_guide(x, &m);
+            *x = map_guide(x, &m)?;
         }
     }
     for (id, text) in original_texts {
@@ -239,14 +255,21 @@ pub(super) fn copy_items(
             [DVec3::X, DVec3::Y, DVec3::Z].iter().all(|axis| mk.transform_vector3(*axis).distance(*axis) < 1e-10);
         for plane in &sections {
             let id = doc.reserve_id();
-            doc.def_mut(def).unwrap().sections.planes.insert(id, plane.transformed(mk));
+            let transformed = plane.transformed(mk);
+            if !transformed.valid() {
+                return invalid("copied section plane has invalid placement");
+            }
+            doc.def_mut(def).unwrap().sections.planes.insert(id, transformed);
             out.push(Element::Section(id));
         }
         let mut instance_map = BTreeMap::new();
         for i in &inst {
             let Some(x) = doc.def(def).expect("checked").instances.get(i).cloned() else { continue };
             let id = InstanceId(doc.reserve_id());
-            doc.def_mut(def).expect("checked").instances.insert(id, Instance { transform: mk * x.transform, ..x });
+            doc.def_mut(def)
+                .expect("checked")
+                .instances
+                .insert(id, Instance { transform: instance_transform(mk * x.transform)?, ..x });
             instance_map.insert(*i, id);
             out.push(Element::Instance(id));
         }
@@ -293,7 +316,7 @@ pub(super) fn copy_items(
         for g in &guides {
             let Some(x) = doc.def(def).expect("checked").guides.get(g).copied() else { continue };
             let id = GuideId(doc.reserve_id());
-            doc.def_mut(def).expect("checked").guides.insert(id, map_guide(&x, &mk));
+            doc.def_mut(def).expect("checked").guides.insert(id, map_guide(&x, &mk)?);
             out.push(Element::Guide(id));
         }
     }

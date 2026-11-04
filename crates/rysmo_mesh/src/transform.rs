@@ -498,6 +498,9 @@ impl Mesh {
         let mut out = Vec::new();
         for k in 1..=copies.max(1) {
             let map = |p| f(p, k);
+            if t.lines.iter().any(|line| !map(line.start).is_finite() || !map(line.end).is_finite()) {
+                return Err(MeshError::Invalid("copy produced a non-finite point".into()));
+            }
             let clear = self.clear_shells(&t, &shells, &map);
             for shell in &clear {
                 out.extend(self.place_shell(&t, shell, &map)?);
@@ -601,8 +604,11 @@ impl Mesh {
     /// template's facing, materials and edge flags. Returns the new elements.
     pub fn stamp(&mut self, t: &Template, f: impl Fn(DVec3) -> DVec3) -> Result<Vec<Element>, MeshError> {
         let mut out = Vec::new();
-        let lines: Vec<(DVec3, DVec3)> =
-            t.lines.iter().map(|line| (f(line.start), f(line.end))).filter(|(a, b)| a.distance(*b) >= EPS).collect();
+        let mut lines: Vec<(DVec3, DVec3)> = t.lines.iter().map(|line| (f(line.start), f(line.end))).collect();
+        if lines.iter().any(|(a, b)| !a.is_finite() || !b.is_finite()) {
+            return Err(MeshError::Invalid("stamp produced a non-finite point".into()));
+        }
+        lines.retain(|(a, b)| a.distance(*b) >= EPS);
         if lines.is_empty() {
             return Ok(out);
         }

@@ -1426,8 +1426,8 @@ impl Command {
                 out.created = vec![Element::Instance(id)];
             }
             Command::AddGuideLine { origin, dir } => {
-                if dir.length() < EPS {
-                    return invalid("a guide line needs a direction");
+                if !(Guide::Line { origin, dir, hidden: false }).valid() || dir.length() < EPS {
+                    return invalid("a guide line needs finite coordinates and a usable direction");
                 }
                 let id = GuideId(doc.reserve_id());
                 doc.def_mut(def)
@@ -1437,6 +1437,9 @@ impl Command {
                 out.created = vec![Element::Guide(id)];
             }
             Command::AddGuidePoint { point } => {
+                if !point.is_finite() {
+                    return invalid("Invalid guide coordinates");
+                }
                 let id = GuideId(doc.reserve_id());
                 doc.def_mut(def)
                     .expect("checked")

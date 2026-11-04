@@ -25,3 +25,27 @@ fn constructing_mesh_with_maximum_id_is_fallible() {
         std::collections::BTreeMap::from([(crate::VertexId(u64::MAX), crate::Vertex { pos: rysmo_math::DVec3::ZERO })]);
     assert!(crate::Mesh::from_parts(vertices, Default::default(), Default::default()).is_err());
 }
+
+#[test]
+fn copying_geometry_rejects_non_finite_results() {
+    use rysmo_math::DVec3;
+    for bad in [f64::INFINITY, f64::NAN] {
+        let mut mesh = crate::Mesh::new();
+        let edges = mesh.add_lines(&[(DVec3::ZERO, DVec3::X)], None).unwrap();
+        let elements = edges.into_iter().map(crate::Element::Edge).collect::<Vec<_>>();
+        let before = mesh.clone();
+        assert!(mesh.copy_elements_with(&elements, 1, |p, _| p + DVec3::splat(bad)).is_err());
+        assert_eq!(mesh, before);
+    }
+}
+
+#[test]
+fn stamping_geometry_rejects_non_finite_results() {
+    use rysmo_math::DVec3;
+    let mut mesh = crate::Mesh::new();
+    mesh.add_lines(&[(DVec3::ZERO, DVec3::X)], None).unwrap();
+    let template = crate::Template::whole(&mesh);
+    let before = mesh.clone();
+    assert!(mesh.stamp(&template, |_| DVec3::splat(f64::NAN)).is_err());
+    assert_eq!(mesh, before);
+}

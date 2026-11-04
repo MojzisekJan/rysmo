@@ -93,3 +93,6 @@ pub mod procedures;
 
 #[cfg(test)]
 mod history_tests;
+
+#[cfg(test)]
+mod numeric_validation_tests;

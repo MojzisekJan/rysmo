@@ -264,7 +264,8 @@ fn metres() -> String {
 /// Rounds to a nanometre so that arithmetic noise (0.30000000000000004) does not reach
 /// the file. This is far below the modelling tolerance of a micrometre.
 fn tidy(x: f64) -> f64 {
-    let r = (x * 1e9).round() / 1e9;
+    let scaled = x * 1e9;
+    let r = if scaled.is_finite() { scaled.round() / 1e9 } else { x };
     if r == 0.0 { 0.0 } else { r }
 }
 
@@ -788,6 +789,9 @@ pub fn load(text: &str) -> Result<Document, IoError> {
     for g in f.guides {
         unique(g.id.0)?;
         known(g.within)?;
+        if !g.guide.valid() {
+            return Err(IoError::Format(format!("guide {} has invalid coordinates or direction", g.id)));
+        }
         let guide = match g.guide {
             Guide::Line { origin, dir, hidden } => {
                 if dir.length() < 1e-12 {

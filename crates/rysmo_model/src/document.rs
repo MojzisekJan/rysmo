@@ -116,6 +116,16 @@ pub enum Guide {
 }
 
 impl Guide {
+    /// Whether the guide has finite coordinates and a usable direction.
+    pub fn valid(&self) -> bool {
+        match self {
+            Self::Line { origin, dir, .. } => {
+                let length = dir.length();
+                origin.is_finite() && dir.is_finite() && length.is_finite() && length >= 1e-12
+            }
+            Self::Point { p, origin, .. } => p.is_finite() && origin.is_none_or(|p| p.is_finite()),
+        }
+    }
     pub fn hidden(&self) -> bool {
         match self {
             Self::Line { hidden, .. } | Self::Point { hidden, .. } => *hidden,
