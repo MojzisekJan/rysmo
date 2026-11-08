@@ -1,6 +1,6 @@
 {
-  "revision": "082833097def905246bc548af3da03b206ca4e19",
-  "tracked_changes": false,
+  "revision": "e9c8be47084de92281188a181a83572d4c6835cf",
+  "tracked_changes": true,
   "assets": {
     "LICENSE": {
       "bytes": 35147,
@@ -52,23 +52,23 @@
     },
     "index.html": {
       "bytes": 5700,
-      "sha256": "73dbaa90f35bf51bc26a6cfa1f45338c0789259ad3bd13f71929f533859cd2ac"
+      "sha256": "685150a7fe00f6dc6555cbfe9595cbc13e6d8616733a191eb3ca223d685412f5"
     },
-    "rysmo-5a6fb10098e0ba11_bg.wasm": {
-      "bytes": 28309456,
-      "sha256": "592eb0f595bf9829acd19f4a7a9a1034e5e923f3b5e65a9862fc7e1891dcf4c8"
+    "rysmo-b5650ecaeba6e8b3.js": {
+      "bytes": 119613,
+      "sha256": "b5650ecaeba6e8b39bcd04b9c8e0becabe95d71fa023784eb9827693b80135ce"
     },
-    "rysmo-bf1c41bedf70317b.js": {
-      "bytes": 118886,
-      "sha256": "bf1c41bedf70317b9fe9da63e6d62aed179da734ce49886dc2cdb66dd816af13"
+    "rysmo-e2117be49d071cc1_bg.wasm": {
+      "bytes": 28831777,
+      "sha256": "bf1b0ef36184ce4efe78ce80a8c292ac2f5aa9e3edc0223c068ff03c95c2527e"
     },
     "snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js": {
-      "bytes": 12458,
-      "sha256": "a2eb6b7c99fb59efd706d4e4bef85f6ff654919f11caf798a1d38cc475274dda"
+      "bytes": 14495,
+      "sha256": "3fa78e62b0c07c46edfccf0587434cdacd3e96626d639503d46deba0e1cf2a84"
     },
     "source.tar.gz": {
-      "bytes": 9357273,
-      "sha256": "32e6b4222f6387d71503c3619968d85397a37eb74fadfd4822e734197af26574"
+      "bytes": 9920565,
+      "sha256": "be1f0c7b9f22998b5af495985bb99a0c156424682605c07efb9155f8975d6ffe"
     },
     "web_diagnostics.mjs": {
       "bytes": 2091,

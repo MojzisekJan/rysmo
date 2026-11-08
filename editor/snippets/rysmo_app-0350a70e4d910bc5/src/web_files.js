@@ -12,6 +12,17 @@ let database = null;
 // The handle of the file the open document came from or was saved to, if any.
 let current = null;
 let session = 0;
+let activeDocument = null;
+const documentFiles = new Map();
+// File handles belong to document tabs, never to the visible canvas.
+export function activate_document(id) {
+  if (activeDocument === id) return;
+  if (activeDocument !== null) documentFiles.set(activeDocument, current);
+  activeDocument = id;
+  current = documentFiles.get(id) || null;
+  session++;
+}
+
 const pendingFiles = new Map();
 let nextFile = 0;
 function stage_file(handle) {
@@ -205,6 +216,7 @@ async function write(handle, text) {
 // (written to a newly chosen file) or "download", or null when the user cancels.
 export async function save(name, text, save_as) {
   const started = session;
+  const owner = activeDocument;
   const file = current;
   if (file && !save_as) {
     try {
@@ -220,6 +232,7 @@ export async function save(name, text, save_as) {
       const handle = await window.showSaveFilePicker({ suggestedName: name, types });
       await write(handle, text);
       if (session === started) current = handle;
+      else if (documentFiles.has(owner)) documentFiles.set(owner, handle);
       await remember(handle.name, text, handle);
       return [handle.name, "picked"];
     } catch (error) {
@@ -229,6 +242,7 @@ export async function save(name, text, save_as) {
   }
   download(name, new TextEncoder().encode(text), "application/json");
   if (session === started) current = null;
+  else if (documentFiles.has(owner)) documentFiles.set(owner, null);
   await remember(name, text, null);
   return [name, "download"];
 }
@@ -352,3 +366,37 @@ export function pick_data_file(accept, maxBytes) {
     input.click();
   });
 }
+
+// Serialize writes so an older workspace snapshot cannot finish after a newer one.
+let workspaceWrites = Promise.resolve();
+export function save_workspace(json) {
+  let data;
+  try { data = JSON.parse(json); } catch { return Promise.resolve(false); }
+  for (const doc of data.documents) {
+    doc.handle = doc.id === activeDocument ? current : documentFiles.get(doc.id) || null;
+  }
+  workspaceWrites = workspaceWrites.catch(() => {}).then(async () => {
+    try { await put("state", "workspace", data); return true; }
+    catch (error) {
+      if (error?.name === "DataCloneError") {
+        // A browser may support model storage while refusing file-handle cloning.
+        for (const doc of data.documents) doc.handle = null;
+        try { await put("state", "workspace", data); return true; } catch { /* report below */ }
+      }
+      warn("could not keep the document workspace", error); return false;
+    }
+  });
+  return workspaceWrites;
+}
+export async function restore_workspace() {
+  try {
+    const data = await get("state", "workspace");
+    if (!data || !Array.isArray(data.documents) || data.documents.length > 16) return null;
+    return { active: data.active, documents: data.documents.map(doc => ({
+      id: doc.id, name: doc.name, text: doc.text, dirty: doc.dirty,
+      token: stage_file(doc.handle || null)
+    })) };
+  } catch (error) { warn("could not restore document workspace", error); return null; }
+}
+
+export function forget_document(id) { documentFiles.delete(id); }

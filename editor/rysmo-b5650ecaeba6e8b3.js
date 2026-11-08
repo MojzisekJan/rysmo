@@ -1,13 +1,16 @@
-import { autosave, download, load_preferences, open_recent, pick_data_file, save, save_preferences, set_autosave_settings, set_render_diagnostics, set_unsaved_changes } from './snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js?v=a2eb6b7c99fb59ef';
-import * as import1 from "./snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js?v=a2eb6b7c99fb59ef"
-import * as import2 from "./snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js?v=a2eb6b7c99fb59ef"
-import * as import3 from "./snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js?v=a2eb6b7c99fb59ef"
-import * as import4 from "./snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js?v=a2eb6b7c99fb59ef"
-import * as import5 from "./snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js?v=a2eb6b7c99fb59ef"
-import * as import6 from "./snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js?v=a2eb6b7c99fb59ef"
-import * as import7 from "./snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js?v=a2eb6b7c99fb59ef"
-import * as import8 from "./snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js?v=a2eb6b7c99fb59ef"
-import * as import9 from "./snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js?v=a2eb6b7c99fb59ef"
+import { autosave, download, load_preferences, open_recent, pick_data_file, save, save_preferences, save_workspace, set_autosave_settings, set_render_diagnostics, set_unsaved_changes } from './snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js?v=3fa78e62b0c07c46';
+import * as import1 from "./snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js?v=3fa78e62b0c07c46"
+import * as import2 from "./snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js?v=3fa78e62b0c07c46"
+import * as import3 from "./snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js?v=3fa78e62b0c07c46"
+import * as import4 from "./snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js?v=3fa78e62b0c07c46"
+import * as import5 from "./snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js?v=3fa78e62b0c07c46"
+import * as import6 from "./snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js?v=3fa78e62b0c07c46"
+import * as import7 from "./snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js?v=3fa78e62b0c07c46"
+import * as import8 from "./snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js?v=3fa78e62b0c07c46"
+import * as import9 from "./snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js?v=3fa78e62b0c07c46"
+import * as import10 from "./snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js?v=3fa78e62b0c07c46"
+import * as import11 from "./snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js?v=3fa78e62b0c07c46"
+import * as import12 from "./snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js?v=3fa78e62b0c07c46"
 
 function __wbg_get_imports() {
     const import0 = {
@@ -1344,6 +1347,10 @@ function __wbg_get_imports() {
             const ret = save_preferences(getStringFromWasm0(arg0, arg1));
             return ret;
         },
+        __wbg_save_workspace_50975d26e1eb5146: function(arg0, arg1) {
+            const ret = save_workspace(getStringFromWasm0(arg0, arg1));
+            return ret;
+        },
         __wbg_scheduler_a17d41c9c822fc26: function(arg0) {
             const ret = arg0.scheduler;
             return ret;
@@ -1873,7 +1880,7 @@ function __wbg_get_imports() {
             return ret;
         },
         __wbindgen_generic_000000000000000f: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Option(NamedExternref("Blob"))], shim_idx: 12304, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Option(NamedExternref("Blob"))], shim_idx: 12336, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
             const ret = makeMutClosure(arg0, arg1, wasm_bindgen_c0c2557fc06e7ecc___convert__closures_____invoke___core_f0fd674eaa06beef___option__Option_web_sys_f7e90a376e066124___features__gen_Blob__Blob_______true_);
             return ret;
         },
@@ -1949,6 +1956,9 @@ function __wbg_get_imports() {
         "./snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js": import7,
         "./snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js": import8,
         "./snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js": import9,
+        "./snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js": import10,
+        "./snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js": import11,
+        "./snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js": import12,
     };
 }
 
