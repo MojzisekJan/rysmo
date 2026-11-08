@@ -13,6 +13,10 @@ pub mod sheets;
 
 #[derive(Default)]
 pub struct State {
+    #[cfg(target_os = "macos")]
+    pub data_pick_request: Option<data_files::Purpose>,
+    #[cfg(target_os = "macos")]
+    pub data_picker: Option<(data_files::Purpose, data_files::DataPicker)>,
     pub import: Option<imports::Draft>,
     pub library: library::State,
     pub parametric: parametric::State,

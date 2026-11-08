@@ -498,7 +498,9 @@ fn shortcut(c: char) -> Option<ToolKind> {
     })
 }
 
+// Native Open/Save panels must run on the AppKit thread.
 fn keyboard(
+    #[cfg(target_os = "macos")] _main_thread: bevy::ecs::system::NonSendMarker,
     mut app: ResMut<App3d>,
     keys: Res<ButtonInput<KeyCode>>,
     mut typed: MessageReader<KeyboardInput>,

@@ -112,25 +112,54 @@ pub fn pick(app: &mut App3d, purpose: Purpose) {
         purpose,
         crate::autosave::DocumentVersion { generation: app.document_generation, revision: app.editor.revision() },
     );
-    #[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
-    {
-        let Some(path) = rfd::FileDialog::new().add_filter("Import", purpose.extensions()).pick_file() else { return };
-        let result = std::fs::metadata(&path).map_err(|e| e.to_string()).and_then(|metadata| {
-            if metadata.len() > 64 * 1024 * 1024 {
-                return Err("File exceeds the 64 MiB limit.".into());
-            }
-            std::fs::read(&path).map_err(|e| e.to_string())
-        });
-        match result {
-            Ok(bytes) => {
-                receive(app, purpose, path.file_name().unwrap_or_default().to_string_lossy().into_owned(), bytes)
-            }
-            Err(error) => app.message = Some(error),
-        }
+    #[cfg(target_os = "macos")]
+    if app.features.data_picker.is_none() {
+        app.features.data_pick_request = Some(purpose);
+    }
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios", target_os = "macos")))]
+    if let Some(path) = rfd::FileDialog::new().add_filter("Import", purpose.extensions()).pick_file() {
+        receive_path(app, purpose, &path);
     }
     #[cfg(any(target_os = "android", target_os = "ios"))]
     crate::portable_files::begin(app, crate::portable_files::Operation::DataImport(purpose));
 }
+#[cfg(target_os = "macos")]
+pub type DataPicker =
+    std::sync::Mutex<std::pin::Pin<Box<dyn std::future::Future<Output = Option<rfd::FileHandle>> + Send>>>;
+
+#[cfg(target_os = "macos")]
+pub fn poll_picker(_main_thread: bevy::ecs::system::NonSendMarker, mut app: bevy::prelude::ResMut<App3d>) {
+    if let Some(purpose) = app.features.data_pick_request.take() {
+        let dialog = rfd::AsyncFileDialog::new().add_filter("Import", purpose.extensions());
+        app.features.data_picker = Some((purpose, std::sync::Mutex::new(Box::pin(dialog.pick_file()))));
+    }
+    let Some((purpose, picker)) = &mut app.features.data_picker else { return };
+    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+    if let std::task::Poll::Ready(file) =
+        picker.get_mut().expect("picker is only accessed mutably").as_mut().poll(&mut context)
+    {
+        let purpose = *purpose;
+        app.features.data_picker = None;
+        if let Some(file) = file {
+            receive_path(&mut app, purpose, file.path());
+        }
+    }
+}
+
+#[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
+fn receive_path(app: &mut App3d, purpose: Purpose, path: &std::path::Path) {
+    let result = std::fs::metadata(path).map_err(|e| e.to_string()).and_then(|metadata| {
+        if metadata.len() > 64 * 1024 * 1024 {
+            return Err("File exceeds the 64 MiB limit.".into());
+        }
+        std::fs::read(path).map_err(|e| e.to_string())
+    });
+    match result {
+        Ok(bytes) => receive(app, purpose, path.file_name().unwrap_or_default().to_string_lossy().into_owned(), bytes),
+        Err(error) => app.message = Some(error),
+    }
+}
+
 pub fn safe_name(name: &str) -> String {
     let value: String = name.chars().filter(|c| !c.is_control() && !"/\\:".contains(*c)).take(120).collect();
     let value = value.trim().trim_matches('.');

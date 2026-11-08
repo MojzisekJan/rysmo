@@ -1525,21 +1525,28 @@ pub fn resize_confirmation(ctx: &egui::Context, app: &mut App3d) {
     egui::Modal::new(egui::Id::unique("resize-confirmation")).frame(egui::Frame::window(&ctx.global_style())).show(
         ctx,
         |ui| {
-            ui.heading("Resize model?");
-            ui.label(if app.editor.context().is_empty() {
+            let whole_model = app.editor.context().is_empty();
+            ui.heading(if whole_model { "Resize model?" } else { "Resize group or component?" });
+            ui.label(if whole_model {
                 "Resize the whole model to the measured dimension?"
             } else {
                 "Resize the group/component being edited to the measured dimension?"
             });
             ui.label(format!("Scale factor: {factor:.6}"));
-            ui.horizontal(|ui| {
-                if ui.button("Yes").clicked() {
-                    answer = Some(true);
-                }
-                if ui.button("No").clicked() {
-                    answer = Some(false);
-                }
-            });
+            ui.add_space(12.);
+            ui.allocate_ui_with_layout(
+                egui::vec2(ui.min_rect().width(), 28.),
+                egui::Layout::right_to_left(egui::Align::Center),
+                |ui| {
+                    let resize = if whole_model { "Resize Model" } else { "Resize Group or Component" };
+                    if ui.add(egui::Button::new(resize).min_size(egui::vec2(0., 28.))).clicked() {
+                        answer = Some(true);
+                    }
+                    if ui.add(egui::Button::new("Cancel").min_size(egui::vec2(0., 28.))).clicked() {
+                        answer = Some(false);
+                    }
+                },
+            );
         },
     );
     if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {

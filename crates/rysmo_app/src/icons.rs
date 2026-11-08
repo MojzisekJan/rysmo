@@ -1,4 +1,6 @@
 //! Rysmo's vector tool icons. Geometry and hit areas stay fixed in every interaction state.
+use std::cell::RefCell;
+
 use crate::actions::Action;
 use bevy_egui::egui::{self, Color32, Pos2, Rect, Response, Sense, Stroke};
 use rysmo_tools::ToolKind;
@@ -10,7 +12,7 @@ pub enum Icon {
     Extents,
 }
 
-fn chrome(ui: &egui::Ui, r: &Response, selected: bool) -> Color32 {
+pub(crate) fn chrome(ui: &egui::Ui, r: &Response, selected: bool) -> Color32 {
     let hovered = r.hovered();
     let fill = if selected && hovered {
         Color32::from_rgb(43, 77, 119)
@@ -79,19 +81,23 @@ pub fn tab(ui: &mut egui::Ui, label: &str, selected: bool) -> Response {
 }
 
 struct Pen<'a> {
-    painter: &'a egui::Painter,
+    shapes: &'a RefCell<Vec<egui::Shape>>,
     rect: Rect,
     stroke: Stroke,
 }
 impl Pen<'_> {
+    fn add(&self, shape: impl Into<egui::Shape>) {
+        self.shapes.borrow_mut().push(shape.into());
+    }
+
     fn p(&self, x: f32, y: f32) -> Pos2 {
         self.rect.min + egui::vec2(x, y) * (self.rect.width() / 24.)
     }
     fn line(&self, points: &[(f32, f32)]) {
-        self.painter.add(egui::Shape::line(points.iter().map(|&(x, y)| self.p(x, y)).collect(), self.stroke));
+        self.add(egui::Shape::line(points.iter().map(|&(x, y)| self.p(x, y)).collect(), self.stroke));
     }
     fn bezier(&self, points: [(f32, f32); 4]) {
-        self.painter.add(egui::epaint::CubicBezierShape::from_points_stroke(
+        self.add(egui::epaint::CubicBezierShape::from_points_stroke(
             points.map(|(x, y)| self.p(x, y)),
             false,
             Color32::TRANSPARENT,
@@ -99,15 +105,15 @@ impl Pen<'_> {
         ));
     }
     fn rounded_rect(&self, min: (f32, f32), max: (f32, f32), radius: f32) {
-        self.painter.rect_stroke(
+        self.add(egui::Shape::rect_stroke(
             Rect::from_min_max(self.p(min.0, min.1), self.p(max.0, max.1)),
             radius * self.rect.width() / 24.,
             self.stroke,
             egui::StrokeKind::Middle,
-        );
+        ));
     }
     fn ring(&self, x: f32, y: f32, r: f32) {
-        self.painter.circle_stroke(self.p(x, y), r * self.rect.width() / 24., self.stroke);
+        self.add(egui::Shape::circle_stroke(self.p(x, y), r * self.rect.width() / 24., self.stroke));
     }
     fn arc(&self, x: f32, y: f32, r: f32, start: f32, end: f32) {
         let points: Vec<_> = (0..=24)
@@ -129,10 +135,10 @@ impl Pen<'_> {
         ]);
     }
     fn colored(&self, color: Color32) -> Pen<'_> {
-        Pen { painter: self.painter, rect: self.rect, stroke: Stroke::new(1.55, color) }
+        Pen { shapes: self.shapes, rect: self.rect, stroke: Stroke::new(1.55, color) }
     }
     fn polygon(&self, points: &[(f32, f32)], alpha: u8) {
-        self.painter.add(egui::Shape::convex_polygon(
+        self.add(egui::Shape::convex_polygon(
             points.iter().map(|&(x, y)| self.p(x, y)).collect(),
             self.stroke.color.gamma_multiply(alpha as f32 / 255.),
             self.stroke,
@@ -166,7 +172,8 @@ impl Pen<'_> {
 
 fn draw(ui: &egui::Ui, rect: Rect, icon: Icon, color: Color32) {
     let body = if color == Color32::from_rgb(105, 169, 255) { Color32::from_rgb(182, 193, 209) } else { color };
-    let p = Pen { painter: ui.painter(), rect, stroke: Stroke::new(1.25, body) };
+    let shapes = RefCell::new(Vec::new());
+    let p = Pen { shapes: &shapes, rect, stroke: Stroke::new(1.25, body) };
     let action = p.colored(Color32::from_rgb(239, 155, 67));
     let guide = p.colored(Color32::from_rgb(89, 157, 240));
     let measure = p.colored(Color32::from_rgb(112, 199, 142));
@@ -180,7 +187,7 @@ fn draw(ui: &egui::Ui, rect: Rect, icon: Icon, color: Color32) {
             for [a, b, c] in [[0, 1, 2], [0, 2, 5], [0, 5, 6], [2, 3, 4], [2, 4, 5]] {
                 fill.add_triangle(a, b, c);
             }
-            p.painter.add(egui::Shape::mesh(fill));
+            p.add(egui::Shape::mesh(fill));
             guide.line(&[
                 (5., 2.),
                 (5., 19.),
@@ -427,7 +434,7 @@ fn draw(ui: &egui::Ui, rect: Rect, icon: Icon, color: Color32) {
             guide.curved_arrow((12., 12.), (10., 5.), 205., 510.);
         }
         Icon::Tool(ToolKind::Pan) => {
-            let hand = Pen { painter: p.painter, rect: p.rect, stroke: Stroke::new(1.25, guide.stroke.color) };
+            let hand = Pen { shapes: p.shapes, rect: p.rect, stroke: Stroke::new(1.25, guide.stroke.color) };
             hand.bezier([(8., 22.), (6., 20.), (4., 16.), (2.5, 14.)]);
             hand.bezier([(2.5, 14.), (0.8, 11.5), (2.8, 10.2), (4.2, 11.8)]);
             hand.line(&[(4.2, 11.8), (6., 14.), (6., 6.5)]);
@@ -554,6 +561,15 @@ fn draw(ui: &egui::Ui, rect: Rect, icon: Icon, color: Color32) {
             }
         }
         _ => p.cube(),
+    }
+    let mut shapes = shapes.into_inner();
+    let bounds = shapes.iter().fold(Rect::NOTHING, |bounds, shape| bounds.union(shape.visual_bounding_rect()));
+    if bounds.is_finite() {
+        let offset = rect.center() - bounds.center();
+        for shape in &mut shapes {
+            shape.translate(offset);
+        }
+        ui.painter().extend(shapes);
     }
 }
 

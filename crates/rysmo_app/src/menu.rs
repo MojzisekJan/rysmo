@@ -116,6 +116,17 @@ pub fn submenu<R>(
     text: &str,
     contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> egui::InnerResponse<Option<R>> {
+    let screen = ui.ctx().content_rect();
+    let row = ui.available_rect_before_wrap();
+    // Leave room for the popup frame and the gap between menus.
+    let right = screen.right() - row.right() - 24.;
+    let left = row.left() - screen.left() - 24.;
+    let width = if right >= 160. { right } else { right.max(left) }.clamp(1., 240.);
+    let height = ((screen.bottom() - row.top()).max(row.top() - screen.top()) - 32.).max(1.);
+    let contents = |ui: &mut egui::Ui| {
+        ui.set_max_width(width);
+        egui::ScrollArea::vertical().max_height(height).min_scrolled_height(0.).show(ui, contents).inner
+    };
     #[cfg(target_os = "macos")]
     {
         egui_native_look::MenuItem::new(text)
@@ -134,7 +145,10 @@ pub fn top<R>(
     title: &str,
     contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> egui::InnerResponse<Option<R>> {
-    let menu = ui.menu_button(title, contents);
+    let menu = ui.menu_button(title, |ui| {
+        ui.set_width((ui.ctx().content_rect().width() - 24.).clamp(1., 250.));
+        contents(ui)
+    });
     #[cfg(not(target_arch = "wasm32"))]
     if std::env::var_os("RYSMO_SCREENSHOT").is_some() && std::env::var("RYSMO_MENU_PREVIEW").as_deref() == Ok(title) {
         egui::Popup::open_id(ui.ctx(), egui::Popup::default_response_id(&menu.response));

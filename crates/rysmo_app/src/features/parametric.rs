@@ -154,8 +154,13 @@ pub fn grips(ctx: &egui::Context, app: &mut App3d) {
     let Some(spec) = app.editor.doc().definitions[&definition].parametric.clone() else {
         return;
     };
-    let transform = app.editor.context_transform()
-        * app.editor.doc().def(app.editor.active_definition()).unwrap().instances[&instance].transform;
+    let Some(placement) =
+        app.editor.doc().def(app.editor.active_definition()).and_then(|definition| definition.instances.get(&instance))
+    else {
+        app.features.parametric.resize = None;
+        return;
+    };
+    let transform = app.editor.context_transform() * placement.transform;
     if app
         .features
         .parametric

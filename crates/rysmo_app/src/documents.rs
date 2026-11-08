@@ -169,7 +169,10 @@ pub fn panel(ui: &mut egui::Ui, app: &mut App3d) {
                 activate = Some(id);
             }
         }
-        close = ui.small_button("×").on_hover_text("Close active document").clicked();
+        close = ui
+            .add(egui::Button::new("×").min_size(egui::vec2(24., 24.)))
+            .on_hover_text("Close active document")
+            .clicked();
     });
     if let Some(id) = activate {
         switch(app, id);

@@ -22,6 +22,8 @@ pub fn plugin(app: &mut App) {
     // iOS has no window title, and changing `Window` there resets its size to the safe area.
     #[cfg(not(target_os = "ios"))]
     app.add_systems(Update, window_title);
+    #[cfg(target_os = "macos")]
+    app.add_systems(Update, crate::features::data_files::poll_picker);
 }
 
 fn setup_fonts(mut contexts: EguiContexts, mut done: Local<bool>) -> Result {
@@ -158,11 +160,20 @@ pub(crate) fn slot_button(ui: &mut egui::Ui, app: &mut App3d, slot: &Slot, icon_
 
 /// Inner height of toolbar trays: a 20-point icon button.
 const TRAY_HEIGHT: f32 = 34.;
+const TRAY_MARGIN: i8 = 4;
+const TRAY_SPACING: f32 = 2.;
 
 /// A frameless icon button for the end of the tool row.
-fn tray_icon(glyph: &str) -> egui::Button<'_> {
-    let text = egui::RichText::new(glyph).family(egui::FontFamily::Name("phosphor".into())).size(20.);
-    egui::Button::new(text).frame(false).min_size(egui::vec2(TRAY_HEIGHT, TRAY_HEIGHT))
+fn tray_icon(ui: &mut egui::Ui, glyph: &str, label: &str, icon_size: f32) -> egui::Response {
+    let response = ui.add(egui::Button::new("").frame(false).min_size(egui::Vec2::splat(TRAY_HEIGHT)));
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, ui.is_enabled(), label));
+    let color = crate::icons::chrome(ui, &response, false);
+    let font = egui::FontId::new(icon_size, egui::FontFamily::Name("phosphor".into()));
+    let galley = ui.painter().layout_no_wrap(glyph.to_owned(), font, color);
+    // Center the visible glyph rather than the font's line box.
+    let origin = response.rect.center() - galley.mesh_bounds.center().to_vec2();
+    ui.painter().galley(origin, galley, color);
+    response.on_hover_text(label)
 }
 
 /// A rounded tray grouping related tool buttons.
@@ -170,9 +181,9 @@ fn tool_tray(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
     egui::Frame::new()
         .fill(ui.visuals().faint_bg_color)
         .corner_radius(8)
-        .inner_margin(egui::Margin::symmetric(4, 3))
+        .inner_margin(egui::Margin::symmetric(TRAY_MARGIN, 3))
         .show(ui, |ui| {
-            ui.spacing_mut().item_spacing = egui::vec2(2., 2.);
+            ui.spacing_mut().item_spacing = egui::vec2(TRAY_SPACING, 2.);
             // A fixed inner height keeps every tray, and what sits in it, on one centre line.
             ui.set_height(TRAY_HEIGHT);
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), add);
@@ -226,7 +237,26 @@ fn chrome_frame(ui: &egui::Ui, x: i8, y: i8) -> egui::Frame {
     egui::Frame::new().fill(ui.visuals().panel_fill).inner_margin(egui::Margin::symmetric(x, y))
 }
 
+fn selection_status(ui: &mut egui::Ui, app: &mut App3d) {
+    let status_button_size = egui::vec2(0., 24.);
+    let selected = app.editor.selection().len();
+    if ui.add(egui::Button::new(format!("{selected} selected")).min_size(status_button_size)).clicked() {
+        app.show_entity_info = true;
+        app.inspector_tab = 1;
+    }
+    if ui
+        .add(egui::Button::new(app.editor.doc().units.suffix()).min_size(status_button_size))
+        .on_hover_text("Model units")
+        .clicked()
+    {
+        app.show_settings = true;
+        app.settings_tab = 1;
+    }
+}
+
+// Native Open/Save panels must run on the AppKit thread.
 fn panels(
+    #[cfg(target_os = "macos")] _main_thread: bevy::ecs::system::NonSendMarker,
     mut contexts: EguiContexts,
     mut app: ResMut<App3d>,
     render_view: Res<crate::render_view::RenderView>,
@@ -262,7 +292,11 @@ fn panels(
                 #[cfg(target_os = "macos")]
                 crate::macos::titlebar_area(ui, ui.max_rect().expand2(egui::vec2(100., 6.)));
                 egui::MenuBar::new()
-                    .style(menu::style)
+                    .style(|style: &mut egui::Style| {
+                        menu::style(style);
+                        style.spacing.button_padding.x = 6.;
+                        style.spacing.interact_size.x = 0.;
+                    })
                     .config(egui::containers::menu::MenuConfig::new().style(menu::style))
                     .ui(ui, |ui| {
                         // On macOS the menu row is the title bar; it starts after the traffic lights.
@@ -279,35 +313,56 @@ fn panels(
                     });
                 crate::documents::panel(ui, &mut app);
                 ui.add_space(2.);
-                ui.horizontal(|ui| {
-                    // Tool groups sit in quiet rounded trays; the panel toggle and command
-                    // search stay at the right end.
-                    ui.spacing_mut().item_spacing = egui::vec2(6., 3.);
-                    for slots in TOP_TOOLS.split(|slot| matches!(slot, Slot::Gap)) {
-                        tool_tray(ui, |ui| {
-                            for slot in slots {
-                                slot_button(ui, &mut app, slot, 20.);
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
+                    ui.spacing_mut().item_spacing.x = 6.;
+                    let controls_width = 2. * (TRAY_HEIGHT + f32::from(TRAY_MARGIN)) + TRAY_SPACING;
+                    let tools_width = (ui.available_width() - controls_width - ui.spacing().item_spacing.x).max(0.);
+                    let tools_size = egui::vec2(tools_width, TRAY_HEIGHT + 6.);
+                    ui.allocate_ui_with_layout(
+                        tools_size,
+                        egui::Layout::left_to_right(egui::Align::Center).with_main_wrap(true),
+                        |ui| {
+                            ui.spacing_mut().item_spacing = egui::vec2(6., 3.);
+                            ui.set_min_width(tools_width);
+                            let tray_inset = 2. * f32::from(TRAY_MARGIN) - TRAY_SPACING;
+                            let slot_width = TRAY_HEIGHT + TRAY_SPACING;
+                            let row_capacity = (((ui.available_width() - tray_inset) / slot_width) as usize).max(1);
+                            for slots in TOP_TOOLS.split(|slot| matches!(slot, Slot::Gap)) {
+                                for row in slots.chunks(row_capacity) {
+                                    let width = row.len() as f32 * slot_width + tray_inset;
+                                    ui.allocate_ui_with_layout(
+                                        egui::vec2(width, TRAY_HEIGHT + 6.),
+                                        egui::Layout::top_down(egui::Align::Min),
+                                        |ui| {
+                                            tool_tray(ui, |ui| {
+                                                for slot in row {
+                                                    slot_button(ui, &mut app, slot, 20.);
+                                                }
+                                            })
+                                        },
+                                    );
+                                }
                             }
-                        });
-                    }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        tool_tray(ui, |ui| {
-                            let search = tray_icon(menu::glyph::MAGNIFYING_GLASS);
-                            if ui.add(search).on_hover_text("Search commands (Shift+S)").clicked() {
-                                crate::command_search::open(&mut app);
-                            }
-                            ui.add_space(6.);
-                            ui.separator();
-                            ui.add_space(6.);
-                            let panel_open = crate::tablet::sidebar_open(&mut app);
-                            let text = if panel_open { "Hide panel" } else { "Show panel" };
-                            let panels = tray_icon(menu::glyph::SIDEBAR_SIMPLE);
-                            if ui.add(panels).on_hover_text(text).clicked() {
-                                crate::tablet::toggle_sidebar(&mut app, ui.ctx());
-                            }
-                            ui.add_space(4.);
-                        });
-                    });
+                        },
+                    );
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(controls_width, TRAY_HEIGHT + 6.),
+                        egui::Layout::right_to_left(egui::Align::Min),
+                        |ui| {
+                            tool_tray(ui, |ui| {
+                                if tray_icon(ui, menu::glyph::MAGNIFYING_GLASS, "Search commands (Shift+S)", 20.)
+                                    .clicked()
+                                {
+                                    crate::command_search::open(&mut app);
+                                }
+                                let panel_open = crate::tablet::sidebar_open(&mut app);
+                                let text = if panel_open { "Hide panel" } else { "Show panel" };
+                                if tray_icon(ui, menu::glyph::SIDEBAR_SIMPLE, text, 23.).clicked() {
+                                    crate::tablet::toggle_sidebar(&mut app, ui.ctx());
+                                }
+                            });
+                        },
+                    );
                 });
             });
         rects.push(top.response.rect);
@@ -349,7 +404,7 @@ fn panels(
                         }
                     });
                 }
-                // One row, everything centred on the same line; the field keeps a visible edge.
+                let mut selection_in_row = false;
                 ui.horizontal_centered(|ui| {
                     ui.set_min_height(30.);
                     let status = app.status();
@@ -380,25 +435,18 @@ fn panels(
                                 crate::help::open_current(&mut app);
                             }
                             if ui.available_width() > 420. {
-                                let selected = app.editor.selection().len();
-                                if ui.small_button(format!("{selected} selected")).clicked() {
-                                    app.show_entity_info = true;
-                                    app.inspector_tab = 1;
-                                }
-                                if ui
-                                    .small_button(app.editor.doc().units.suffix())
-                                    .on_hover_text("Model units")
-                                    .clicked()
-                                {
-                                    app.show_settings = true;
-                                    app.settings_tab = 1;
-                                }
+                                selection_status(ui, &mut app);
+                                selection_in_row = true;
                             }
                             if app.editor.is_dirty() {
                                 ui.label(egui::RichText::new("●").color(crate::theme::ACCENT))
                                     .on_hover_text("Unsaved changes");
                             }
-                            if app.message.is_some() && ui.small_button("×").on_hover_text("Dismiss message").clicked()
+                            if app.message.is_some()
+                                && ui
+                                    .add(egui::Button::new("×").min_size(egui::vec2(24., 24.)))
+                                    .on_hover_text("Dismiss message")
+                                    .clicked()
                             {
                                 app.message = None;
                             }
@@ -406,6 +454,9 @@ fn panels(
                         });
                     });
                 });
+                if !selection_in_row {
+                    ui.horizontal(|ui| selection_status(ui, &mut app));
+                }
             },
         );
         rects.push(bottom.response.rect);

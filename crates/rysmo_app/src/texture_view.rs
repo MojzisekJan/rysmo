@@ -240,14 +240,17 @@ pub fn pointer(app: &mut App3d, at: DVec2, event: Pointer) {
                             }
                         }
                     }
-                    if let Some(handles) = drag_in_plane(&session, drag.handles, index, target, fixed) {
-                        let map = pin_mapping(handles).unwrap().inverse() * pin_mapping(drag.handles).unwrap();
+                    if let Some(handles) = drag_in_plane(&session, drag.handles, index, target, fixed)
+                        && let Some(mapping) = pin_mapping(handles)
+                        && let Some(original) = pin_mapping(drag.handles)
+                    {
+                        let map = mapping.inverse() * original;
                         let next = drag.pins.map(|p| {
                             let q = map * DVec3::new(p[0], p[1], 1.);
                             [q.x / q.z, q.y / q.z]
                         });
                         if pin_mapping(next).is_some()
-                            && next != session.placement.pins.unwrap()
+                            && Some(next) != session.placement.pins
                             && update(app, &mut session, next)
                         {
                             session.handles = handles;
@@ -320,8 +323,8 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
         egui::pos2(origin.x as f32, origin.y as f32),
         egui::vec2(size.x as f32, size.y as f32),
     ));
-    let pins = session.placement.pins.unwrap();
-    let forward = pin_mapping(pins).unwrap().inverse();
+    let Some(mapping) = session.placement.pins.and_then(pin_mapping) else { return };
+    let forward = mapping.inverse();
     let screen =
         |uv: [f64; 2]| point_at(uv, session).and_then(|p| view.project(p)).map(|p| egui::pos2(p.x as f32, p.y as f32));
     for axis in 0..2 {

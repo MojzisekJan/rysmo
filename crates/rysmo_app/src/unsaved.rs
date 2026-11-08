@@ -99,30 +99,65 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
     if app.unsaved.saving && app.portable_files.is_some() {
         return;
     }
-    let mut choice = None;
-    egui::Modal::new(egui::Id::unique("unsaved_changes")).frame(egui::Frame::window(&ctx.global_style())).show(
-        ctx,
-        |ui| {
-            ui.set_width(360.);
-            ui.heading("Save changes?");
-            ui.add_space(8.);
-            ui.label("This model has unsaved changes. Save them before continuing?");
-            ui.add_space(12.);
+    let name = app.path.as_deref().and_then(std::path::Path::file_name);
+    let title = match name {
+        Some(name) => format!("Save changes to “{}”?", name.to_string_lossy()),
+        None => "Save changes to this model?".to_owned(),
+    };
+    let frame = egui::Frame::window(&ctx.global_style()).inner_margin(egui::Margin::same(20));
+    let modal = egui::Modal::new(egui::Id::unique("unsaved_changes")).frame(frame).show(ctx, |ui| {
+        let width = (ctx.content_rect().width() - 56.).clamp(1., 340.);
+        ui.set_width(width);
+        ui.vertical_centered(|ui| {
+            ui.heading(title);
+            ui.add_space(6.);
+            ui.label("Your changes will be lost if you close without saving.");
+            ui.add_space(14.);
+
+            let button_width = ((width - 2. * ui.spacing().item_spacing.x) / 3.).max(1.);
             ui.horizontal(|ui| {
-                if ui.button("Save").clicked() {
-                    choice = Some(Choice::Save);
+                let mut choice = None;
+                for (label, action) in
+                    [("Don’t Save", Choice::Discard), ("Cancel", Choice::Cancel), ("Save", Choice::Save)]
+                {
+                    if ui
+                        .scope(|ui| {
+                            let mut text = egui::RichText::new(label);
+                            let accent = ui.visuals().selection.bg_fill;
+                            let destructive = ui.visuals().error_fg_color;
+                            let widgets = &mut ui.visuals_mut().widgets;
+                            if matches!(action, Choice::Save) {
+                                text = text.strong().color(egui::Color32::WHITE);
+                                widgets.inactive.weak_bg_fill = accent;
+                                widgets.hovered.weak_bg_fill = accent.gamma_multiply(1.15);
+                                widgets.active.weak_bg_fill = accent.gamma_multiply(0.85);
+                            } else if matches!(action, Choice::Discard) {
+                                text = text.color(destructive);
+                            }
+                            ui.add_sized([button_width, 32.], egui::Button::new(text).frame(true)).clicked()
+                        })
+                        .inner
+                    {
+                        choice = Some(action);
+                    }
                 }
-                if ui.button("Discard").clicked() {
-                    choice = Some(Choice::Discard);
-                }
-                if ui.button("Cancel").clicked() {
-                    choice = Some(Choice::Cancel);
-                }
-            });
-        },
-    );
-    if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+                choice
+            })
+            .inner
+        })
+        .inner
+    });
+    let mut choice = modal.inner;
+    if ctx.input_mut(|i| {
+        i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)
+            || i.consume_key(egui::Modifiers::COMMAND, egui::Key::Period)
+    }) {
         choice = Some(Choice::Cancel);
+    } else if modal.is_top_modal
+        && choice.is_none()
+        && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter))
+    {
+        choice = Some(Choice::Save);
     }
     if let Some(choice) = choice {
         choose(app, choice);
