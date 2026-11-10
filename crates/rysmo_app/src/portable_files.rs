@@ -109,10 +109,10 @@ impl Dialog {
         }
         match self.operation {
             Operation::DataExport(extension) => {
-                std::fs::write(&path, self.payload.as_ref().ok_or("Export payload is missing.")?)
+                rysmo_io::atomic::write(&path, self.payload.as_ref().ok_or("Export payload is missing.")?)
                     .map_err(|e| e.to_string())?;
                 if extension == "ryslib" {
-                    app.features.library.modified = false;
+                    app.features.library.saved_bytes(self.payload.as_deref().ok_or("Export payload is missing.")?);
                 }
             }
             Operation::Save => {
@@ -147,12 +147,7 @@ impl Dialog {
                 {
                     return Err("Export companion files exist. Confirm Replace existing file first.".into());
                 }
-                std::fs::write(&path, out.obj)
-                    .and_then(|_| std::fs::write(mtl, out.mtl))
-                    .and_then(|_| {
-                        out.images.iter().try_for_each(|(name, bytes)| std::fs::write(self.root.join(name), bytes))
-                    })
-                    .map_err(|e| e.to_string())?;
+                rysmo_io::obj::write(&path, &out).map_err(|e| e.to_string())?;
             }
             _ => unreachable!(),
         }

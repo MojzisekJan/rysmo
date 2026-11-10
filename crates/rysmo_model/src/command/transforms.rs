@@ -31,7 +31,9 @@ pub(super) fn split(
     let mut inst = Vec::new();
     let mut guides = Vec::new();
     let mut dimensions = Vec::new();
-    for e in elements {
+    // Treat input as a selection while retaining order for copied annotation links.
+    let mut seen = BTreeSet::new();
+    for e in elements.iter().filter(|e| seen.insert(**e)) {
         match e {
             Element::Edge(_) | Element::Face(_) => geo.push(*e),
             Element::Instance(i) => inst.push(*i),

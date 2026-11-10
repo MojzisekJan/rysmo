@@ -10,7 +10,8 @@
 
 let database = null;
 // The handle of the file the open document came from or was saved to, if any.
-let current = null;
+const newFile = handle => ({ handle, writing: null });
+let current = newFile(null);
 let session = 0;
 let activeDocument = null;
 const documentFiles = new Map();
@@ -19,7 +20,8 @@ export function activate_document(id) {
   if (activeDocument === id) return;
   if (activeDocument !== null) documentFiles.set(activeDocument, current);
   activeDocument = id;
-  current = documentFiles.get(id) || null;
+  current = documentFiles.get(id) || newFile(null);
+  documentFiles.set(id, current);
   session++;
 }
 
@@ -131,14 +133,16 @@ export async function autosave(name, text, dirty) {
 // A new, empty document: no file behind it.
 export function forget_file() {
   session++;
-  current = null;
+  current = newFile(null);
+  if (activeDocument !== null) documentFiles.set(activeDocument, current);
   pendingFiles.clear();
 }
 
 // The editor calls this only after parsing and replacing the document successfully.
 export function accept_open_file(token) {
   if (!pendingFiles.has(token)) return;
-  current = pendingFiles.get(token);
+  current = newFile(pendingFiles.get(token));
+  if (activeDocument !== null) documentFiles.set(activeDocument, current);
   session++;
   pendingFiles.delete(token);
 }
@@ -208,16 +212,43 @@ async function write(handle, text) {
     throw new Error("permission refused");
   }
   const writable = await handle.createWritable();
-  await writable.write(text);
-  await writable.close();
+  try {
+    await writable.write(text);
+    await writable.close();
+  } catch (error) {
+    await writable.abort?.().catch(() => {});
+    throw error;
+  }
 }
 
 // Saves the document. Returns [name, how] with how "file" (written in place), "picked"
 // (written to a newly chosen file) or "download", or null when the user cancels.
-export async function save(name, text, save_as) {
-  const started = session;
-  const owner = activeDocument;
-  const file = current;
+export function save(name, text, save_as) {
+  // Keep one queue per document lifetime, including across tab switches. New/Open
+  // replace the record, so an old save can never attach its handle to a new model.
+  const owner = current;
+  // A queued Save As must choose its destination during this user gesture,
+  // even if writing it has to wait for a previous save to finish.
+  const picked = save_as && owner.writing && can_pick_save() ? pick_save(name) : null;
+  const run = () => save_file(owner, name, text, save_as, picked);
+  // Start the first picker synchronously to preserve browser user activation.
+  const job = owner.writing ? owner.writing.catch(() => {}).then(run) : run();
+  owner.writing = job;
+  const finished = () => { if (owner.writing === job) owner.writing = null; };
+  job.then(finished, finished);
+  return job;
+}
+
+function can_pick_save() {
+  return window.top === window && typeof window.showSaveFilePicker === "function";
+}
+async function pick_save(name) {
+  try { return { handle: await window.showSaveFilePicker({ suggestedName: name, types }) }; }
+  catch (error) { return { error }; } // Cancellation can arrive before the queue advances.
+}
+
+async function save_file(owner, name, text, save_as, picked) {
+  const file = owner.handle;
   if (file && !save_as) {
     try {
       await write(file, text);
@@ -227,12 +258,13 @@ export async function save(name, text, save_as) {
       warn("could not write the file, choosing another way", error);
     }
   }
-  if (window.top === window && typeof window.showSaveFilePicker === "function") {
+  if (can_pick_save()) {
     try {
-      const handle = await window.showSaveFilePicker({ suggestedName: name, types });
+      const result = await (picked || pick_save(name));
+      if (result.error) throw result.error;
+      const handle = result.handle;
       await write(handle, text);
-      if (session === started) current = handle;
-      else if (documentFiles.has(owner)) documentFiles.set(owner, handle);
+      owner.handle = handle;
       await remember(handle.name, text, handle);
       return [handle.name, "picked"];
     } catch (error) {
@@ -241,8 +273,7 @@ export async function save(name, text, save_as) {
     }
   }
   download(name, new TextEncoder().encode(text), "application/json");
-  if (session === started) current = null;
-  else if (documentFiles.has(owner)) documentFiles.set(owner, null);
+  owner.handle = null;
   await remember(name, text, null);
   return [name, "download"];
 }
@@ -373,7 +404,7 @@ export function save_workspace(json) {
   let data;
   try { data = JSON.parse(json); } catch { return Promise.resolve(false); }
   for (const doc of data.documents) {
-    doc.handle = doc.id === activeDocument ? current : documentFiles.get(doc.id) || null;
+    doc.handle = (doc.id === activeDocument ? current : documentFiles.get(doc.id))?.handle || null;
   }
   workspaceWrites = workspaceWrites.catch(() => {}).then(async () => {
     try { await put("state", "workspace", data); return true; }
@@ -392,7 +423,7 @@ export async function restore_workspace() {
   try {
     const data = await get("state", "workspace");
     if (!data || !Array.isArray(data.documents) || data.documents.length > 16) return null;
-    return { active: data.active, documents: data.documents.map(doc => ({
+    return { active: data.active, library: data.library, documents: data.documents.map(doc => ({
       id: doc.id, name: doc.name, text: doc.text, dirty: doc.dirty,
       token: stage_file(doc.handle || null)
     })) };

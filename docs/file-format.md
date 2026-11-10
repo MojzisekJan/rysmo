@@ -7,6 +7,14 @@ shows exactly which elements changed.
 The writer uses version 20. The reader also accepts versions 1 through 19; the example
 below remains a valid version 2 file.
 
+Instance transforms retain full floating-point precision on save, including very
+small invertible scales. Native loading and model import share hierarchy limits:
+at most 64 levels (including the root), 100,000 expanded occurrences, 500,000
+expanded faces and one million expanded vertices. Shared definitions are counted
+with memoization before occurrence expansion; unused definitions are checked too.
+Commands reject changes exceeding these limits without adding an Undo step.
+The JSON schema and version remain unchanged.
+
 ## Example
 
 A 1 m by 0.5 m rectangle on the ground, painted, and a 0.2 m cube made into a component

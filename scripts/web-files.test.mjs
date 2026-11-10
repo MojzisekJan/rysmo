@@ -319,3 +319,114 @@ test("workspace recovery preserves all document snapshots, dirty flags and activ
   await Promise.all([first,last]);
   assert.equal((await api.restore_workspace()).documents.length,1);
 });
+
+function deferred() {
+  let resolve;
+  const promise = new Promise(done => { resolve = done; });
+  return { promise, resolve };
+}
+function fileHandle(name, writes) {
+  return { name, queryPermission: async () => "granted", createWritable: async () => ({
+    write: async text => writes.push(`${name}:${text}`), close: async () => {},
+  }) };
+}
+
+test("overlapping saves commit in invocation order, including after a tab switch", async () => {
+  const { api, window } = await fixture();
+  const closing = deferred(), release = deferred();
+  const committed = [];
+  let writers = 0;
+  const handle = { name: "model.rysmo", queryPermission: async () => "granted", createWritable: async () => {
+    writers++;
+    let content;
+    return { write: async text => { content = text; }, close: async () => {
+      if (content === "older") { closing.resolve(); await release.promise; }
+      committed.push(content);
+    }};
+  }};
+  api.activate_document(1);
+  window.showSaveFilePicker = async () => handle;
+  await api.save("model.rysmo", "initial", false);
+  const first = api.save("model.rysmo", "older", false);
+  await closing.promise;
+  const second = api.save("model.rysmo", "newer", false);
+  api.activate_document(2);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(writers, 2, "second save must not open an overlapping writer");
+  release.resolve();
+  await Promise.all([first, second]);
+  assert.deepEqual(committed, ["initial", "older", "newer"]);
+});
+
+test("Save As follows A-B-A switches and queued Save uses the new destination", async () => {
+  const { api, window } = await fixture();
+  const writes = [];
+  api.activate_document(1);
+  window.showSaveFilePicker = async () => fileHandle("original.rysmo", writes);
+  await api.save("original.rysmo", "initial", false);
+  const picked = deferred();
+  window.showSaveFilePicker = () => picked.promise;
+  const rename = api.save("renamed.rysmo", "renamed", true);
+  const update = api.save("original.rysmo", "latest", false);
+  api.activate_document(2);
+  api.activate_document(1);
+  picked.resolve(fileHandle("renamed.rysmo", writes));
+  await Promise.all([rename, update]);
+  await api.save("renamed.rysmo", "next", false);
+  assert.deepEqual(writes, ["original.rysmo:initial", "renamed.rysmo:renamed", "renamed.rysmo:latest", "renamed.rysmo:next"]);
+});
+
+test("cancelling Save As releases the queue and preserves the original destination", async () => {
+  const { api, window } = await fixture();
+  const writes = [];
+  window.showSaveFilePicker = async () => fileHandle("original.rysmo", writes);
+  await api.save("original.rysmo", "initial", false);
+  const picked = deferred();
+  window.showSaveFilePicker = () => picked.promise;
+  const rename = api.save("renamed.rysmo", "rename", true);
+  const update = api.save("original.rysmo", "latest", false);
+  picked.resolve(Promise.reject(Object.assign(Error("cancelled"), { name: "AbortError" })));
+  assert.equal(await rename, null);
+  assert.equal((await update)[0], "original.rysmo");
+  assert.deepEqual(writes, ["original.rysmo:initial", "original.rysmo:latest"]);
+});
+
+test("workspace recovery retains the collection and stores handles without save queues", async () => {
+  const db = recoveryDatabase();
+  const { api, window } = await fixture({ indexedDB: db });
+  api.activate_document(1);
+  window.showSaveFilePicker = async () => fileHandle("model.rysmo", []);
+  await api.save("model.rysmo", "initial", false);
+  const library = { collection: { name: "Parts", assets: [] }, modified: true };
+  const snapshot = { active: 1, documents: [{id: 1, name: "model.rysmo", text: "model", dirty: false}], library };
+  assert.equal(await api.save_workspace(JSON.stringify(snapshot)), true);
+  const stored = db.stores.get("state").get("workspace");
+  assert.equal(stored.documents[0].handle.name, "model.rysmo");
+  assert.equal("writing" in stored.documents[0].handle, false);
+  const reloaded = await fixture({ indexedDB: db });
+  assert.deepEqual(JSON.parse(JSON.stringify((await reloaded.api.restore_workspace()).library)), library);
+});
+
+test("queued Save As opens its picker during the user gesture but writes after the earlier save", async () => {
+  const { api, window } = await fixture();
+  const blocked = deferred(), release = deferred();
+  const writes = [];
+  const first = fileHandle("first.rysmo", writes);
+  first.createWritable = async () => ({ write: async text => {
+    if (text === "earlier") { blocked.resolve(); await release.promise; }
+    writes.push(`first.rysmo:${text}`);
+  }, close: async () => {} });
+  window.showSaveFilePicker = async () => first;
+  await api.save("first.rysmo", "initial", false);
+  const saving = api.save("first.rysmo", "earlier", false);
+  await blocked.promise;
+  let picked = false;
+  window.showSaveFilePicker = async () => { picked = true; return fileHandle("renamed.rysmo", writes); };
+  const renamed = api.save("renamed.rysmo", "latest", true);
+  assert.equal(picked, true);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(writes, ["first.rysmo:initial"]);
+  release.resolve();
+  await Promise.all([saving, renamed]);
+  assert.deepEqual(writes, ["first.rysmo:initial", "first.rysmo:earlier", "renamed.rysmo:latest"]);
+});

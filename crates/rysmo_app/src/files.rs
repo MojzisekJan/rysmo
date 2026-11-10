@@ -198,10 +198,7 @@ mod imp {
         let mtl_name =
             mtl_path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "model.mtl".into());
         let out = rysmo_io::obj::export(app.editor.doc(), &mtl_name);
-        let dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
-        let r = std::fs::write(&path, out.obj)
-            .and_then(|_| std::fs::write(&mtl_path, out.mtl))
-            .and_then(|_| out.images.iter().try_for_each(|(name, bytes)| std::fs::write(dir.join(name), bytes)))
+        let r = rysmo_io::obj::write(&path, &out)
             .map(|_| format!("Exported {} (and {} images).", path.display(), out.images.len()))
             .map_err(|e| format!("Cannot export: {e}"));
         report(app, r);

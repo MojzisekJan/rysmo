@@ -184,7 +184,7 @@ pub fn save(app: &mut App3d, name: &str, extension: &'static str, bytes: &[u8], 
         if path.extension().is_none() {
             path.set_extension(extension);
         }
-        match std::fs::write(&path, bytes) {
+        match rysmo_io::atomic::write(&path, bytes) {
             Ok(()) => {
                 app.message = Some(format!("Saved {}.", path.display()));
                 true

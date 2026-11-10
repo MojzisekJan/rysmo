@@ -17,6 +17,7 @@ pub enum Action {
 pub struct Guard {
     pending: Option<Action>,
     saving: bool,
+    collection: bool,
     pub close_ready: bool,
 }
 
@@ -61,6 +62,9 @@ fn perform(app: &mut App3d, action: Action) {
             if let Some(id) = app.documents.first_dirty() {
                 crate::documents::switch(app, id);
                 request(app, Action::Close);
+            } else if app.features.library.modified {
+                app.unsaved.pending = Some(Action::Close);
+                app.unsaved.collection = true;
             } else {
                 app.unsaved.close_ready = true;
             }
@@ -87,9 +91,11 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
     if app.unsaved.pending.is_none() {
         return;
     }
-    if app.unsaved.saving && !app.editor.is_dirty() {
+    let dirty = if app.unsaved.collection { app.features.library.modified } else { app.editor.is_dirty() };
+    if app.unsaved.saving && !dirty {
         if let Some(action) = app.unsaved.pending.take() {
             app.unsaved.saving = false;
+            app.unsaved.collection = false;
             perform(app, action);
         }
         return;
@@ -100,9 +106,13 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
         return;
     }
     let name = app.path.as_deref().and_then(std::path::Path::file_name);
-    let title = match name {
-        Some(name) => format!("Save changes to “{}”?", name.to_string_lossy()),
-        None => "Save changes to this model?".to_owned(),
+    let title = if app.unsaved.collection {
+        format!("Save changes to collection “{}”?", app.features.library.name())
+    } else {
+        match name {
+            Some(name) => format!("Save changes to “{}”?", name.to_string_lossy()),
+            None => "Save changes to this model?".to_owned(),
+        }
     };
     let frame = egui::Frame::window(&ctx.global_style()).inner_margin(egui::Margin::same(20));
     let modal = egui::Modal::new(egui::Id::unique("unsaved_changes")).frame(frame).show(ctx, |ui| {
@@ -112,6 +122,11 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
             ui.heading(title);
             ui.add_space(6.);
             ui.label("Your changes will be lost if you close without saving.");
+            if app.unsaved.collection
+                && let Some(error) = app.features.library.error()
+            {
+                ui.colored_label(ui.visuals().error_fg_color, error);
+            }
             ui.add_space(14.);
 
             let button_width = ((width - 2. * ui.spacing().item_spacing.x) / 3.).max(1.);
@@ -174,11 +189,20 @@ fn choose(app: &mut App3d, choice: Choice) {
     match choice {
         Choice::Save => {
             app.unsaved.saving = true;
-            files::save(app, false);
+            if app.unsaved.collection {
+                crate::features::library::save(app);
+            } else {
+                files::save(app, false);
+            }
         }
         Choice::Discard => {
             if let Some(action) = app.unsaved.pending.take() {
                 app.unsaved.saving = false;
+                if app.unsaved.collection {
+                    app.unsaved.collection = false;
+                    app.unsaved.close_ready = true;
+                    return;
+                }
                 if action == Action::Close {
                     app.documents.discard_for_close(app.editor.revision());
                 }
@@ -187,6 +211,7 @@ fn choose(app: &mut App3d, choice: Choice) {
         }
         Choice::Cancel => {
             app.unsaved.pending = None;
+            app.unsaved.collection = false;
             app.unsaved.saving = false;
             app.documents.cancel_close();
         }
@@ -196,6 +221,43 @@ fn choose(app: &mut App3d, choice: Choice) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn dirty_collection_requires_save_discard_or_cancel_even_with_a_clean_model() {
+        let mut app = App3d::new(rysmo_model::Editor::new());
+        app.features.library.modified = true;
+        request(&mut app, Action::Close);
+        assert!(app.unsaved.collection);
+        assert!(!app.unsaved.close_ready);
+        choose(&mut app, Choice::Cancel);
+        assert!(app.features.library.modified);
+        assert!(!app.unsaved.active());
+        request(&mut app, Action::Close);
+        app.unsaved.saving = true;
+        frame(&mut app, vec![]);
+        assert!(!app.unsaved.close_ready);
+        app.features.library.modified = false;
+        frame(&mut app, vec![]);
+        assert!(app.unsaved.close_ready);
+    }
+    #[test]
+    fn models_and_collection_are_confirmed_separately_before_exit() {
+        let mut app = App3d::new(rysmo_model::Editor::new());
+        app.editor.mark_dirty();
+        app.features.library.modified = true;
+        request(&mut app, Action::Close);
+        assert!(!app.unsaved.collection);
+        choose(&mut app, Choice::Discard);
+        assert!(app.unsaved.collection);
+        assert!(!app.unsaved.close_ready);
+        choose(&mut app, Choice::Cancel);
+        assert!(app.editor.is_dirty());
+        request(&mut app, Action::Close);
+        choose(&mut app, Choice::Discard);
+        choose(&mut app, Choice::Discard);
+        assert!(app.unsaved.close_ready);
+        assert!(app.editor.is_dirty());
+        assert!(app.features.library.modified);
+    }
     #[test]
     fn dirty_model_requires_confirmation_and_repeated_close_keeps_pending_action() {
         let mut app = App3d::new(rysmo_model::Editor::new());

@@ -35,15 +35,22 @@ pub fn parse_vcb(text: &str, units: Units, values: usize) -> Result<VcbInput, St
         let n: u32 = s.trim().parse().map_err(|_| format!("\"{t}\" is not a count"))?;
         if n == 0 { Err("The count must be at least 1.".into()) } else { Ok(n) }
     };
+    let array_count = |s: &str| -> Result<u32, String> {
+        let n = count(s)?;
+        if n > rysmo_model::limits::MAX_COPIES {
+            return Err(format!("An array supports at most {} copies.", rysmo_model::limits::MAX_COPIES));
+        }
+        Ok(n)
+    };
     let lower = t.to_ascii_lowercase();
     if let Some(n) = lower.strip_suffix('x').filter(|n| n.trim().chars().all(|c| c.is_ascii_digit())) {
-        return count(n).map(VcbInput::Copies);
+        return array_count(n).map(VcbInput::Copies);
     }
     if let Some(n) = lower.strip_prefix('x').or_else(|| lower.strip_prefix('*')) {
-        return count(n).map(VcbInput::Copies);
+        return array_count(n).map(VcbInput::Copies);
     }
     if let Some(n) = lower.strip_prefix('/') {
-        return count(n).map(VcbInput::Divide);
+        return array_count(n).map(VcbInput::Divide);
     }
     if let Some(n) = lower.strip_suffix('s') {
         let n = count(n)?;
@@ -126,5 +133,17 @@ mod imperial_tests {
         assert_eq!(v[1], 1.25);
         assert_eq!(parse_vcb("/5", Units::Feet, 1), Ok(VcbInput::Divide(5)));
         assert!(parse_vcb("1/2in", Units::Metres, 1).is_ok());
+    }
+}
+
+#[cfg(test)]
+mod array_limit_tests {
+    use super::*;
+    #[test]
+    fn excessive_array_counts_are_rejected_before_tool_execution() {
+        for text in ["4294967295x", "x10001", "*10001", "/10001"] {
+            assert!(parse_vcb(text, Units::Metres, 1).is_err());
+        }
+        assert_eq!(parse_vcb("10000x", Units::Metres, 1), Ok(VcbInput::Copies(10000)));
     }
 }

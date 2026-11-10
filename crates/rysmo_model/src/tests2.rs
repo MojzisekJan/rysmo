@@ -2143,3 +2143,58 @@ fn selecting_changes_no_content_revision() {
     editor.apply(Command::DrawLines { lines: vec![[DVec3::Y, DVec3::Z]], facing: None }).unwrap();
     assert_eq!(editor.content_revision(), content + 1);
 }
+
+#[test]
+fn grouping_duplicate_dimension_ids_is_one_atomic_operation() {
+    for component in [false, true] {
+        let mut editor = Editor::new();
+        let dimension = test_linear_dimension(DVec3::ZERO, DVec3::X);
+        let id = editor.apply(Command::AddDimension { dimension }).unwrap().dimensions[0];
+        let before = editor.doc().clone();
+        let elements = vec![Element::Dimension(id); 3];
+        let command = if component {
+            Command::MakeComponent { elements, name: Some("Part".into()) }
+        } else {
+            Command::MakeGroup { elements }
+        };
+        let made = editor.apply(command).unwrap();
+        assert_eq!(made.created.len(), 1);
+        let Element::Instance(id) = made.created[0] else { panic!() };
+        let instance = &editor.doc().root.instances[&id];
+        assert_eq!(editor.doc().definitions[&instance.definition].dimensions.len(), 1);
+        assert!(editor.doc().root.dimensions.is_empty());
+        assert!(editor.undo());
+        assert_eq!(editor.doc(), &before);
+    }
+}
+
+#[test]
+fn excessive_copy_and_rotate_arrays_preserve_document_and_history() {
+    let mut editor = Editor::new();
+    let element = editor.apply(Command::AddGuidePoint { point: DVec3::X }).unwrap().created[0];
+    let before = editor.doc().clone();
+    let revision = editor.revision();
+    for copies in [10_001, u32::MAX] {
+        for command in [
+            Command::Copy { elements: vec![element], offset: DVec3::X, copies },
+            Command::CopyWithText {
+                elements: vec![element],
+                offset: DVec3::X,
+                copies,
+                pivot: DVec3::ZERO,
+                view: rysmo_math::OrbitCamera::default().view(rysmo_math::DVec2::splat(800.)),
+            },
+            Command::Rotate { elements: vec![element], centre: DVec3::ZERO, axis: DVec3::Z, angle: 90., copies },
+        ] {
+            assert!(editor.apply(command).is_err());
+            assert_eq!(editor.doc(), &before);
+            assert_eq!(editor.revision(), revision);
+        }
+    }
+    assert!(editor.apply(Command::Copy { elements: vec![element; 101], offset: DVec3::X, copies: 10_000 }).is_err());
+    assert_eq!(editor.doc(), &before);
+    assert!(editor.apply(Command::Copy { elements: vec![element], offset: DVec3::X, copies: 3 }).is_ok());
+    assert_eq!(editor.doc().root.guides.len(), 4);
+    assert!(editor.undo());
+    assert_eq!(editor.doc(), &before);
+}

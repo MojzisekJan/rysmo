@@ -16,21 +16,33 @@ pub struct State {
     name: String,
     description: String,
     pub modified: bool,
+    revision: u64,
     error: Option<String>,
 }
 pub fn load(bytes: &[u8]) -> Result<State, String> {
     let collection = Collection::read(bytes)?;
+    from_collection(collection)
+}
+fn from_collection(collection: Collection) -> Result<State, String> {
     let documents = collection
         .assets
         .iter()
         .map(|asset| asset.document().map_err(|e| e.to_string()))
         .collect::<Result<Vec<_>, _>>()?;
     let previews = documents.iter().map(Preview::new).collect();
-    Ok(State { open: true, collection, documents, previews, name: "Component".into(), ..Default::default() })
+    Ok(State {
+        open: true,
+        collection,
+        documents,
+        previews,
+        name: "Component".into(),
+        revision: crate::documents::generation(),
+        ..Default::default()
+    })
 }
 pub fn merge(app: &mut App3d, mut incoming: State) -> Result<(), String> {
     let state = &mut app.features.library;
-    if state.collection.assets.is_empty() {
+    if state.collection.assets.is_empty() && !state.modified {
         *state = incoming;
         return Ok(());
     }
@@ -49,7 +61,7 @@ pub fn merge(app: &mut App3d, mut incoming: State) -> Result<(), String> {
     incoming.collection = collection;
     incoming.previews = documents.iter().map(Preview::new).collect();
     incoming.documents = documents;
-    incoming.modified = true;
+    incoming.touch();
     *state = incoming;
     Ok(())
 }
@@ -121,12 +133,13 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
     let mut state = std::mem::take(&mut app.features.library);
     let mut open = true;
     let mut merge_file = false;
-    let mut save = false;
+    let mut save_requested = false;
+    let mut changed = false;
     let mut place = None;
     let mut remove = None;
     let result=crate::theme::window("Component library").open(&mut open).default_width(350.).max_height((ctx.content_rect().height()-100.).max(220.)).vscroll(true).show(ctx,|ui| {
-        ui.horizontal(|ui|{merge_file=ui.button("Merge collection...").clicked();save=ui.button("Save collection...").clicked();});
-        state.modified|=ui.add(crate::theme::singleline(&mut state.collection.name).desired_width(f32::INFINITY).hint_text("Collection name")).changed();
+        ui.horizontal(|ui|{merge_file=ui.button("Merge collection...").clicked();save_requested=ui.button("Save collection...").clicked();});
+        changed|=ui.add(crate::theme::singleline(&mut state.collection.name).desired_width(f32::INFINITY).hint_text("Collection name")).changed();
         if state.modified {ui.weak("Collection modified. Save a .ryslib file to keep these changes.");}
         ui.separator();
         ui.add(crate::theme::singleline(&mut state.name).desired_width(f32::INFINITY).hint_text("New component name"));
@@ -137,7 +150,7 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
                 let asset=Asset::from_clipboard(state.name.trim().into(),state.description.clone(),&clipboard);
                 let mut collection=state.collection.clone();collection.assets.push(asset);collection.validate()?;
                 let document=collection.assets.last().ok_or("Missing new asset")?.document().map_err(|e|e.to_string())?;
-                state.collection=collection;state.previews.push(Preview::new(&document));state.documents.push(document);state.modified=true;state.name.clear();state.description.clear();Ok(())
+                state.collection=collection;state.previews.push(Preview::new(&document));state.documents.push(document);changed=true;state.name.clear();state.description.clear();Ok(())
             })();state.error=result.err();
         }
         ui.separator();ui.add(crate::theme::singleline(&mut state.filter).desired_width(f32::INFINITY).hint_text("Search collection"));
@@ -148,8 +161,8 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
         if let Some(index)=state.selected.filter(|i|*i<state.collection.assets.len()) {
             thumbnail(ui,&state.previews[index]);
             let asset=&mut state.collection.assets[index];
-            state.modified|=ui.add(crate::theme::singleline(&mut asset.name).desired_width(f32::INFINITY)).changed();
-            state.modified|=ui.add(crate::theme::singleline(&mut asset.description).desired_width(f32::INFINITY)).changed();
+            changed|=ui.add(crate::theme::singleline(&mut asset.name).desired_width(f32::INFINITY)).changed();
+            changed|=ui.add(crate::theme::singleline(&mut asset.description).desired_width(f32::INFINITY)).changed();
             ui.horizontal(|ui|{if ui.button("Place component").clicked(){place=Some(index);}
 if ui.button("Remove from collection").clicked(){remove=Some(index);}});
         }
@@ -163,7 +176,7 @@ if ui.button("Remove from collection").clicked(){remove=Some(index);}});
         state.documents.remove(index);
         state.previews.remove(index);
         state.selected = None;
-        state.modified = true;
+        changed = true;
     }
     if let Some(index) = place
         && let Err(error) = crate::object_clipboard::place_external(
@@ -175,19 +188,139 @@ if ui.button("Remove from collection").clicked(){remove=Some(index);}});
     {
         state.error = Some(error);
     }
-    if save {
-        match state.collection.write() {
-            Ok(bytes) => {
-                if data_files::save(app, &state.collection.name, "ryslib", &bytes, "application/json") {
-                    state.modified = false;
-                }
-            }
-            Err(error) => state.error = Some(error),
-        }
+    if changed {
+        state.touch();
     }
     app.features.library = state;
+    if save_requested {
+        save(app);
+    }
     super::remember(app, &result);
     if merge_file {
         data_files::pick(app, Purpose::Collection);
+    }
+}
+
+impl State {
+    fn touch(&mut self) {
+        self.modified = true;
+        self.revision = crate::documents::generation();
+    }
+    pub fn name(&self) -> &str {
+        &self.collection.name
+    }
+    pub fn error(&self) -> Option<&str> {
+        self.error.as_deref()
+    }
+
+    #[cfg(any(target_arch = "wasm32", test))]
+    pub fn recovery_version(&self) -> (u64, bool) {
+        (self.revision, self.modified)
+    }
+
+    #[cfg(any(target_arch = "wasm32", test))]
+    pub fn recovery(&self) -> serde_json::Value {
+        serde_json::json!({ "collection": self.collection, "modified": self.modified, "open": self.open })
+    }
+
+    pub fn saved_bytes(&mut self, bytes: &[u8]) {
+        // A mobile picker can remain open while the collection is edited.
+        if self.collection.write().is_ok_and(|current| current == bytes) {
+            self.modified = false;
+        }
+    }
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+pub fn restore(state: &mut State, value: serde_json::Value) -> Result<(), String> {
+    if state.revision != 0 || state.modified || value.is_null() {
+        return Ok(());
+    }
+    let collection: Collection = serde_json::from_value(value["collection"].clone()).map_err(|e| e.to_string())?;
+    // Empty names are valid unfinished UI edits, although not valid exported assets.
+    let mut checked = collection.clone();
+    if checked.name.trim().is_empty() {
+        checked.name = "Recovered collection".into();
+    }
+    for asset in &mut checked.assets {
+        if asset.name.trim().is_empty() {
+            asset.name = "Recovered component".into();
+        }
+    }
+    checked.validate()?;
+    let mut recovered = from_collection(collection)?;
+    recovered.modified = value["modified"].as_bool().unwrap_or(true);
+    recovered.open = value["open"].as_bool().unwrap_or(false);
+    *state = recovered;
+    Ok(())
+}
+
+pub fn save(app: &mut App3d) {
+    match app.features.library.collection.write() {
+        Ok(bytes) => {
+            let name = app.features.library.collection.name.clone();
+            if data_files::save(app, &name, "ryslib", &bytes, "application/json") {
+                app.features.library.modified = false;
+                app.features.library.error = None;
+            }
+        }
+        Err(error) => {
+            app.message = Some(error.clone());
+            app.features.library.error = Some(error);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn dirty_collection_recovers_and_does_not_overwrite_new_edits() {
+        let mut source = State::default();
+        source.collection.name = "Draft parts".into();
+        source.touch();
+        let mut recovered = State::default();
+        restore(&mut recovered, source.recovery()).unwrap();
+        assert_eq!(recovered.name(), "Draft parts");
+        assert!(recovered.modified);
+        assert!(!recovered.open);
+        recovered.collection.name = "New edits".into();
+        recovered.touch();
+        restore(&mut recovered, source.recovery()).unwrap();
+        assert_eq!(recovered.name(), "New edits");
+    }
+    #[test]
+    fn unfinished_names_recover_but_invalid_collection_cannot_replace_state() {
+        let mut source = State::default();
+        source.collection.name.clear();
+        source.touch();
+        let mut recovered = State::default();
+        restore(&mut recovered, source.recovery()).unwrap();
+        assert!(recovered.name().is_empty());
+        assert!(recovered.modified);
+        let mut target = State::default();
+        assert!(restore(&mut target, serde_json::json!({"collection": {"format":"wrong"}})).is_err());
+        assert_eq!(target.recovery_version(), (0, false));
+    }
+    #[test]
+    fn completion_of_an_old_collection_save_keeps_new_edits_dirty() {
+        let mut state = State::default();
+        state.touch();
+        let old = state.collection.write().unwrap();
+        state.collection.name = "New parts".into();
+        state.touch();
+        state.saved_bytes(&old);
+        assert!(state.modified);
+        state.saved_bytes(&state.collection.write().unwrap());
+        assert!(!state.modified);
+    }
+    #[test]
+    fn failed_collection_save_keeps_close_pending_and_reports_validation_error() {
+        let mut app = App3d::new(rysmo_model::Editor::new());
+        app.features.library.collection.name.clear();
+        app.features.library.touch();
+        save(&mut app);
+        assert!(app.features.library.modified);
+        assert!(app.features.library.error().is_some());
     }
 }

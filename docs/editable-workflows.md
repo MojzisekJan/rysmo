@@ -83,14 +83,18 @@ Undo/Redo, camera, selection, editing context and save destination. The clipboar
 component library and application preferences are shared. The tab row appears when
 two or more documents are open; its close button closes the active document and
 checks unsaved changes. With one document, Close document in command search does the
-same. Closing the application checks every dirty document. Up to 16 documents can be
+same. Closing the application checks every dirty document, then any modified component
+collection with its own Save / Don’t Save / Cancel dialog. Up to 16 documents can be
 open.
 
 In the browser, each tab retains its own file handle. A delayed Save As remains
 associated with its initiating document. Autosave stores a workspace with all
-models, dirty flags, cameras and the active tab; switching/closing tabs also writes
-a snapshot when autosave is enabled. Recovery restores models and cameras, not Undo
-history. Browser storage can be denied or cleared; Save still produces model files.
+models, dirty flags, cameras, the active tab and the shared component collection.
+Switching/closing tabs also writes a snapshot when autosave is enabled. Recovery restores models and cameras, not Undo
+history. Collections retain their unsaved flag after recovery; older workspaces
+without a collection remain readable. Reload/close warnings include collection
+changes. Saves for each document run in order across tab switches and Save As.
+Browser storage can be denied or cleared; Save still produces model files.
 
 ## Drawing sheets
 

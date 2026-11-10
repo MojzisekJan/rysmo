@@ -19,6 +19,7 @@ pub mod dimensions;
 mod document;
 mod editor;
 mod intersect;
+pub mod limits;
 mod navigation;
 pub mod parametric;
 pub mod photo;

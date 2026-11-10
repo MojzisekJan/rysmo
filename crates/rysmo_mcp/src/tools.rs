@@ -538,11 +538,7 @@ pub fn call(s: &mut Session, name: &str, args: &Value) -> R {
                     let name =
                         mtl.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "model.mtl".into());
                     let out = rysmo_io::obj::export(s.editor.doc(), &name);
-                    let dir = path.parent().map(std::path::Path::to_path_buf).unwrap_or_default();
-                    std::fs::write(&path, out.obj)
-                        .and_then(|_| std::fs::write(&mtl, out.mtl))
-                        .and_then(|_| out.images.iter().try_for_each(|(n, b)| std::fs::write(dir.join(n), b)))
-                        .map_err(|e| e.to_string())?;
+                    rysmo_io::obj::write(&path, &out).map_err(|e| e.to_string())?;
                 }
                 "glb" => std::fs::write(&path, rysmo_io::gltf::export(s.editor.doc())).map_err(|e| e.to_string())?,
                 "stl" | "3mf" => {
@@ -648,15 +644,15 @@ pub fn call(s: &mut Session, name: &str, args: &Value) -> R {
         "move" => {
             let el = elements(s, args, "elements")?;
             let offset = arg_vec3(args, "offset")?;
-            match get(args, "copies").and_then(Value::as_u64).unwrap_or(0) {
+            match copy_count(args)? {
                 0 => run(s, Command::Move { elements: el, offset }),
-                n => run(s, Command::Copy { elements: el, offset, copies: n as u32 }),
+                n => run(s, Command::Copy { elements: el, offset, copies: n }),
             }
         }
         "rotate" => {
             let el = elements(s, args, "elements")?;
             let axis = opt_vec3(args, "axis")?.unwrap_or(DVec3::Z);
-            let copies = get(args, "copies").and_then(Value::as_u64).unwrap_or(0) as u32;
+            let copies = copy_count(args)?;
             run(
                 s,
                 Command::Rotate {
@@ -847,4 +843,16 @@ pub fn call(s: &mut Session, name: &str, args: &Value) -> R {
 /// A length in the document's display units, for text replies.
 pub(crate) fn len(s: &rysmo_model::Editor, m: f64) -> String {
     s.doc().format_length(m)
+}
+
+fn copy_count(args: &Value) -> Result<u32, String> {
+    let Some(value) = get(args, "copies") else {
+        return Ok(0);
+    };
+    let count = value
+        .as_u64()
+        .and_then(|n| u32::try_from(n).ok())
+        .filter(|n| *n <= rysmo_model::limits::MAX_COPIES)
+        .ok_or_else(|| format!("`copies` must be an integer from 0 to {}", rysmo_model::limits::MAX_COPIES))?;
+    Ok(count)
 }

@@ -439,10 +439,10 @@ pub fn save(doc: &Document) -> String {
                     id: *id,
                     within: *w,
                     def: i.definition,
-                    o: tidy3(t.w_axis.truncate()),
-                    x: tidy3(t.x_axis.truncate()),
-                    y: tidy3(t.y_axis.truncate()),
-                    z: tidy3(t.z_axis.truncate()),
+                    o: t.w_axis.truncate().to_array(),
+                    x: t.x_axis.truncate().to_array(),
+                    y: t.y_axis.truncate().to_array(),
+                    z: t.z_axis.truncate().to_array(),
                     name: i.name.clone(),
                     tag: i.tag,
                     material: i.material,
@@ -824,12 +824,7 @@ pub fn load(text: &str) -> Result<Document, IoError> {
         // Missing geometry is a supported non-associated dimension, with retained values.
         definition_mut(&mut doc, entry.within)?.dimensions.insert(entry.id, dimension);
     }
-    for id in doc.definitions.keys() {
-        let d = &doc.definitions[id];
-        if d.instances.values().any(|i| doc.contains_definition(i.definition, *id)) {
-            return Err(IoError::Format(format!("definition {id} contains itself")));
-        }
-    }
+    rysmo_model::limits::validate_document(&doc).map_err(IoError::Format)?;
     for scene in f.scenes {
         unique(scene.id)?;
         let scene = scene.scaled(scale);

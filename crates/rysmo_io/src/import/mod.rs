@@ -81,45 +81,6 @@ pub fn read(name: &str, bytes: &[u8], options: Options) -> Result<Imported> {
 #[cfg(test)]
 mod tests;
 
-/// Shared definitions may expand exponentially even when the file itself is small.
 pub(crate) fn validate_expansion(doc: &Document) -> Result<()> {
-    use std::collections::{BTreeMap, BTreeSet};
-    type Counts = (usize, usize, usize, usize);
-    fn visit(
-        doc: &Document,
-        id: Option<rysmo_model::DefinitionId>,
-        path: &mut BTreeSet<Option<rysmo_model::DefinitionId>>,
-        memo: &mut BTreeMap<Option<rysmo_model::DefinitionId>, Counts>,
-    ) -> Result<Counts> {
-        if path.len() >= 64 || path.contains(&id) {
-            return error("Component hierarchy is cyclic or exceeds 64 levels.");
-        }
-        if let Some(count) = memo.get(&id) {
-            if path.len() + count.3 > 64 {
-                return error("Component hierarchy exceeds 64 levels.");
-            }
-            return Ok(*count);
-        }
-        path.insert(id);
-        let definition = doc.def(id).ok_or_else(|| ImportError("Missing component definition".into()))?;
-        let mut counts = (1usize, definition.mesh.face_count(), definition.mesh.vertex_count(), 1usize);
-        for instance in definition.instances.values() {
-            let child = visit(doc, Some(instance.definition), path, memo)?;
-            counts.0 = counts.0.saturating_add(child.0);
-            counts.1 = counts.1.saturating_add(child.1);
-            counts.2 = counts.2.saturating_add(child.2);
-            counts.3 = counts.3.max(child.3 + 1);
-            if counts.0 > 100_000 || counts.1 > 500_000 || counts.2 > 1_000_000 {
-                return error("Expanded model exceeds 100,000 occurrences, 500,000 faces or one million vertices.");
-            }
-        }
-        if counts.0 > 100_000 || counts.1 > 500_000 || counts.2 > 1_000_000 {
-            return error("Expanded model exceeds the geometry budget.");
-        }
-        path.remove(&id);
-        memo.insert(id, counts);
-        Ok(counts)
-    }
-    visit(doc, None, &mut BTreeSet::new(), &mut BTreeMap::new())?;
-    Ok(())
+    rysmo_model::limits::validate_document(doc).map_err(ImportError)
 }

@@ -154,3 +154,63 @@ fn draw_on_a_face_and_edit_inside_a_group() {
     ok(&call(&mut s, 11, "close_component", json!({})));
     assert!(s.editor.context().is_empty());
 }
+
+#[test]
+fn duplicate_dimension_group_request_preserves_server_and_undo() {
+    use rysmo_math::DVec3;
+    use rysmo_model::Command;
+    use rysmo_model::dimensions::*;
+    let mut session = Session::new();
+    let dimension = Dimension {
+        measure: DimensionMeasure::Linear {
+            from: DimensionAnchor { point: DVec3::ZERO, reference: None },
+            to: DimensionAnchor { point: DVec3::X, reference: None },
+            axis: None,
+        },
+        normal: DVec3::Z,
+        offset: DVec3::Y,
+        text: String::new(),
+        alignment: Default::default(),
+        font: Default::default(),
+        text_position: Default::default(),
+        endpoints: Default::default(),
+    };
+    let id = session.editor.apply(Command::AddDimension { dimension }).unwrap().dimensions[0];
+    let request=json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"make_group","arguments":{"elements":[id.0,id.0]}}}).to_string();
+    let before = session.editor.doc().clone();
+    let reply: Value = serde_json::from_str(&session.handle_line(&request).unwrap()).unwrap();
+    ok(&reply);
+    ok(&call(&mut session, 2, "describe_model", json!({})));
+    ok(&call(&mut session, 3, "undo", json!({})));
+    assert_eq!(session.editor.doc(), &before);
+}
+
+#[test]
+fn invalid_mcp_copy_counts_never_transform_the_original() {
+    use rysmo_model::{Command, Element};
+    let mut session = Session::new();
+    let Element::Guide(id) =
+        session.editor.apply(Command::AddGuidePoint { point: rysmo_math::DVec3::X }).unwrap().created[0]
+    else {
+        panic!()
+    };
+    let before = session.editor.doc().clone();
+    let history = session.editor.history_position();
+    for copies in
+        [json!(4294967296u64), json!(4294967297u64), json!(u64::MAX), json!(-1), json!(1.5), json!("3"), json!(10001)]
+    {
+        for tool in ["rotate", "move"] {
+            let response = call(
+                &mut session,
+                1,
+                tool,
+                json!({"elements": [id.0], "centre": [0,0,0], "offset": [1,0,0], "angle": 90, "copies": copies}),
+            );
+            assert_eq!(response["result"]["isError"], true, "{response}");
+            assert_eq!(session.editor.doc(), &before);
+            assert_eq!(session.editor.history_position(), history);
+        }
+    }
+    ok(&call(&mut session, 2, "move", json!({"elements": [id.0], "offset": [1,0,0], "copies": 2})));
+    assert_eq!(session.editor.doc().root.guides.len(), 3);
+}

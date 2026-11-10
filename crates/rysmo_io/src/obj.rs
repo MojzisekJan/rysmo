@@ -21,12 +21,48 @@ pub struct ObjExport {
     pub images: Vec<(String, Vec<u8>)>,
 }
 
-/// File name for an image in exports: its id and name, so names cannot clash.
+/// Content-addressed companion name, independent of user-supplied paths.
 pub(crate) fn image_file(doc: &Document, id: rysmo_mesh::ImageId) -> String {
-    let img = &doc.images[&id];
-    let ext = if img.mime.contains("jpeg") { "jpg" } else { "png" };
-    let stem = std::path::Path::new(&img.name).file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-    format!("{}-{}.{ext}", id.0, sanitise(&stem))
+    let image = &doc.images[&id];
+    let ext = if image.mime.contains("jpeg") { "jpg" } else { "png" };
+    format!("texture-{}-{:08x}.{ext}", id.0, crc32fast::hash(&image.bytes))
+}
+
+/// Write companions before the OBJ. A conflicting image or orphaned MTL is
+/// refused before any output is replaced; identical shared images are reused.
+pub fn write(path: &std::path::Path, output: &ObjExport) -> std::io::Result<()> {
+    use std::{fs, io};
+    let directory = path.parent().unwrap_or(std::path::Path::new("."));
+    let mtl = path.with_extension("mtl");
+    let same_or_absent = |path: &std::path::Path, bytes: &[u8]| -> io::Result<bool> {
+        match fs::read(path) {
+            Ok(existing) if existing == bytes => Ok(true),
+            Ok(_) => Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!("Export companion {} contains different data. Choose another folder.", path.display()),
+            )),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(error),
+        }
+    };
+    if !path.try_exists()? {
+        same_or_absent(&mtl, output.mtl.as_bytes())?;
+    }
+    let mut missing = Vec::new();
+    for (name, bytes) in &output.images {
+        if std::path::Path::new(name).file_name().is_none_or(|n| n != name.as_str()) {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid companion filename"));
+        }
+        let image = directory.join(name);
+        if !same_or_absent(&image, bytes)? {
+            missing.push((image, bytes));
+        }
+    }
+    for (image, bytes) in missing {
+        crate::atomic::write(&image, bytes)?;
+    }
+    crate::atomic::write(&mtl, output.mtl.as_bytes())?;
+    crate::atomic::write(path, output.obj.as_bytes())
 }
 
 /// Exports the model as OBJ. `mtl_name` is the file name the OBJ refers to. Groups and
@@ -178,7 +214,7 @@ mod tests {
         assert!(out.obj.lines().any(|l| l.starts_with("f ")
             && l.split_whitespace().nth(1).unwrap().split('/').count() == 3
             && !l.contains("//")));
-        let file = format!("{}-Brick_wall.png", img.0);
+        let file = super::image_file(e.doc(), img);
         assert!(out.mtl.contains(&format!("map_Kd {file}")));
         assert_eq!(out.images, vec![(file, vec![1, 2, 3])]);
     }

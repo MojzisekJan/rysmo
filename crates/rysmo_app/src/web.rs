@@ -45,14 +45,46 @@ extern "C" {
 
 /// What the asynchronous side found, for the next frame.
 enum Arrived {
-    Workspace { documents: Vec<(f64, String, String, bool, f64)>, active: f64 },
-    Restored { name: String, text: String, dirty: bool, token: f64 },
-    Opened { name: String, text: String, token: f64, version: DocumentVersion },
-    Saved { name: String, how: String, version: DocumentVersion },
-    Autosaved { version: DocumentVersion, camera: rysmo_math::OrbitCamera, dirty: bool, success: bool },
+    Workspace {
+        documents: Vec<(f64, String, String, bool, f64)>,
+        active: f64,
+        library: Option<String>,
+    },
+    Restored {
+        name: String,
+        text: String,
+        dirty: bool,
+        token: f64,
+    },
+    Opened {
+        name: String,
+        text: String,
+        token: f64,
+        version: DocumentVersion,
+    },
+    Saved {
+        name: String,
+        how: String,
+        version: DocumentVersion,
+    },
+    Autosaved {
+        version: DocumentVersion,
+        camera: rysmo_math::OrbitCamera,
+        dirty: bool,
+        library_version: (u64, bool),
+        success: bool,
+    },
     Recent(Vec<String>),
-    Texture { name: String, bytes: Vec<u8> },
-    Data { purpose: crate::features::data_files::Purpose, name: String, bytes: Vec<u8>, version: DocumentVersion },
+    Texture {
+        name: String,
+        bytes: Vec<u8>,
+    },
+    Data {
+        purpose: crate::features::data_files::Purpose,
+        name: String,
+        bytes: Vec<u8>,
+        version: DocumentVersion,
+    },
     DataError(String),
 }
 
@@ -75,6 +107,7 @@ struct Autosave {
     preferences: Option<crate::autosave::Settings>,
     written_camera: Option<rysmo_math::OrbitCamera>,
     written_dirty: Option<bool>,
+    written_library: Option<(u64, bool)>,
     /// Write without waiting for the interval, so recovery never predates a saved file.
     flush: bool,
 }
@@ -157,7 +190,11 @@ fn start(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>) {
                 if let Some(token) = field(&state, "token").as_f64() {
                     reject_open_file(token);
                 }
-                arrive(Arrived::Workspace { documents, active: field(&workspace, "active").as_f64().unwrap_or(0.) });
+                arrive(Arrived::Workspace {
+                    documents,
+                    active: field(&workspace, "active").as_f64().unwrap_or(0.),
+                    library: js_sys::JSON::stringify(&field(&workspace, "library")).ok().and_then(|s| s.as_string()),
+                });
                 return;
             }
         }
@@ -225,7 +262,17 @@ fn take_arrived(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>, time: Res<Ti
     let arrived: Vec<Arrived> = ARRIVED.with(|q| q.borrow_mut().drain(..).collect());
     for a in arrived {
         match a {
-            Arrived::Workspace { documents, active } => {
+            Arrived::Workspace { documents, active, library } => {
+                let mut failed = false;
+                if let Some(library) = library {
+                    let result = serde_json::from_str(&library)
+                        .map_err(|e| e.to_string())
+                        .and_then(|value| crate::features::library::restore(&mut app.features.library, value));
+                    if let Err(error) = result {
+                        failed = true;
+                        app.message = Some(format!("Cannot recover component collection: {error}"));
+                    }
+                }
                 if !app.accepts_recovery(auto.startup_generation) {
                     for (_, _, _, _, token) in documents {
                         reject_open_file(token);
@@ -245,6 +292,7 @@ fn take_arrived(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>, time: Res<Ti
                             }
                         }
                         Err(error) => {
+                            failed = true;
                             reject_open_file(token);
                             app.message = Some(error);
                         }
@@ -253,7 +301,9 @@ fn take_arrived(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>, time: Res<Ti
                 if let Some(id) = chosen {
                     crate::documents::switch(&mut app, id);
                 }
-                app.message = Some("Restored document workspace from the last visit.".into());
+                if !failed {
+                    app.message = Some("Restored document workspace from the last visit.".into());
+                }
             }
             Arrived::Restored { name, text, dirty, token } if app.accepts_recovery(auto.startup_generation) => {
                 match files::open_text(&mut app, &text, &name) {
@@ -320,7 +370,7 @@ fn take_arrived(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>, time: Res<Ti
                 auto.written = None;
                 auto.flush = true;
             }
-            Arrived::Autosaved { version, camera, dirty, success } => {
+            Arrived::Autosaved { version, camera, dirty, library_version, success } => {
                 auto.in_flight = false;
                 let current = DocumentVersion { generation: app.document_generation, revision: app.editor.revision() };
                 if !version.same_document(current) {
@@ -330,6 +380,7 @@ fn take_arrived(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>, time: Res<Ti
                     auto.written = Some(version);
                     auto.written_camera = Some(camera);
                     auto.written_dirty = Some(dirty);
+                    auto.written_library = Some(library_version);
                 } else {
                     auto.timer.retry(time.elapsed_secs_f64());
                     app.message = Some(
@@ -360,7 +411,11 @@ fn take_arrived(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>, time: Res<Ti
 
 /// Keeps an independent recovery snapshot without postponing continuous edits.
 fn autosave_now(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>, time: Res<Time<Real>>) {
-    if app.welcome && app.path.is_none() && app.accepts_recovery(auto.startup_generation) {
+    if app.welcome
+        && app.path.is_none()
+        && app.accepts_recovery(auto.startup_generation)
+        && !app.features.library.modified
+    {
         return;
     }
     let settings = app.autosave_settings;
@@ -374,7 +429,8 @@ fn autosave_now(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>, time: Res<Ti
     let version = DocumentVersion { generation: app.document_generation, revision: app.editor.revision() };
     let pending = auto.written != Some(version)
         || auto.written_camera != Some(app.camera)
-        || auto.written_dirty != Some(app.editor.is_dirty());
+        || auto.written_dirty != Some(app.editor.is_dirty())
+        || auto.written_library != Some(app.features.library.recovery_version());
     auto.flush &= pending;
     let due = auto.timer.due(time.elapsed_secs_f64(), pending, app.document_generation, settings);
     if due || (auto.flush && settings.enabled) {
@@ -389,13 +445,14 @@ fn autosave_now(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>, time: Res<Ti
         app.editor.set_camera(camera);
         let text = rysmo_io::save(app.editor.doc());
         let dirty = app.editor.is_dirty();
+        let library_version = app.features.library.recovery_version();
         let workspace = workspace_text(&app);
         auto.in_flight = true;
         wasm_bindgen_futures::spawn_local(async move {
             let workspace_saved = save_workspace(&workspace).await.as_bool().unwrap_or(false);
             let single = autosave(&name, &text, dirty).await.as_bool().unwrap_or(false);
             let success = workspace_saved && single;
-            arrive(Arrived::Autosaved { version, camera, dirty, success });
+            arrive(Arrived::Autosaved { version, camera, dirty, library_version, success });
         });
     }
 }
@@ -424,7 +481,7 @@ pub fn pick_texture() {
 }
 
 fn unload_guard(app: Res<App3d>) {
-    set_unsaved_changes(app.editor.is_dirty() || app.documents.dirty());
+    set_unsaved_changes(app.editor.is_dirty() || app.documents.dirty() || app.features.library.modified);
 }
 
 /// Measure completed editor updates separately from browser animation callbacks.
@@ -498,7 +555,7 @@ fn workspace_text(app: &App3d) -> String {
         doc.camera = Some(session.camera);
         serde_json::json!({ "id": id, "name": session.path.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|| "Untitled.rysmo".into()), "text": rysmo_io::save(&doc), "dirty": session.editor.is_dirty() })
     }).collect();
-    serde_json::json!({ "active": app.documents.active, "documents": documents }).to_string()
+    serde_json::json!({ "active": app.documents.active, "documents": documents, "library": app.features.library.recovery() }).to_string()
 }
 pub fn persist_tabs(app: &App3d) {
     if !app.autosave_settings.enabled {

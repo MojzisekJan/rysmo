@@ -82,13 +82,9 @@ pub fn export(doc: &Document) -> ColladaExport {
             id.and_then(|id| doc.materials[&id].texture).filter(|t| doc.images.contains_key(&t.image))
         {
             let image = &doc.images[&texture.image];
-            let ext = if image.mime.contains("jpeg") { "jpg" } else { "png" };
-            images.entry(texture.image).or_insert_with(|| {
-                (
-                    format!("texture-{}-{:08x}.{ext}", texture.image.0, crc32fast::hash(&image.bytes)),
-                    image.bytes.as_ref().clone(),
-                )
-            });
+            images
+                .entry(texture.image)
+                .or_insert_with(|| (crate::obj::image_file(doc, texture.image), image.bytes.as_ref().clone()));
         }
     }
     let now = timestamp(web_time::SystemTime::now().duration_since(web_time::UNIX_EPOCH).unwrap_or_default().as_secs());

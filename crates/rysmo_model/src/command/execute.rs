@@ -17,6 +17,12 @@ use std::sync::Arc;
 impl Command {
     /// Runs the command with `def` (the context being edited; `None` is the model).
     pub(crate) fn run(self, doc: &mut Document, def: Option<DefinitionId>) -> Result<Outcome, CommandError> {
+        match &self {
+            Command::Copy { elements, copies, .. }
+            | Command::CopyWithText { elements, copies, .. }
+            | Command::Rotate { elements, copies, .. } => crate::limits::validate_copies(doc, def, elements, *copies)?,
+            _ => {}
+        }
         let glued_before = crate::components::capture_glue(doc);
         if doc.def(def).is_none() {
             return invalid("the context being edited no longer exists");
@@ -1845,6 +1851,8 @@ impl Command {
                 settings::set_units(doc, &mut out, units)?;
             }
         }
+        // Check before finalization traverses newly created instance hierarchies.
+        crate::limits::validate_document(doc).map_err(CommandError::Invalid)?;
         crate::components::refresh_glue(doc, &glued_before);
         crate::components::validate_openings(doc)?;
         purge_unused(doc);
