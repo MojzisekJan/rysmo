@@ -405,7 +405,10 @@ fn panels(
                     });
                 }
                 let mut selection_in_row = false;
-                ui.horizontal_centered(|ui| {
+                // A row of its own height: `horizontal_centered` would fill the panel's height
+                // from the last frame, so a panel grown by a wrapped second row never shrank back.
+                let row = egui::vec2(ui.available_width(), 30.);
+                ui.allocate_ui_with_layout(row, egui::Layout::left_to_right(egui::Align::Center), |ui| {
                     ui.set_min_height(30.);
                     let status = app.status();
                     let (vcb_label, hint) = measurement_label(&app);
