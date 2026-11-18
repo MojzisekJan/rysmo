@@ -13,6 +13,80 @@ fn unit_box() -> Mesh {
     m
 }
 
+#[test]
+fn refitted_placements_match_rebuilt_picking_and_inference() {
+    let active_mesh = Mesh::new();
+    let mesh = Arc::new(unit_box());
+    let active = Arc::new(MeshIndex::new(&active_mesh));
+    let index = Arc::new(MeshIndex::new(&mesh));
+    let empty = Arc::new(MeshIndex::new(&active_mesh));
+    let mut others: Vec<_> = (0..32)
+        .map(|i| Other {
+            clips: Vec::new(),
+            mesh: mesh.clone(),
+            to_local: DMat4::from_translation(DVec3::new((i % 8) as f64 * 2., (i / 8) as f64 * 2., 0.)),
+            instance: Some(InstanceId(i + 1)),
+        })
+        .collect();
+    let mut indices = vec![index; others.len()];
+    let placements = |indices: &[Arc<MeshIndex>], others: &[Other]| {
+        indices.iter().zip(others).map(|(index, other)| (index.clone(), other.to_local)).collect()
+    };
+    let mut old = Accel::new(active.clone(), placements(&indices, &others));
+    let unchanged = Accel::updated(active.clone(), placements(&indices, &others), Some(&old));
+    assert!(Arc::ptr_eq(&old.placed, &unchanged.placed));
+    let view = OrbitCamera { target: DVec3::new(7., 3., 0.), distance: 24., ..Default::default() }
+        .view(DVec2::new(600., 400.));
+    let mut saw_refit = false;
+    let mut saw_rebuild = false;
+    for step in 0..12 {
+        others[step % 8].to_local = DMat4::from_scale_rotation_translation(
+            DVec3::new(-1., 1.5, 0.75),
+            rysmo_math::DQuat::from_rotation_z(step as f64 * 0.1),
+            DVec3::new(step as f64, 3., 1.),
+        );
+        if step == 8 {
+            others[10].mesh = Arc::new(Mesh::new());
+            indices[10] = empty.clone();
+        }
+        if step == 9 {
+            others[10].mesh = mesh.clone();
+            indices[10] = Arc::new(MeshIndex::new(&mesh));
+        }
+        if step == 10 {
+            others.pop();
+            indices.pop();
+        }
+        let updated = Accel::updated(active.clone(), placements(&indices, &others), Some(&old));
+        let rebuilt = Accel::new(active.clone(), placements(&indices, &others));
+        saw_refit |= updated.refitted > 0;
+        saw_rebuild |= step > 0 && updated.refitted == 0;
+        for x in (0..600).step_by(23) {
+            for y in (0..400).step_by(23) {
+                let query = |accel| Query {
+                    show_hidden: false,
+                    axes: Default::default(),
+                    mesh: &active_mesh,
+                    view: &view,
+                    cursor: DVec2::new(x as f64, y as f64),
+                    from: None,
+                    lock: None,
+                    hints: &[],
+                    scale: 1.,
+                    others: &others,
+                    accel: Some(accel),
+                    guides: &[],
+                    clips: Vec::new(),
+                };
+                assert_eq!(pick(&query(&updated)), pick(&query(&rebuilt)), "step {step}, cursor {x}, {y}");
+                assert_eq!(infer(&query(&updated)), infer(&query(&rebuilt)), "step {step}, cursor {x}, {y}");
+            }
+        }
+        old = updated;
+    }
+    assert!(saw_refit && saw_rebuild);
+}
+
 fn view() -> View {
     // Looking from the front right, above: the corner (1, 0, 1) faces the camera and
     // (0, 1, 0) is hidden behind the box.

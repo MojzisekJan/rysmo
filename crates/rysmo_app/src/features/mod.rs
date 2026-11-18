@@ -10,6 +10,7 @@ pub mod photo;
 pub mod procedures;
 pub mod report;
 pub mod sheets;
+pub mod skp;
 
 #[derive(Default)]
 pub struct State {
@@ -27,6 +28,7 @@ pub struct State {
     pub hatches: hatches::State,
     pub procedures: procedures::State,
     pub sheets: sheets::State,
+    pub skp: skp::State,
 }
 pub fn panels(ctx: &bevy_egui::egui::Context, app: &mut crate::state::App3d) {
     imports::panel(ctx, app);
@@ -39,6 +41,7 @@ pub fn panels(ctx: &bevy_egui::egui::Context, app: &mut crate::state::App3d) {
     hatches::refresh(app);
     procedures::panel(ctx, app);
     sheets::panel(ctx, app);
+    skp::panel(ctx, app);
 }
 pub fn remember<R>(app: &mut crate::state::App3d, response: &Option<bevy_egui::egui::InnerResponse<Option<R>>>) {
     if let Some(response) = response {

@@ -65,6 +65,12 @@ pub(crate) struct DocumentVersion {
 }
 #[cfg(any(target_arch = "wasm32", test))]
 impl DocumentVersion {
+    /// Recovery stores model content, not the current selection. File-picker
+    /// operations still use the full revision to retain their existing guards.
+    pub fn for_recovery(editor: &rysmo_model::Editor, generation: u64) -> Self {
+        Self { generation, revision: editor.content_revision() }
+    }
+
     pub fn same_document(self, current: Self) -> bool {
         self.generation == current.generation
     }
@@ -102,6 +108,28 @@ mod tests {
 #[cfg(test)]
 mod recovery_tests {
     use super::*;
+    #[test]
+    fn recovery_revision_ignores_selection_but_tracks_edits_history_and_replacement() {
+        use rysmo_math::DVec3;
+        use rysmo_model::{Command, Editor, Element};
+        let mut editor = Editor::new();
+        editor.apply(Command::DrawLines { lines: vec![[DVec3::ZERO, DVec3::X]], facing: None }).unwrap();
+        let before = DocumentVersion::for_recovery(&editor, 1);
+        let revision = editor.revision();
+        let edge = editor.mesh().edges().next().unwrap().0;
+        editor.set_selection([Element::Edge(edge)]);
+        assert_ne!(editor.revision(), revision);
+        assert_eq!(DocumentVersion::for_recovery(&editor, 1), before);
+        assert_ne!(DocumentVersion::for_recovery(&editor, 2), before);
+        editor.undo();
+        let undone = DocumentVersion::for_recovery(&editor, 1);
+        assert_ne!(undone, before);
+        editor.redo();
+        let redone = DocumentVersion::for_recovery(&editor, 1);
+        assert_ne!(redone, undone);
+        editor.replace_document(rysmo_model::Document::new());
+        assert_ne!(DocumentVersion::for_recovery(&editor, 1), redone);
+    }
     #[test]
     fn failed_writes_retry_without_waiting_another_full_interval() {
         let mut timer = Timer::default();

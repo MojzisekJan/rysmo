@@ -137,6 +137,15 @@ impl Mesh {
 
     /// `smooth_normals` limited to the corners at `vertices`.
     pub fn smooth_normals_at(&self, view: &crate::MeshView, vertices: &BTreeSet<VertexId>) -> SmoothNormals {
+        self.smooth_normals_using(vertices, |vertex| view.faces_at(self, vertex))
+    }
+
+    /// Allows a cooperative caller to supply incrementally collected face adjacency.
+    pub fn smooth_normals_using(
+        &self,
+        vertices: &BTreeSet<VertexId>,
+        mut faces_at: impl FnMut(VertexId) -> Vec<FaceId>,
+    ) -> SmoothNormals {
         let mut out = FxHashMap::default();
         let mut normals: FxHashMap<FaceId, Option<DVec3>> = FxHashMap::default();
         for v in vertices {
@@ -150,7 +159,7 @@ impl Mesh {
             if smooth_here.is_empty() {
                 continue;
             }
-            let faces = view.faces_at(self, *v);
+            let faces = faces_at(*v);
             // The edges at v along each face, as (position in faces, edge).
             let mut sides = Vec::new();
             for (at, id) in faces.iter().enumerate() {

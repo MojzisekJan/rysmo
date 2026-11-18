@@ -389,6 +389,11 @@ pub(super) fn make_unique(
 
 /// Removes definitions no instance uses any more (after erasing or exploding).
 pub(super) fn purge_unused(doc: &mut Document) {
+    // Component definitions are retained even without instances. If there are no
+    // groups, scanning and sorting every occurrence cannot find anything to remove.
+    if !doc.definitions.values().any(|definition| definition.group) {
+        return;
+    }
     loop {
         let mut used: Vec<DefinitionId> = std::iter::once(&doc.root)
             .chain(doc.definitions.values())

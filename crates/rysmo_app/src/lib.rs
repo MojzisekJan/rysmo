@@ -41,12 +41,16 @@ mod live_mcp;
 mod macos;
 mod menu;
 mod mirror;
+#[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
+mod native_files;
 mod object_clipboard;
 mod panels;
 mod path_array;
 mod portable_files;
 mod preferences;
 mod print_check;
+#[cfg(any(target_arch = "wasm32", test))]
+mod recovery_cache;
 mod render;
 mod render_view;
 #[cfg(target_os = "ios")]
@@ -958,8 +962,10 @@ pub fn run() {
     .add_plugins(EguiPlugin::default())
     .insert_resource(bevy_egui::EguiGlobalSettings { auto_create_primary_context: false, ..default() })
     .insert_resource(app3d)
-    .add_systems(Update, unsaved::close_requests)
+    .add_systems(Last, unsaved::close_requests)
     .add_plugins((viewport::plugin, faces::plugin, render::plugin, input::plugin, ui::plugin, idle::plugin));
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
+    app.add_systems(Update, native_files::poll);
     #[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
     {
         if let Some(path) = std::env::var_os("RYSMO_SCREENSHOT") {

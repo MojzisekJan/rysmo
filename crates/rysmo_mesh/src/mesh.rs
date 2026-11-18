@@ -168,6 +168,14 @@ pub enum MeshError {
 /// Above this many faces, one-off adjacency questions go through a `MeshView`.
 pub(crate) const VIEW_FACES: usize = 512;
 
+/// Changed element IDs, including removals, for dependency invalidation.
+pub struct MeshChanges {
+    pub vertices: Vec<VertexId>,
+    pub edges: Vec<EdgeId>,
+    pub faces: Vec<FaceId>,
+    pub curves: Vec<crate::CurveId>,
+}
+
 /// Vertices, edges and faces, keyed by stable ids.
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct Mesh {
@@ -184,6 +192,30 @@ pub struct Mesh {
     pub(crate) vertex_edges: BlockMap<VertexId, Vec<EdgeId>>,
     #[serde(skip)]
     pub(crate) snapshot: crate::view::SnapshotSlot,
+}
+
+impl Mesh {
+    /// Background work owns its lookup mutex. Native jobs can reuse immutable trees.
+    pub fn with_independent_view_cache(mut self) -> Self {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.snapshot = self.snapshot.independent();
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.snapshot = Default::default();
+        }
+        self
+    }
+
+    /// Same element storage, including visibility, materials, UVs and curve data.
+    /// Allocator state and derived lookup caches do not affect displayed geometry.
+    pub fn shares_storage_with(&self, other: &Self) -> bool {
+        self.vertices.shares_storage_with(&other.vertices)
+            && self.edges.shares_storage_with(&other.edges)
+            && self.faces.shares_storage_with(&other.faces)
+            && self.curves.shares_storage_with(&other.curves)
+    }
 }
 
 impl<'de> Deserialize<'de> for Mesh {
@@ -293,6 +325,17 @@ impl Mesh {
             faces.into_iter().collect(),
             curves.into_iter().collect(),
         )
+    }
+
+    /// Builds and validates a mesh whose stored elements already use block storage.
+    /// Loaders can populate these maps directly without intermediate tree nodes.
+    pub fn from_blocks_with_curves(
+        vertices: BlockMap<VertexId, Vertex>,
+        edges: BlockMap<EdgeId, Edge>,
+        faces: BlockMap<FaceId, Face>,
+        curves: BlockMap<crate::CurveId, crate::Curve>,
+    ) -> Result<Self, MeshError> {
+        Self::assemble(vertices, edges, faces, curves)
     }
 
     pub(crate) fn assemble(
@@ -442,6 +485,19 @@ impl Mesh {
     /// this mesh, at a cost that follows the size of the change.
     pub fn changed_since(&self, older: &Mesh) -> (Vec<FaceId>, Vec<VertexId>) {
         (self.faces.changed_since(&older.faces), self.vertices.changed_since(&older.vertices))
+    }
+
+    pub fn changed_storage_since(&self, older: &Mesh) -> MeshChanges {
+        MeshChanges {
+            vertices: self.vertices.changed_since(&older.vertices),
+            edges: self.edges.changed_since(&older.edges),
+            faces: self.faces.changed_since(&older.faces),
+            curves: self.curves.changed_since(&older.curves),
+        }
+    }
+
+    pub fn faces_after(&self, after: Option<FaceId>) -> impl Iterator<Item = (FaceId, &Face)> {
+        self.faces.iter_after(after).map(|(id, face)| (*id, face))
     }
 
     /// The edges of this mesh that are new or differ from `older`.

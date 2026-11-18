@@ -25,13 +25,26 @@ impl Documents {
     pub fn dirty(&self) -> bool {
         self.inactive.values().any(|app| app.editor.is_dirty())
     }
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(any(test, not(any(target_os = "android", target_os = "ios"))))]
     pub fn sessions<'a>(&'a self, active: &'a App3d) -> impl Iterator<Item = (u64, &'a App3d)> {
         std::iter::once((self.active, active)).chain(self.inactive.iter().map(|(id, app)| (*id, app.as_ref())))
     }
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     pub fn session_mut(&mut self, generation: u64) -> Option<&mut App3d> {
         self.inactive.values_mut().find(|app| app.document_generation == generation).map(Box::as_mut)
+    }
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
+    pub fn inactive_mut(&mut self) -> impl Iterator<Item = &mut App3d> {
+        self.inactive.values_mut().map(Box::as_mut)
+    }
+
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
+    pub fn insert_background(&mut self, app: App3d) -> bool {
+        if self.full() {
+            return false;
+        }
+        self.inactive.insert(app.documents.active, Box::new(app));
+        true
     }
     pub fn single(&self) -> bool {
         self.inactive.is_empty()
@@ -137,6 +150,11 @@ pub fn create(app: &mut App3d) -> bool {
 }
 
 pub fn close(app: &mut App3d) {
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
+    if app.native_files.saving() {
+        app.message = Some("Wait for the background save before closing this tab.".into());
+        return;
+    }
     let old = app.documents.active;
     if let Some(id) = app.documents.inactive.keys().next().copied() {
         switch(app, id);

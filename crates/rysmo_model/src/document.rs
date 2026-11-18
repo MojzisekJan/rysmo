@@ -180,6 +180,12 @@ pub struct Definition {
 /// Everything that is saved in a file.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Document {
+    #[serde(skip)]
+    pub(crate) annotation_cache: crate::annotation_cache::Cache,
+    #[serde(skip)]
+    pub(crate) glue_index: crate::glue_index::Cache,
+    #[serde(skip)]
+    pub(crate) hierarchy_cache: crate::hierarchy_cache::Cache,
     /// The model's own geometry and its top-level groups and components. Definitions are
     /// shared copy-on-write, so undo snapshots copy only the definitions an edit changes.
     pub root: Arc<Definition>,
@@ -207,6 +213,9 @@ pub struct Document {
 impl Default for Document {
     fn default() -> Self {
         Document {
+            annotation_cache: Default::default(),
+            glue_index: Default::default(),
+            hierarchy_cache: Default::default(),
             root: Arc::new(Definition { name: "Model".into(), mesh: Mesh::new(), ..Default::default() }),
             definitions: Default::default(),
             materials: BTreeMap::new(),

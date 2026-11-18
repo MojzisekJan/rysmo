@@ -39,6 +39,16 @@ struct Snapshot {
 #[derive(Clone, Debug, Default)]
 pub(crate) struct SnapshotSlot(Arc<Mutex<Slot>>);
 
+#[cfg(not(target_arch = "wasm32"))]
+impl SnapshotSlot {
+    pub(crate) fn independent(&self) -> Self {
+        // Immutable trees can be reused. Never wait for an interactive rebuild,
+        // and never let background updates acquire the interactive slot's mutex.
+        let latest = self.0.try_lock().ok().and_then(|slot| slot.latest.clone());
+        Self(Arc::new(Mutex::new(Slot { latest, redone: 0 })))
+    }
+}
+
 #[derive(Debug, Default)]
 struct Slot {
     latest: Option<Arc<Snapshot>>,
@@ -337,5 +347,25 @@ mod tests {
         assert_agrees(&a);
         assert_agrees(&b);
         assert_eq!(a.clone(), a);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn independent_lookups_reuse_immutable_trees_without_sharing_locks() {
+        let a = unit_box();
+        a.view();
+        let original = a.snapshot.0.lock().unwrap().latest.clone().unwrap();
+        let mut b = a.clone().with_independent_view_cache();
+        assert!(!Arc::ptr_eq(&a.snapshot.0, &b.snapshot.0));
+        assert!(Arc::ptr_eq(&original, b.snapshot.0.lock().unwrap().latest.as_ref().unwrap()));
+        b.map_all(|point| point + DVec3::X);
+        assert_agrees(&b);
+        assert!(Arc::ptr_eq(&original, a.snapshot.0.lock().unwrap().latest.as_ref().unwrap()));
+        assert_agrees(&a);
+        let held = a.snapshot.0.lock().unwrap();
+        let c = a.clone().with_independent_view_cache();
+        assert!(c.snapshot.0.lock().unwrap().latest.is_none());
+        assert_agrees(&c);
+        drop(held);
     }
 }

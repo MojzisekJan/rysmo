@@ -122,11 +122,11 @@ pub fn panel(ctx: &egui::Context, app: &mut App3d) {
                 let rect=fitted(space,setup.size);
                 ui.painter().image(image.id(),rect,egui::Rect::from_min_max(egui::Pos2::ZERO,egui::pos2(1.,1.)),egui::Color32::WHITE);
                 let at=|p:DVec2|rect.min+egui::vec2(p.x as f32*rect.width(),p.y as f32*rect.height());
-                for family in 0..2 {
+                for (family, guides) in setup.guides.iter_mut().enumerate() {
                     let color=if family==0 {egui::Color32::from_rgb(255,90,80)}else{egui::Color32::from_rgb(80,230,130)};
-                    for line in 0..2 {
-                        ui.painter().line_segment(setup.guides[family][line].map(at),egui::Stroke::new(2.,color));
-                        for end in 0..2 {handle(ui,rect,&mut setup.guides[family][line][end],egui::Id::unique(("photo-guide",family,line,end)),color);}
+                    for (line, points) in guides.iter_mut().enumerate() {
+                        ui.painter().line_segment(points.map(at),egui::Stroke::new(2.,color));
+                        for (end, point) in points.iter_mut().enumerate() {handle(ui,rect,point,egui::Id::unique(("photo-guide",family,line,end)),color);}
                     }
                 }
                 ui.painter().line_segment([at(setup.origin),at(setup.reference)],egui::Stroke::new(1.5,egui::Color32::LIGHT_BLUE));

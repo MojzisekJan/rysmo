@@ -15,7 +15,6 @@ mod rotated_rectangle;
 mod select;
 mod three_point_arc;
 
-use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, Mutex};
 
@@ -628,29 +627,21 @@ struct KnownScene {
     scene: Arc<Scene>,
 }
 
-/// The current scene with what identifies it, and the trees of each definition's mesh.
-/// Holding the definition keeps the pointer from being reused and any edit from
-/// happening in place, so an equal pointer means the same geometry.
+/// The current scene and trees of evaluated mesh snapshots. Definition metadata
+/// changes can retain a tree; opening and geometry changes must match the actual mesh.
 #[derive(Default)]
 pub(crate) struct SceneCache {
     scene: Option<KnownScene>,
-    indices: HashMap<Option<DefinitionId>, (Arc<rysmo_model::Definition>, Arc<MeshIndex>)>,
+    indices: HashMap<Option<DefinitionId>, (rysmo_mesh::Mesh, Arc<MeshIndex>)>,
 }
 
 impl SceneCache {
-    fn index(
-        &mut self,
-        doc: &rysmo_model::Document,
-        owner: Option<DefinitionId>,
-        mesh: &rysmo_mesh::Mesh,
-        evaluated: bool,
-    ) -> Arc<MeshIndex> {
-        let definition = doc.def_arc(owner).expect("an occurrence's definition");
+    fn index(&mut self, owner: Option<DefinitionId>, mesh: &rysmo_mesh::Mesh) -> Arc<MeshIndex> {
         let index = match self.indices.get(&owner) {
-            Some((known, index)) if Arc::ptr_eq(known, definition) && !evaluated => return index.clone(),
+            Some((known, index)) if known.shares_storage_with(mesh) => return index.clone(),
             _ => Arc::new(MeshIndex::new(mesh)),
         };
-        self.indices.insert(owner, (definition.clone(), index.clone()));
+        self.indices.insert(owner, (mesh.clone(), index.clone()));
         index
     }
 }
@@ -667,6 +658,7 @@ pub(crate) fn scene(cache: &Mutex<SceneCache>, editor: &Editor) -> Arc<Scene> {
         return known.scene.clone();
     }
     let to_local = editor.context_transform().inverse();
+    let previous = cache.scene.as_ref().map(|known| known.scene.clone());
     let mut others = Vec::new();
     let mut placed = Vec::new();
     let mut evaluated: HashMap<Option<DefinitionId>, (Arc<rysmo_mesh::Mesh>, Arc<MeshIndex>)> = HashMap::new();
@@ -680,7 +672,7 @@ pub(crate) fn scene(cache: &Mutex<SceneCache>, editor: &Editor) -> Arc<Scene> {
         if let Some(_def) = doc.def(occ.definition) {
             let (mesh, index) = evaluated.entry(occ.definition).or_insert_with(|| {
                 let mesh = doc.effective_mesh(occ.definition);
-                let index = cache.index(doc, occ.definition, &mesh, matches!(mesh, Cow::Owned(_)));
+                let index = cache.index(occ.definition, &mesh);
                 (Arc::new(mesh.into_owned()), index)
             });
             let placement = to_local * occ.transform;
@@ -713,11 +705,11 @@ pub(crate) fn scene(cache: &Mutex<SceneCache>, editor: &Editor) -> Arc<Scene> {
         })
         .collect();
     let active = doc.effective_mesh(editor.active_definition());
-    let index = cache.index(doc, editor.active_definition(), &active, matches!(active, Cow::Owned(_)));
+    let index = cache.index(editor.active_definition(), &active);
     let scene = Arc::new(Scene {
         mesh: active.into_owned(),
         others,
-        accel: Accel::new(index, placed),
+        accel: Accel::updated(index, placed, previous.as_ref().map(|scene| &scene.accel)),
         guides,
         clips: doc
             .section_planes(context)
@@ -2213,5 +2205,47 @@ pub(crate) fn line_color(inf: Option<&Inference>) -> [f32; 3] {
         Some(Kind::OnAxis(a)) => axis_color(a),
         Some(kind @ (Kind::Parallel | Kind::Perpendicular | Kind::Tangent)) => kind.color(),
         _ => BLACK,
+    }
+}
+
+#[cfg(test)]
+mod scene_index_tests {
+    use super::*;
+
+    #[test]
+    fn indices_follow_evaluated_geometry_and_reuse_unchanged_meshes() {
+        let mut mesh = rysmo_mesh::Mesh::new();
+        let corners = [DVec3::ZERO, DVec3::X * 4., DVec3::new(4., 4., 0.), DVec3::Y * 4.];
+        mesh.add_lines(&(0..4).map(|i| (corners[i], corners[(i + 1) % 4])).collect::<Vec<_>>(), None).unwrap();
+        let face = mesh.faces().next().unwrap().0;
+        let hole = [DVec3::new(1., 1., 0.), DVec3::new(2., 1., 0.), DVec3::new(2., 2., 0.), DVec3::new(1., 2., 0.)];
+        let cut = mesh.with_surface_opening(face, &hole).unwrap();
+        let mut cache = SceneCache::default();
+        let original = cache.index(None, &mesh);
+        assert!(Arc::ptr_eq(&original, &cache.index(None, &mesh.clone())));
+        let opened = cache.index(None, &cut);
+        assert!(!Arc::ptr_eq(&original, &opened));
+        // A healed opening must not retain the index of the previously evaluated mesh.
+        let healed = cache.index(None, &mesh);
+        assert!(!Arc::ptr_eq(&opened, &healed));
+        let ray = rysmo_math::Ray::new(DVec3::new(1.5, 1.5, 3.), -DVec3::Z);
+        let view = rysmo_math::OrbitCamera::default().view(DVec2::new(800., 600.));
+        let query = |mesh, accel| Query {
+            show_hidden: false,
+            axes: Default::default(),
+            mesh,
+            view: &view,
+            cursor: view.project(ray.origin + ray.dir * 3.).unwrap(),
+            from: None,
+            lock: None,
+            hints: &[],
+            scale: 1.,
+            others: &[],
+            accel: Some(accel),
+            guides: &[],
+            clips: Vec::new(),
+        };
+        let accel = Accel::new(healed, Vec::new());
+        assert_eq!(rysmo_infer::pick(&query(&mesh, &accel)), rysmo_infer::Pick::Element(Element::Face(face)));
     }
 }

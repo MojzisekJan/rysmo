@@ -25,6 +25,7 @@ pub mod import;
 pub mod native;
 pub mod obj;
 pub mod print;
+pub mod skp;
 
 pub use native::{load, save};
 

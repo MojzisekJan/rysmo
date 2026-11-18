@@ -5010,6 +5010,7 @@ dependencies = [
  "rysmo_model",
  "serde",
  "serde_json",
+ "skpwright",
  "thiserror 2.0.21",
  "ttf-parser",
  "web-time",
@@ -5227,6 +5228,15 @@ name = "simdutf8"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
+
+[[package]]
+name = "skpwright"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa374de079ed320cace464fce37867d56fee8d108168f0787b087e6ecf3d1261"
+dependencies = [
+ "miniz_oxide 0.9.1",
+]
 
 [[package]]
 name = "skrifa"

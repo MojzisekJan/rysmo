@@ -167,7 +167,7 @@ impl GlueMode {
 
 use crate::{CommandError, DefinitionId, Document, FaceId, InstanceId};
 use rysmo_math::{DVec3, Plane};
-use std::{borrow::Cow, collections::BTreeMap};
+use std::{borrow::Cow, collections::BTreeMap, sync::Arc};
 
 fn invalid(message: &str) -> CommandError {
     CommandError::Invalid(message.into())
@@ -261,7 +261,21 @@ impl Document {
     /// and export. The editable host stays intact, so removing a component heals it.
     pub fn effective_mesh(&self, owner: Option<DefinitionId>) -> Cow<'_, rysmo_mesh::Mesh> {
         let definition = self.def(owner).expect("known definition");
-        let mut result = Cow::Borrowed(&definition.mesh);
+        self.apply_openings(owner, Cow::Borrowed(&definition.mesh))
+    }
+
+    /// Evaluates geometry without sharing the interactive spatial lookup mutex.
+    pub fn effective_mesh_isolated(&self, owner: Option<DefinitionId>) -> rysmo_mesh::Mesh {
+        let mesh = self.def(owner).expect("known definition").mesh.clone().with_independent_view_cache();
+        self.apply_openings(owner, Cow::Owned(mesh)).into_owned()
+    }
+
+    fn apply_openings<'a>(
+        &'a self,
+        owner: Option<DefinitionId>,
+        mut result: Cow<'a, rysmo_mesh::Mesh>,
+    ) -> Cow<'a, rysmo_mesh::Mesh> {
+        let definition = self.def(owner).expect("known definition");
         for instance in definition.instances.values() {
             let Some(face) = instance.glued_to else { continue };
             if instance.hidden || !self.tag_visible(instance.tag) {
@@ -286,10 +300,31 @@ pub(crate) struct GlueBefore {
     normal: DVec3,
     transform: DMat4,
 }
+// Sparse owners use indexed lookups. Dense owners keep contiguous scans rather
+// than paying a map lookup for nearly every instance. Both paths retain ID order.
+fn glued_entries<'a>(
+    definition: &'a crate::Definition,
+    ids: &'a std::collections::BTreeSet<InstanceId>,
+) -> impl Iterator<Item = (&'a InstanceId, &'a crate::Instance)> {
+    let sparse = ids.len() < definition.instances.len() / 4;
+    let selected = sparse
+        .then_some(ids)
+        .into_iter()
+        .flat_map(move |ids| ids.iter().map(move |id| (id, &definition.instances[id])));
+    let scanned = (!sparse)
+        .then_some(&definition.instances)
+        .into_iter()
+        .flat_map(|instances| instances.iter())
+        .filter(|(_, instance)| instance.glued_to.is_some());
+    selected.chain(scanned)
+}
+
 pub(crate) fn capture_glue(doc: &Document) -> BTreeMap<InstanceId, GlueBefore> {
     let mut result = BTreeMap::new();
-    for definition in std::iter::once(&doc.root).chain(doc.definitions.values()) {
-        for (id, instance) in &definition.instances {
+    let membership = doc.glued_instances();
+    for (owner, ids) in membership.iter() {
+        let definition = doc.def(*owner).expect("indexed glue owner exists");
+        for (id, instance) in glued_entries(definition, ids) {
             let Some(face) = instance.glued_to else { continue };
             let Some(plane) = definition.mesh.face_plane(face) else { continue };
             let f = definition.mesh.face(face).unwrap();
@@ -301,10 +336,10 @@ pub(crate) fn capture_glue(doc: &Document) -> BTreeMap<InstanceId, GlueBefore> {
 }
 pub(crate) fn refresh_glue(doc: &mut Document, before: &BTreeMap<InstanceId, GlueBefore>) {
     let mut updates = Vec::new();
-    for (owner, definition) in
-        std::iter::once((None, &doc.root)).chain(doc.definitions.iter().map(|(id, d)| (Some(*id), d)))
-    {
-        for (id, instance) in &definition.instances {
+    let mut membership = doc.glued_instances();
+    for (owner, ids) in membership.iter() {
+        let definition = doc.def(*owner).expect("indexed glue owner exists");
+        for (id, instance) in glued_entries(definition, ids) {
             let Some(host) = instance.glued_to else { continue };
             let Some(component) = doc.def(Some(instance.definition)) else { continue };
             let mut transform = instance.transform;
@@ -349,21 +384,40 @@ pub(crate) fn refresh_glue(doc: &mut Document, before: &BTreeMap<InstanceId, Glu
                 })
             };
             if transform != instance.transform || target != instance.glued_to {
-                updates.push((owner, *id, transform, target));
+                updates.push((*owner, *id, transform, target));
             }
         }
+    }
+    let changed = !updates.is_empty();
+    if changed {
+        // Do not let a derived snapshot force copies of definitions just before writes.
+        doc.glue_index.clear();
     }
     for (owner, id, transform, target) in updates {
         let instance = doc.def_mut(owner).unwrap().instances.get_mut(&id).unwrap();
         instance.transform = transform;
         instance.glued_to = target;
+        if target.is_none() {
+            let owners = Arc::make_mut(&mut membership);
+            if let Some(ids) = owners.get_mut(&owner) {
+                Arc::make_mut(ids).remove(&id);
+                if ids.is_empty() {
+                    owners.remove(&owner);
+                }
+            }
+        }
+    }
+    if changed {
+        doc.glue_index.seed(doc, membership);
     }
 }
 
 pub fn validate_openings(doc: &Document) -> Result<(), CommandError> {
-    for definition in std::iter::once(&doc.root).chain(doc.definitions.values()) {
+    let membership = doc.glued_instances();
+    for (owner, ids) in membership.iter() {
+        let definition = doc.def(*owner).expect("indexed glue owner exists");
         let mut mesh = Cow::Borrowed(&definition.mesh);
-        for instance in definition.instances.values() {
+        for (_, instance) in glued_entries(definition, ids) {
             let Some(face) = instance.glued_to else { continue };
             if instance.hidden || !doc.tag_visible(instance.tag) {
                 continue;
@@ -423,6 +477,28 @@ mod opening_tests {
             .unwrap();
         let Element::Instance(id) = made.created[0] else { panic!() };
         id
+    }
+    #[test]
+    fn glue_index_follows_detach_undo_redo_and_host_movement() {
+        let (mut editor, definition, face) = fixture();
+        let instance = place(&mut editor, definition, face);
+        assert!(editor.doc().glued_instances()[&None].contains(&instance));
+        editor.apply(Command::Move { elements: vec![Element::Face(face)], offset: DVec3::Z }).unwrap();
+        assert!(editor.doc().glued_instances()[&None].contains(&instance));
+        assert!((editor.doc().root.instances[&instance].transform.w_axis.z - 1.).abs() < 1e-9);
+        editor
+            .apply(Command::SetComponentProperties {
+                definition,
+                name: "Detached window".into(),
+                settings: ComponentSettings::default(),
+            })
+            .unwrap();
+        assert!(editor.doc().root.instances[&instance].glued_to.is_none());
+        assert!(editor.doc().glued_instances().is_empty());
+        editor.undo();
+        assert!(editor.doc().glued_instances()[&None].contains(&instance));
+        editor.redo();
+        assert!(editor.doc().glued_instances().is_empty());
     }
     #[test]
     fn unrelated_edits_keep_glued_definition_snapshots_shared() {
@@ -632,5 +708,107 @@ mod explode_opening_tests {
         assert_eq!(e.doc(), &before);
         e.redo();
         assert!((e.mesh().face_area(face) - 99.).abs() < 1e-8);
+    }
+}
+
+#[cfg(test)]
+mod performance_tests {
+    use super::*;
+    use crate::{Definition, Instance};
+    use std::{hint::black_box, time::Instant};
+
+    #[test]
+    fn sparse_and_dense_glue_iteration_keep_the_same_filtered_id_order() {
+        for spacing in [1, 2, 64] {
+            let mut definition = Definition::default();
+            for id in 1..=256 {
+                definition.instances.insert(
+                    InstanceId(id),
+                    Instance {
+                        definition: DefinitionId(1000),
+                        transform: DMat4::IDENTITY,
+                        name: String::new(),
+                        tag: None,
+                        material: None,
+                        hidden: false,
+                        glued_to: (id % spacing == 0).then_some(FaceId(2000)),
+                        attributes: Default::default(),
+                    },
+                );
+            }
+            let ids: std::collections::BTreeSet<_> =
+                definition.instances.iter().filter_map(|(id, instance)| instance.glued_to.map(|_| *id)).collect();
+            let found: Vec<_> = glued_entries(&definition, &ids).map(|(id, _)| *id).collect();
+            assert_eq!(found, ids.into_iter().collect::<Vec<_>>());
+        }
+    }
+
+    fn full_scan(doc: &Document) -> BTreeMap<InstanceId, GlueBefore> {
+        let mut result = BTreeMap::new();
+        for definition in std::iter::once(&doc.root).chain(doc.definitions.values()) {
+            for (id, instance) in &definition.instances {
+                let Some(face) = instance.glued_to else { continue };
+                let Some(plane) = definition.mesh.face_plane(face) else { continue };
+                let face_data = definition.mesh.face(face).unwrap();
+                let centre = face_data.outer.iter().map(|v| definition.mesh.pos(*v)).sum::<DVec3>()
+                    / face_data.outer.len() as f64;
+                result.insert(*id, GlueBefore { face, centre, normal: plane.normal, transform: instance.transform });
+            }
+        }
+        result
+    }
+
+    #[test]
+    #[ignore = "manual CPU benchmark for glue-capture traversal"]
+    fn benchmark_sparse_glue_capture() {
+        let mut doc = Document::new();
+        let definition = DefinitionId(doc.reserve_id());
+        doc.definitions.insert(definition, Definition::default().into());
+        for _ in 0..50_000 {
+            let id = InstanceId(doc.reserve_id());
+            doc.root_mut().instances.insert(
+                id,
+                Instance {
+                    definition,
+                    transform: DMat4::IDENTITY,
+                    name: String::new(),
+                    tag: None,
+                    material: None,
+                    hidden: false,
+                    glued_to: None,
+                    attributes: Default::default(),
+                },
+            );
+        }
+        fn measure(doc: &mut Document, mode: u8) -> serde_json::Value {
+            let mut samples = Vec::new();
+            for i in 0..44 {
+                if mode == 2 {
+                    doc.glue_index.clear();
+                }
+                if mode == 3 {
+                    doc.root_mut().instances.get_mut(&InstanceId(2)).unwrap().hidden = i % 2 == 0;
+                }
+                let start = Instant::now();
+                let captured = if mode == 0 { full_scan(black_box(doc)) } else { capture_glue(black_box(doc)) };
+                assert!(black_box(captured).is_empty());
+                if i >= 3 {
+                    samples.push(start.elapsed().as_secs_f64() * 1000.);
+                }
+            }
+            samples.sort_by(f64::total_cmp);
+            serde_json::json!({"median_ms": samples[20], "p95_ms": samples[38]})
+        }
+        let full = measure(&mut doc, 0);
+        let cold = measure(&mut doc, 2);
+        let warm = measure(&mut doc, 1);
+        let updated = measure(&mut doc, 3);
+        println!(
+            "glue-capture-benchmark: {}",
+            serde_json::json!({
+                "instances": 50_000, "glued": 0, "samples": 41,
+                "full_scan": full, "cold_index": cold, "warm_index": warm, "changed_block_index": updated,
+            })
+        );
     }
 }

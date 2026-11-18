@@ -1,6 +1,6 @@
 [package]
 name = "rysmo_io"
-description = "Rysmo native files and OBJ, glTF, COLLADA, DXF, STL and 3MF export"
+description = "Rysmo native files and SKP, OBJ, glTF, COLLADA, DXF, STL and 3MF export"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -21,6 +21,7 @@ ttf-parser = "0.25.1"
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "hdr"] }
 crc32fast = "1"
 web-time = "1"
+skpwright = "=0.6.1"
 
 [lints]
 workspace = true

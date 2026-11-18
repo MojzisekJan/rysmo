@@ -88,9 +88,56 @@ pub fn new(app: &mut App3d) {
     crate::web::persist_tabs(app);
 }
 
+/// A converted external project has no native Save destination and starts unsaved.
+pub(crate) fn import_document(app: &mut App3d, doc: Document, name: &str) -> Result<(), String> {
+    if app.unsaved.active() {
+        return Err("Finish the pending file action before opening an imported document.".into());
+    }
+    if !crate::documents::create(app) {
+        return Err("Close a document before opening more than 16 models.".into());
+    }
+    reset_interaction(app);
+    let mut camera = doc.camera.unwrap_or_default();
+    if doc.camera.is_none()
+        && let Some((lo, hi)) = doc.definition_bounds(None)
+    {
+        camera.frame(lo, hi);
+    }
+    app.editor.replace_document(doc);
+    app.editor.mark_dirty();
+    app.path = None;
+    app.camera = camera;
+    app.camera_history.clear();
+    app.message = Some(format!("Imported {name} into a new document. Save it as .rysmo to keep editing."));
+    #[cfg(target_arch = "wasm32")]
+    {
+        crate::web::new_document();
+        crate::web::persist_tabs(app);
+    }
+    Ok(())
+}
+
 /// Puts a loaded document in the window. `name` is where it came from.
 pub fn open_text(app: &mut App3d, text: &str, name: &str) -> Result<String, String> {
+    #[cfg(target_arch = "wasm32")]
+    let _profile = crate::web::ProfileSpan::new("model_open", app.document_generation, app.editor.content_revision());
     let doc = rysmo_io::load(text).map_err(|e| format!("Cannot open {name}: {e}"))?;
+    let mut camera = doc.camera.unwrap_or_default();
+    if doc.camera.is_none()
+        && let Some((lo, hi)) = doc.definition_bounds(None)
+    {
+        camera.frame(lo, hi);
+    }
+    install_loaded(app, doc, camera, name)
+}
+
+/// Install a validated model whose initial view has already been prepared.
+pub(crate) fn install_loaded(
+    app: &mut App3d,
+    doc: Document,
+    camera: rysmo_math::OrbitCamera,
+    name: &str,
+) -> Result<String, String> {
     if !crate::documents::create(app) {
         return Err("Document limit reached".into());
     }
@@ -98,15 +145,11 @@ pub fn open_text(app: &mut App3d, text: &str, name: &str) -> Result<String, Stri
     app.camera_history.clear();
     app.zoom_window = None;
     app.last_wheel_time = None;
-    let mut camera = doc.camera.unwrap_or_default();
-    if doc.camera.is_none()
-        && let Some((lo, hi)) = doc.definition_bounds(None)
-    {
-        camera.frame(lo, hi);
-    }
     app.camera = camera;
     app.editor.replace_document(doc);
     app.path = Some(name.into());
+    #[cfg(target_arch = "wasm32")]
+    crate::web::profile_mark("model_installed", app.document_generation, app.editor.content_revision());
     #[cfg(not(target_arch = "wasm32"))]
     {
         app.preferences.remember(name);
@@ -139,18 +182,29 @@ pub(crate) fn document_text(app: &mut App3d) -> String {
 
 #[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
 mod imp {
-    use std::path::{Path, PathBuf};
+    #[cfg(test)]
+    use std::path::Path;
+    use std::path::PathBuf;
 
-    use super::{App3d, document_text, open_path, report, stem};
+    #[cfg(test)]
+    use super::document_text;
+    use super::{App3d, report, stem};
 
     pub fn open(app: &mut App3d) {
+        if app.native_files.busy() {
+            app.message = Some("A file operation is already in progress in this tab.".into());
+            return;
+        }
         let Some(path) = rfd::FileDialog::new().add_filter("Rysmo model", &["rysmo"]).pick_file() else { return };
-        let r = open_path(app, &path);
-        report(app, r);
+        crate::native_files::open(app, path);
     }
 
     /// Saves to the current file, or asks where (always when `save_as`).
     pub fn save(app: &mut App3d, save_as: bool) {
+        if app.native_files.busy() {
+            app.message = Some("A file operation is already in progress. Save again when it finishes.".into());
+            return;
+        }
         let path = match (&app.path, save_as) {
             (Some(p), false) => p.clone(),
             _ => {
@@ -167,10 +221,10 @@ mod imp {
                 p
             }
         };
-        let r = save_path(app, &path);
-        report(app, r);
+        crate::native_files::save(app, path);
     }
 
+    #[cfg(test)]
     pub fn save_path(app: &mut App3d, path: &Path) -> Result<String, String> {
         let text = document_text(app);
         rysmo_io::atomic::write(path, text.as_bytes()).map_err(|e| format!("Cannot save {}: {e}", path.display()))?;
@@ -492,5 +546,38 @@ mod imp {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn open_recent(app: &mut App3d, name: &str) {
-    app.message = Some(open_path(app, Path::new(name)).unwrap_or_else(|e| e));
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    crate::native_files::open(app, name.into());
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        app.message = Some(open_path(app, Path::new(name)).unwrap_or_else(|e| e));
+    }
+}
+
+#[cfg(test)]
+mod converted_document_tests {
+    use super::*;
+    use rysmo_math::DVec3;
+    #[test]
+    fn converted_document_is_unsaved_and_preserves_the_existing_dirty_tab() {
+        let mut app = App3d::new(Editor::new());
+        app.editor
+            .apply(rysmo_model::Command::DrawRectangle { corner: DVec3::ZERO, u: DVec3::X, v: DVec3::Y, facing: None })
+            .unwrap();
+        let original = app.editor.doc().clone();
+        let previous = app.documents.active;
+        let mut incoming = Document::new();
+        incoming.units = rysmo_model::Units::Millimetres;
+        let camera = rysmo_math::OrbitCamera { distance: 27., ..Default::default() };
+        incoming.camera = Some(camera);
+        import_document(&mut app, incoming, "source.skp").unwrap();
+        assert!(app.path.is_none());
+        assert!(app.editor.is_dirty());
+        assert_eq!(app.camera, camera);
+        assert_eq!(app.editor.doc().units, rysmo_model::Units::Millimetres);
+        assert_ne!(app.documents.active, previous);
+        crate::documents::switch(&mut app, previous);
+        assert_eq!(app.editor.doc(), &original);
+        assert!(app.editor.is_dirty());
+    }
 }

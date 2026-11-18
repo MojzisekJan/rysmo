@@ -87,6 +87,13 @@ impl<K: BlockKey, V> BlockMap<K, V> {
         self.len == 0
     }
 
+    /// Whether every block is still the same allocation, without comparing values.
+    pub fn shares_storage_with(&self, other: &Self) -> bool {
+        self.len == other.len
+            && self.blocks.len() == other.blocks.len()
+            && self.blocks.iter().zip(&other.blocks).all(|((a, x), (b, y))| a == b && Arc::ptr_eq(x, y))
+    }
+
     fn slot(&self, key: &K) -> Result<usize, usize> {
         let block = key.block();
         self.blocks.binary_search_by_key(&block, |(number, _)| *number)
@@ -108,6 +115,15 @@ impl<K: BlockKey, V> BlockMap<K, V> {
         self.blocks.iter().flat_map(|(_, block)| block.iter())
     }
 
+    /// Resume a bounded scan without walking all preceding blocks again.
+    pub fn iter_after(&self, after: Option<K>) -> impl Iterator<Item = (&K, &V)> {
+        let start = after.map_or(0, |key| self.blocks.partition_point(|(number, _)| *number < key.block()));
+        self.blocks[start..]
+            .iter()
+            .flat_map(|(_, block)| block.iter())
+            .filter(move |(key, _)| after.is_none_or(|after| **key > after))
+    }
+
     pub fn keys(&self) -> impl DoubleEndedIterator<Item = &K> + Clone {
         self.iter().map(|(key, _)| key)
     }
@@ -117,10 +133,10 @@ impl<K: BlockKey, V> BlockMap<K, V> {
     }
 }
 
-impl<K: BlockKey, V: PartialEq> BlockMap<K, V> {
+impl<K: BlockKey, V> BlockMap<K, V> {
     /// The keys added, removed or changed since `older`. Blocks the two share are
     /// skipped without looking inside, so the cost follows the size of the change.
-    pub fn changed_since(&self, older: &Self) -> Vec<K> {
+    pub fn changed_since_by(&self, older: &Self, mut same: impl FnMut(&V, &V) -> bool) -> Vec<K> {
         let mut changed = Vec::new();
         let (mut new, mut old) = (self.blocks.iter().peekable(), older.blocks.iter().peekable());
         loop {
@@ -140,12 +156,20 @@ impl<K: BlockKey, V: PartialEq> BlockMap<K, V> {
                 std::cmp::Ordering::Equal => {
                     let ((_, x), (_, y)) = (new.next().expect("peeked"), old.next().expect("peeked"));
                     if !Arc::ptr_eq(x, y) {
-                        changed.extend(x.iter().filter(|(k, v)| y.get(k) != Some(v)).map(|(k, _)| *k));
+                        changed.extend(
+                            x.iter().filter(|(k, v)| y.get(k).is_none_or(|old| !same(v, old))).map(|(k, _)| *k),
+                        );
                         changed.extend(y.keys.iter().filter(|k| x.get(k).is_none()).copied());
                     }
                 }
             }
         }
+    }
+}
+
+impl<K: BlockKey, V: PartialEq> BlockMap<K, V> {
+    pub fn changed_since(&self, older: &Self) -> Vec<K> {
+        self.changed_since_by(older, PartialEq::eq)
     }
 }
 

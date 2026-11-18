@@ -431,3 +431,71 @@ export async function restore_workspace() {
 }
 
 export function forget_document(id) { documentFiles.delete(id); }
+
+// Diagnostic-only samples are bounded and stay in this page. No persistence or network.
+function profiling() {
+  if (!new URLSearchParams(location.search).has("diagnostics")) return null;
+  return window.rysmoPerformance ||= { samples: [], milestones: [], dropped: 0, gpu: { supported: false }, memory: null };
+}
+export function profile_sample(stage, milliseconds, generation, revision) {
+  const profile = profiling();
+  if (!profile) return;
+  if (profile.samples.length >= 4096) { profile.samples.shift(); profile.dropped++; }
+  if (stage === "editor_update") profile.editorUpdates = (profile.editorUpdates || 0) + 1;
+  const sample = { stage, milliseconds, time: performance.now(), generation: String(generation), revision: String(revision), wasmBytes: profile.memory?.buffer.byteLength ?? null };
+  profile.samples.push(sample);
+  if (["model_open", "model_installed", "surfaces_ready", "surfaces_uploaded"].includes(stage)) {
+    if (profile.milestones.length >= 256) profile.milestones.shift();
+    profile.milestones.push(sample);
+  }
+}
+let gpuTimer = null;
+export function profile_gpu_begin() {
+  const profile = profiling();
+  if (!profile) return;
+  profile.renderStart = performance.now();
+  // An isolated QA harness can supply the context without patching normal sessions.
+  const gl = window.rysmoProfileGL;
+  if (!gl) return;
+  if (!gpuTimer) {
+    const ext = gl.getExtension("EXT_disjoint_timer_query_webgl2");
+    profile.gpu.supported = !!ext;
+    gpuTimer = { gl, ext, pending: [], active: null };
+  }
+  const { ext, pending } = gpuTimer;
+  if (!ext) return;
+  try {
+    const disjoint = gl.getParameter(ext.GPU_DISJOINT_EXT);
+    for (let i = pending.length - 1; i >= 0; i--) {
+      const query = pending[i];
+      if (disjoint || gl.getQueryParameter(query, gl.QUERY_RESULT_AVAILABLE)) {
+        if (!disjoint) profile_sample("gpu_elapsed", gl.getQueryParameter(query, gl.QUERY_RESULT) / 1e6, 0n, 0n);
+        gl.deleteQuery(query); pending.splice(i, 1);
+      }
+    }
+    if (!disjoint && pending.length < 8 && !gl.getQuery(gl.TIME_ELAPSED_EXT ?? ext.TIME_ELAPSED_EXT, gl.CURRENT_QUERY)) {
+      const query = gl.createQuery();
+      gl.beginQuery(ext.TIME_ELAPSED_EXT, query); gpuTimer.active = query;
+    }
+  } catch (error) { profile.gpu.error = String(error); gpuTimer.ext = null; }
+}
+export function profile_gpu_assets() {
+  const profile = profiling();
+  if (profile?.renderStart != null) profile_sample("asset_prepare_cpu", performance.now() - profile.renderStart, 0n, 0n);
+}
+export function profile_gpu_end() {
+  const profile = profiling();
+  if (!profile) return;
+  if (profile.renderStart != null) profile_sample("render_cpu", performance.now() - profile.renderStart, 0n, 0n);
+  if (gpuTimer?.active) {
+    try {
+      gpuTimer.gl.endQuery(gpuTimer.ext.TIME_ELAPSED_EXT);
+      gpuTimer.pending.push(gpuTimer.active);
+    } catch (error) { profile.gpu.error = String(error); }
+    gpuTimer.active = null;
+  }
+}
+window.addEventListener("TrunkApplicationStarted", event => {
+  const profile = profiling();
+  if (profile && event.detail?.wasm?.memory instanceof WebAssembly.Memory) profile.memory = event.detail.wasm.memory;
+});

@@ -1,0 +1,138 @@
+{
+  "date": "2026-11-17",
+  "base_revision": "41e2942882a8d48ed463aaafe969c54433a8f59e",
+  "candidate": "local uncommitted optimization changes",
+  "toolchain": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+  "target": "x86_64 Linux",
+  "scope": "Native CPU only. No IndexedDB/filesystem writes, browser execution, GPU work or peak-memory measurement. Desktop background activity is uncontrolled. Our compilations completed before timing.",
+  "source_sha256": {
+    "crates/rysmo_app/src/autosave.rs": "a17cc2c1b14a1f47447a14e5380a26ba38d4ad82aa42aeab2aec082f9da56532",
+    "crates/rysmo_app/src/recovery_cache.rs": "4fc6ca2ecb9d6f6e899955fa79681289c9c007e887db9ef79837203892a3d661",
+    "crates/rysmo_app/src/web.rs": "488dc587be0d80f4d110c686de8943700b5e9af15a121c3ec7f2bb0a14bd4ff8",
+    "crates/rysmo_model/src/dimensions.rs": "f150e050932cc40fa68aa739c13c1bbf5223cdf9f1f73c9f35647e3c3cc59fde",
+    "crates/rysmo_model/src/text.rs": "314051cad93b38351d1aca9383781fe2b1218299757ae1a9e5f0af26c2278738",
+    "crates/rysmo_model/src/command/groups.rs": "7ee4791ace62a8698d505b7a54520e1885748cd059ad27bb63c5605adcf45cd7",
+    "crates/rysmo_model/examples/perf_annotation_edits.rs": "60d0c860353f9aad7e099529f05497736e5f81ab3d8b47b0a2711094af81f375",
+    "crates/rysmo_app/src/documents.rs": "c7dc5215f9b52a662002c3ad069423906abb852025c0d585af3ae664d9008949",
+    "crates/rysmo_app/src/lib.rs": "7c42a2d2c828e2269d9611c417281d5ff5b97d049ac4ce349c23e06399b81d90",
+    "crates/rysmo_app/src/features/photo.rs": "3d136492f6f1fa6954a4cf605bc16edd22e7608d806ed7b2f4bd736f9432756d",
+    "crates/rysmo_io/src/native.rs": "08221a1e1a680d41e3b319cf1b656172eccb778e7075c58ced07f5269114c111",
+    "crates/rysmo_mesh/src/mesh.rs": "00df73d10778f41c09e6005111150e4b56ffd4ef0b3a38d2a588070f8766782f"
+  },
+  "recovery": {
+    "profile": "portable; application and I/O opt-level=1, model opt-level=3",
+    "input_sha256": "e71aa5fd7adf008e12b52e4c83a6dc24275114799cad37d0512362888d1f7a96",
+    "method": "Reference double-serialization path and candidate paths in the same native app test binary. All use the current improved native serializer. Three warmups, 21 samples per path. Cold uses a fresh cache; warm reuses unchanged text. Recovery JSON and active text equality checked before timing.",
+    "result": {
+      "before": {
+        "median_ms": 409.989184,
+        "p95_ms": 484.462722
+      },
+      "cached": {
+        "median_ms": 72.838364,
+        "p95_ms": 78.821932
+      },
+      "cached_capacity_bytes": 37748736,
+      "cold": {
+        "median_ms": 206.51897,
+        "p95_ms": 213.952121
+      },
+      "input_bytes": 17158892,
+      "samples": 21
+    }
+  },
+  "annotation_edits": {
+    "profile": "dev; model opt-level=3, debug assertions enabled",
+    "method": "Three sequential baseline/candidate pairs. Each run alternates 44 unit-setting commands, discards the first three samples, then verifies contents, Undo/Redo and retained definition sharing. Timings exclude fixture construction and final verification.",
+    "trials": [
+      {
+        "before": {
+          "debug_assertions": true,
+          "definitions": 100,
+          "definitions_shared_with_initial": 0,
+          "dimensions": 5000,
+          "median_ms": 12.92796,
+          "p95_ms": 13.911625,
+          "samples": 41,
+          "texts": 5000
+        },
+        "after": {
+          "debug_assertions": true,
+          "definitions": 100,
+          "definitions_shared_with_initial": 100,
+          "dimensions": 5000,
+          "median_ms": 3.492835,
+          "p95_ms": 4.014908999999999,
+          "samples": 41,
+          "texts": 5000
+        }
+      },
+      {
+        "before": {
+          "debug_assertions": true,
+          "definitions": 100,
+          "definitions_shared_with_initial": 0,
+          "dimensions": 5000,
+          "median_ms": 13.064991,
+          "p95_ms": 15.145537000000001,
+          "samples": 41,
+          "texts": 5000
+        },
+        "after": {
+          "debug_assertions": true,
+          "definitions": 100,
+          "definitions_shared_with_initial": 100,
+          "dimensions": 5000,
+          "median_ms": 1.726233,
+          "p95_ms": 3.213744,
+          "samples": 41,
+          "texts": 5000
+        }
+      },
+      {
+        "before": {
+          "debug_assertions": true,
+          "definitions": 100,
+          "definitions_shared_with_initial": 0,
+          "dimensions": 5000,
+          "median_ms": 9.687187,
+          "p95_ms": 10.880799999999999,
+          "samples": 41,
+          "texts": 5000
+        },
+        "after": {
+          "debug_assertions": true,
+          "definitions": 100,
+          "definitions_shared_with_initial": 100,
+          "dimensions": 5000,
+          "median_ms": 1.7371279999999998,
+          "p95_ms": 3.040534,
+          "samples": 41,
+          "texts": 5000
+        }
+      }
+    ],
+    "median_of_trial_medians_ms": {
+      "before": 12.92796,
+      "after": 1.7371279999999998
+    }
+  },
+  "verification": {
+    "application_tests_passed": 209,
+    "application_manual_benchmark_ignored_by_default": 1,
+    "model_tests_passed": 349,
+    "tools_tests_passed": 151,
+    "io_tests_passed": 114,
+    "javascript_file_recovery_tests_passed": 26,
+    "strict_clippy": "application and model, all targets, portable profile: passed",
+    "wasm_check": "application, wasm32-unknown-unknown, web-release profile: passed",
+    "formatting_and_whitespace": "passed",
+    "browser_package_relinked": false,
+    "installed_desktop_updated": false
+  },
+  "binary_sha256": {
+    "recovery_reference_and_candidate": "fa34085d38d468e9abd963a23ad358cfc839d84de3075e81e333eefafa0d8bda",
+    "annotation_before": "7c3310e5c227f986ba929ccef724656aba9db4225a5a84eab46939ad6df95a93",
+    "annotation_after": "a6bedf76dd2334df6856e7ae86fa8dcbe4c73e54207c198fbee9bd05c8be7e40"
+  }
+}

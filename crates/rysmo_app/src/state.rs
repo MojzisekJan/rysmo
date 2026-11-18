@@ -10,6 +10,8 @@ use rysmo_tools::{Ctx, Modifiers, ToolBox, ToolKind};
 
 #[derive(Resource)]
 pub struct App3d {
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
+    pub native_files: crate::native_files::State,
     pub documents: crate::documents::Documents,
     pub features: crate::features::State,
     pub preferences: crate::preferences::Preferences,
@@ -199,6 +201,8 @@ impl App3d {
             },
             last_click: None,
             documents: Default::default(),
+            #[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
+            native_files: Default::default(),
             preferences: Default::default(),
             preference_store: Default::default(),
             welcome: false,

@@ -12,6 +12,9 @@
 
 #![forbid(unsafe_code)]
 
+// TODO: Reduce cold-picking latency on large models; measure the first query
+// separately from warm spatial-cache queries. See docs/performance.md.
+
 use rysmo_math::{
     Axis, DMat4, DVec2, DVec3, EPS, Plane, Ray, View, closest_line_ray, closest_on_segment, distance_point_segment_2d,
 };
@@ -212,21 +215,87 @@ impl MeshIndex {
 pub struct Accel {
     active: Arc<MeshIndex>,
     others: Vec<Arc<MeshIndex>>,
+    to_local: Vec<DMat4>,
     from_local: Vec<DMat4>,
-    placed: Bvh<usize>,
+    placed: Arc<Bvh<usize>>,
+    refitted: usize,
 }
 
 impl Accel {
     /// `others` pairs each mesh's index with the transform into the context.
     pub fn new(active: Arc<MeshIndex>, others: Vec<(Arc<MeshIndex>, DMat4)>) -> Self {
-        let placed = others
+        Self::updated(active, others, None)
+    }
+
+    /// Retains the placement tree for small edits, rebuilding after cumulative changes.
+    pub fn updated(active: Arc<MeshIndex>, others: Vec<(Arc<MeshIndex>, DMat4)>, previous: Option<&Self>) -> Self {
+        let previous = previous.filter(|old| old.others.len() == others.len());
+        let changed = previous.map_or(others.len(), |old| {
+            others
+                .iter()
+                .enumerate()
+                .filter(|(i, (index, transform))| {
+                    !Arc::ptr_eq(index, &old.others[*i]) || *transform != old.to_local[*i]
+                })
+                .count()
+        });
+        let reusable = previous.filter(|old| {
+            old.refitted.saturating_add(changed) <= (others.len() / 8).max(1)
+                && others
+                    .iter()
+                    .zip(&old.others)
+                    .all(|((index, _), old)| (index.bounds == Aabb::EMPTY) == (old.bounds == Aabb::EMPTY))
+        });
+        let bounds = |i: usize| {
+            let (index, transform) = &others[i];
+            Aabb::of(index.bounds.corners().map(|p| transform.transform_point3(p)))
+        };
+        let (placed, refitted) = if let Some(old) = reusable {
+            if changed == 0 {
+                (old.placed.clone(), old.refitted)
+            } else {
+                let mut tree = (*old.placed).clone();
+                tree.refit(|i, area| {
+                    if Arc::ptr_eq(&others[*i].0, &old.others[*i]) && others[*i].1 == old.to_local[*i] {
+                        area
+                    } else {
+                        bounds(*i)
+                    }
+                });
+                (Arc::new(tree), old.refitted + changed)
+            }
+        } else {
+            (
+                Arc::new(Bvh::new(
+                    others
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, (index, _))| index.bounds != Aabb::EMPTY)
+                        .map(|(i, _)| (bounds(i), i))
+                        .collect(),
+                )),
+                0,
+            )
+        };
+        let from_local = others
             .iter()
             .enumerate()
-            .filter(|(_, (index, _))| index.bounds != Aabb::EMPTY)
-            .map(|(i, (index, t))| (Aabb::of(index.bounds.corners().map(|p| t.transform_point3(p))), i));
-        let placed = Bvh::new(placed.collect());
-        let from_local = others.iter().map(|(_, t)| t.inverse()).collect();
-        Accel { active, others: others.into_iter().map(|(index, _)| index).collect(), from_local, placed }
+            .map(|(i, (_, transform))| {
+                previous
+                    .filter(|old| old.to_local[i] == *transform)
+                    .map(|old| old.from_local[i])
+                    .unwrap_or_else(|| transform.inverse())
+            })
+            .collect();
+        let to_local = others.iter().map(|(_, transform)| *transform).collect();
+        Accel {
+            active,
+            others: others.into_iter().map(|(index, _)| index).collect(),
+            to_local,
+            from_local,
+            placed,
+            refitted,
+        }
     }
 }
 

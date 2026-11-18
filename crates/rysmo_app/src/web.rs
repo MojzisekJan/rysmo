@@ -22,6 +22,10 @@ extern "C" {
     fn install_shortcuts();
     fn set_unsaved_changes(dirty: bool);
     fn set_render_diagnostics(text: &str);
+    fn profile_sample(stage: &str, milliseconds: f64, generation: u64, revision: u64);
+    fn profile_gpu_begin();
+    fn profile_gpu_assets();
+    fn profile_gpu_end();
     async fn restore() -> JsValue;
     async fn restore_workspace() -> JsValue;
     async fn save_workspace(json: &str) -> JsValue;
@@ -117,6 +121,61 @@ pub fn plugin(app: &mut App) {
         .add_systems(Startup, start)
         .add_systems(Update, (take_arrived, autosave_now, hide_loader, unload_guard).chain())
         .add_systems(Last, render_diagnostics);
+    if let Some(render) = app.get_sub_app_mut(bevy::render::RenderApp) {
+        use bevy::render::{Render, RenderSystems};
+        render.add_systems(
+            Render,
+            (
+                gpu_begin.before(RenderSystems::PrepareAssets),
+                gpu_assets.after(RenderSystems::PrepareMeshes).before(RenderSystems::CreateViews),
+                gpu_end.after(RenderSystems::Render).before(RenderSystems::Cleanup),
+            ),
+        );
+    }
+}
+
+/// Opt-in phase timings. Normal sessions do not allocate samples or touch JS.
+pub(crate) struct ProfileSpan {
+    stage: &'static str,
+    start: Option<bevy::platform::time::Instant>,
+    generation: u64,
+    revision: u64,
+}
+fn profile_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| query_has("diagnostics"))
+}
+impl ProfileSpan {
+    pub(crate) fn new(stage: &'static str, generation: u64, revision: u64) -> Self {
+        Self { stage, start: profile_enabled().then(bevy::platform::time::Instant::now), generation, revision }
+    }
+}
+impl Drop for ProfileSpan {
+    fn drop(&mut self) {
+        if let Some(start) = self.start {
+            profile_sample(self.stage, start.elapsed().as_secs_f64() * 1000., self.generation, self.revision);
+        }
+    }
+}
+pub(crate) fn profile_mark(stage: &str, generation: u64, revision: u64) {
+    if profile_enabled() {
+        profile_sample(stage, 0., generation, revision);
+    }
+}
+fn gpu_begin() {
+    if profile_enabled() {
+        profile_gpu_begin();
+    }
+}
+fn gpu_assets() {
+    if profile_enabled() {
+        profile_gpu_assets();
+    }
+}
+fn gpu_end() {
+    if profile_enabled() {
+        profile_gpu_end();
+    }
 }
 
 /// Whether the page's address has `?name` (or `&name`) in its query.
@@ -312,10 +371,7 @@ fn take_arrived(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>, time: Res<Ti
                         if dirty {
                             app.editor.mark_dirty();
                         }
-                        auto.written = Some(DocumentVersion {
-                            generation: app.document_generation,
-                            revision: app.editor.revision(),
-                        });
+                        auto.written = Some(DocumentVersion::for_recovery(&app.editor, app.document_generation));
                         auto.written_camera = Some(app.camera);
                         auto.written_dirty = Some(dirty);
                         app.message = Some(format!("Restored {name} from the last visit."));
@@ -372,7 +428,7 @@ fn take_arrived(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>, time: Res<Ti
             }
             Arrived::Autosaved { version, camera, dirty, library_version, success } => {
                 auto.in_flight = false;
-                let current = DocumentVersion { generation: app.document_generation, revision: app.editor.revision() };
+                let current = DocumentVersion::for_recovery(&app.editor, app.document_generation);
                 if !version.same_document(current) {
                     continue;
                 }
@@ -426,7 +482,7 @@ fn autosave_now(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>, time: Res<Ti
     if auto.in_flight {
         return;
     }
-    let version = DocumentVersion { generation: app.document_generation, revision: app.editor.revision() };
+    let version = DocumentVersion::for_recovery(&app.editor, app.document_generation);
     let pending = auto.written != Some(version)
         || auto.written_camera != Some(app.camera)
         || auto.written_dirty != Some(app.editor.is_dirty())
@@ -443,10 +499,11 @@ fn autosave_now(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>, time: Res<Ti
             .unwrap_or_else(|| "Untitled.rysmo".into());
         let camera = app.camera;
         app.editor.set_camera(camera);
-        let text = rysmo_io::save(app.editor.doc());
+        let snapshot = recovery_snapshot(&app);
+        let text = snapshot.active_text;
         let dirty = app.editor.is_dirty();
         let library_version = app.features.library.recovery_version();
-        let workspace = workspace_text(&app);
+        let workspace = snapshot.workspace;
         auto.in_flight = true;
         wasm_bindgen_futures::spawn_local(async move {
             let workspace_saved = save_workspace(&workspace).await.as_bool().unwrap_or(false);
@@ -496,6 +553,7 @@ fn render_diagnostics(
     if !*enabled.get_or_insert_with(|| query_has("diagnostics")) {
         return;
     }
+    profile_mark("editor_update", app.document_generation, app.editor.revision());
     sample.0 += 1;
     let now = time.elapsed_secs_f64();
     let elapsed = now - sample.1;
@@ -549,19 +607,17 @@ pub fn activate_tab(id: u64) {
     activate_document(id as f64);
 }
 
-fn workspace_text(app: &App3d) -> String {
-    let documents: Vec<_> = app.documents.sessions(app).map(|(id, session)| {
-        let mut doc = session.editor.doc().clone();
-        doc.camera = Some(session.camera);
-        serde_json::json!({ "id": id, "name": session.path.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|| "Untitled.rysmo".into()), "text": rysmo_io::save(&doc), "dirty": session.editor.is_dirty() })
-    }).collect();
-    serde_json::json!({ "active": app.documents.active, "documents": documents, "library": app.features.library.recovery() }).to_string()
+fn recovery_snapshot(app: &App3d) -> crate::recovery_cache::Snapshot {
+    thread_local! {
+        static TEXTS: RefCell<crate::recovery_cache::Cache> = RefCell::default();
+    }
+    TEXTS.with_borrow_mut(|cache| cache.snapshot(app))
 }
 pub fn persist_tabs(app: &App3d) {
     if !app.autosave_settings.enabled {
         return;
     }
-    let json = workspace_text(app);
+    let json = recovery_snapshot(app).workspace;
     wasm_bindgen_futures::spawn_local(async move {
         save_workspace(&json).await;
     });

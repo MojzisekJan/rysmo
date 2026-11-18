@@ -116,6 +116,25 @@ impl<T> Bvh<T> {
         self.items.is_empty()
     }
 
+    /// Updates bounds without changing membership or splitting the tree again.
+    /// Callers should rebuild after many movements to retain useful spatial grouping.
+    pub fn refit(&mut self, mut bounds: impl FnMut(&T, Aabb) -> Aabb) {
+        for (area, item) in &mut self.items {
+            *area = bounds(item, *area);
+        }
+        for index in (0..self.nodes.len()).rev() {
+            let node = &self.nodes[index];
+            let area = if node.leaf {
+                self.items[node.start as usize..node.end as usize]
+                    .iter()
+                    .fold(Aabb::EMPTY, |area, (item, _)| area.union(*item))
+            } else {
+                self.nodes[node.start as usize].bounds.union(self.nodes[node.end as usize].bounds)
+            };
+            self.nodes[index].bounds = area;
+        }
+    }
+
     /// Calls `found` for the items in every leaf reached by descending through the
     /// boxes `enter` accepts. `enter` also sees the item boxes.
     pub fn visit(&self, mut enter: impl FnMut(&Aabb) -> bool, mut found: impl FnMut(&T)) {
@@ -259,6 +278,27 @@ mod tests {
             tree.overlapping(area, |id| found.push(*id));
             assert_eq!(sorted(found), sorted(scan));
         }
+    }
+
+    #[test]
+    fn refitted_bounds_match_a_scan_after_crossing_old_partitions() {
+        let mut items = scattered(500);
+        let mut tree = Bvh::new(items.clone());
+        for (bounds, id) in &mut items {
+            if *id % 3 == 0 {
+                *bounds = Aabb::at(DVec3::new(-500., *id as f64, 100.)).expanded(2.);
+            }
+        }
+        tree.refit(|id, _| items[*id as usize].0);
+        for (bounds, _) in &items {
+            let area = bounds.expanded(1.);
+            let expected: Vec<_> =
+                items.iter().filter(|(bounds, _)| bounds.overlaps(&area)).map(|(_, id)| *id).collect();
+            let mut actual = Vec::new();
+            tree.overlapping(area, |id| actual.push(*id));
+            assert_eq!(sorted(actual), sorted(expected));
+        }
+        Bvh::<u64>::default().refit(|_, area| area);
     }
 
     #[test]

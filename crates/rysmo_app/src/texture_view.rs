@@ -636,6 +636,16 @@ mod tests {
         app.path = Some(path.clone());
         crate::files::save(&mut app, false);
         assert!(app.texture_session.is_none());
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        {
+            assert!(app.editor.is_dirty());
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            while app.native_files.busy() {
+                assert!(std::time::Instant::now() < deadline);
+                crate::native_files::poll_app(&mut app);
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+        }
         assert!(!app.editor.is_dirty());
         let saved = rysmo_io::load(&std::fs::read_to_string(&path).unwrap()).unwrap();
         let face = app.editor.mesh().faces().next().unwrap().0;

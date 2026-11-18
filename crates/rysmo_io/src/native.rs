@@ -5,7 +5,8 @@
 //! definition, instance and guide is one line with a stable id, so a diff shows exactly
 //! which elements changed. See `docs/file-format.md`.
 
-use std::collections::{BTreeMap, BTreeSet};
+use rysmo_mesh::blocks::BlockMap;
+use std::collections::{BTreeMap, HashSet};
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
@@ -18,6 +19,8 @@ use rysmo_mesh::{
 use rysmo_model::{Definition, Document, Guide, Image, Instance, Material, Style, Tag, Texture, Units};
 use serde::{Deserialize, Serialize};
 
+// TODO: Profile remaining parser allocations on large projects and reduce peak
+// memory without weakening input validation. See docs/performance.md.
 use crate::IoError;
 
 pub const FORMAT: &str = "rysmo";
@@ -125,12 +128,12 @@ struct VertexLine {
 }
 
 #[derive(Serialize, Deserialize)]
-struct EdgeLine {
+struct EdgeLine<E = Edge> {
     id: EdgeId,
     #[serde(default, rename = "in", skip_serializing_if = "Option::is_none")]
     within: In,
     #[serde(flatten)]
-    edge: Edge,
+    edge: E,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -143,12 +146,12 @@ struct CurveLine {
 }
 
 #[derive(Serialize, Deserialize)]
-struct FaceLine {
+struct FaceLine<F = Face> {
     id: FaceId,
     #[serde(default, rename = "in", skip_serializing_if = "Option::is_none")]
     within: In,
     #[serde(flatten)]
-    face: Face,
+    face: F,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -273,13 +276,23 @@ fn tidy3(v: DVec3) -> [f64; 3] {
     [tidy(v.x), tidy(v.y), tidy(v.z)]
 }
 
-fn section<T: Serialize>(out: &mut String, name: &str, items: impl Iterator<Item = T>, last: bool) {
+// Serialize directly into the final byte buffer rather than allocating a String
+// for every record. JSON and the literal separators are UTF-8 throughout.
+struct JsonOutput(Vec<u8>);
+
+impl JsonOutput {
+    fn push_str(&mut self, text: &str) {
+        self.0.extend_from_slice(text.as_bytes());
+    }
+}
+
+fn section<T: Serialize>(out: &mut JsonOutput, name: &str, items: impl Iterator<Item = T>, last: bool) {
     out.push_str(&format!("\"{name}\": ["));
     let mut first = true;
     for item in items {
         out.push_str(if first { "\n  " } else { ",\n  " });
         first = false;
-        out.push_str(&serde_json::to_string(&item).expect("plain data serialises"));
+        serde_json::to_writer(&mut out.0, &item).expect("plain data serialises");
     }
     out.push_str(if first { "]" } else { "\n]" });
     out.push_str(if last { "\n" } else { ",\n" });
@@ -307,7 +320,7 @@ fn tidy_guide(g: &Guide) -> Guide {
 
 /// Writes a document as `.rysmo` text.
 pub fn save(doc: &Document) -> String {
-    let mut out = String::from("{\n");
+    let mut out = JsonOutput(b"{\n".to_vec());
     out.push_str(&format!("\"format\": \"{FORMAT}\",\n\"version\": {VERSION},\n"));
     out.push_str("\"length_unit\": \"m\",\n");
     out.push_str(&format!("\"display_units\": {},\n", serde_json::to_string(&doc.units).expect("display units")));
@@ -414,7 +427,7 @@ pub fn save(doc: &Document) -> String {
     section(
         &mut out,
         "edges",
-        defs.iter().flat_map(|(w, d)| d.mesh.edges().map(move |(id, e)| EdgeLine { id, within: *w, edge: e.clone() })),
+        defs.iter().flat_map(|(w, d)| d.mesh.edges().map(move |(id, e)| EdgeLine { id, within: *w, edge: e })),
         false,
     );
     section(
@@ -426,7 +439,7 @@ pub fn save(doc: &Document) -> String {
     section(
         &mut out,
         "faces",
-        defs.iter().flat_map(|(w, d)| d.mesh.faces().map(move |(id, f)| FaceLine { id, within: *w, face: f.clone() })),
+        defs.iter().flat_map(|(w, d)| d.mesh.faces().map(move |(id, f)| FaceLine { id, within: *w, face: f })),
         false,
     );
     section(
@@ -483,7 +496,7 @@ pub fn save(doc: &Document) -> String {
         true,
     );
     out.push_str("}\n");
-    out
+    String::from_utf8(out.0).expect("JSON is UTF-8")
 }
 
 /// Resolve an input record's owner without relying on an earlier validation pass.
@@ -513,7 +526,7 @@ pub fn load(text: &str) -> Result<Document, IoError> {
         "mm" => 0.001,
         other => return Err(IoError::Format(format!("unknown length_unit \"{other}\""))),
     };
-    let mut ids = BTreeSet::new();
+    let mut ids = HashSet::new();
     let mut unique = |id: u64| {
         if ids.insert(id) { Ok(()) } else { Err(IoError::Format(format!("id {id} is used twice"))) }
     };
@@ -572,10 +585,10 @@ pub fn load(text: &str) -> Result<Document, IoError> {
         }
     };
     type Parts = (
-        BTreeMap<VertexId, Vertex>,
-        BTreeMap<EdgeId, Edge>,
-        BTreeMap<FaceId, Face>,
-        BTreeMap<rysmo_mesh::CurveId, rysmo_mesh::Curve>,
+        BlockMap<VertexId, Vertex>,
+        BlockMap<EdgeId, Edge>,
+        BlockMap<FaceId, Face>,
+        BlockMap<rysmo_mesh::CurveId, rysmo_mesh::Curve>,
     );
     let mut parts: BTreeMap<In, Parts> = BTreeMap::new();
     for v in f.vertices {
@@ -615,7 +628,7 @@ pub fn load(text: &str) -> Result<Document, IoError> {
     }
     let mut meshes: BTreeMap<In, Mesh> = BTreeMap::new();
     for (w, (vs, es, fs, curves)) in parts {
-        meshes.insert(w, Mesh::from_parts_with_curves(vs, es, fs, curves)?);
+        meshes.insert(w, Mesh::from_blocks_with_curves(vs, es, fs, curves)?);
     }
     let mut doc = Document::new();
     doc.materials = materials;
@@ -872,6 +885,33 @@ mod tests {
     use rysmo_model::{Command, Editor};
 
     use super::*;
+
+    #[test]
+    fn direct_section_writer_preserves_escaping_and_record_layout() {
+        let items = ["Czech: příliš, 日本語, 🟠", "quotes: \" \\ \n\t", ""];
+        let mut output = JsonOutput(Vec::new());
+        section(&mut output, "texts", items.iter(), true);
+        let expected = format!(
+            "\"texts\": [\n  {}\n]\n",
+            items.iter().map(|item| serde_json::to_string(item).unwrap()).collect::<Vec<_>>().join(",\n  ")
+        );
+        assert_eq!(String::from_utf8(output.0).unwrap(), expected);
+        let mut empty = JsonOutput(Vec::new());
+        section(&mut empty, "empty", std::iter::empty::<u64>(), false);
+        assert_eq!(empty.0, b"\"empty\": [],\n");
+    }
+
+    #[test]
+    fn native_block_loading_accepts_reversed_record_order() {
+        let mut editor = Editor::new();
+        editor.apply(Command::DrawRectangle { corner: DVec3::ZERO, u: DVec3::X, v: DVec3::Y, facing: None }).unwrap();
+        let saved = save(editor.doc());
+        let mut input: serde_json::Value = serde_json::from_str(&saved).unwrap();
+        for section in ["vertices", "edges", "faces"] {
+            input[section].as_array_mut().unwrap().reverse();
+        }
+        assert_eq!(save(&load(&input.to_string()).unwrap()), saved);
+    }
 
     #[test]
     fn component_properties_and_instance_visibility_roundtrip() {

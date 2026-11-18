@@ -11,7 +11,7 @@ pub enum Purpose {
 impl Purpose {
     pub fn extensions(self) -> &'static [&'static str] {
         match self {
-            Self::Model => &["obj", "glb", "dxf", "rysmo"],
+            Self::Model => &["skp", "obj", "glb", "dxf", "rysmo"],
             Self::Collection => &["ryslib"],
             Self::Photo | Self::NormalMap(_) => &["png", "jpg", "jpeg"],
             Self::Environment => &["hdr", "png", "jpg", "jpeg"],

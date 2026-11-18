@@ -59,7 +59,7 @@ static TOPICS: &[Topic] = &[
         title: "Import and component collections",
         category: "Files",
         icon: None,
-        body: "File > Import previews OBJ, embedded GLB and ASCII DXF before placement. Set source units and OBJ up axis, then Place in model. Click to place; Escape cancels and one Undo removes placement. Unsupported records are reported. OBJ companions are not loaded. DXF closed polylines remain underlay linework. File > Component library captures selection with a name and description, shows wire previews, searches and places reusable assets. Save or merge .ryslib collections to transfer components between projects. The library stays in the session across New/Open; save it before exiting.",
+        body: "File > Import previews SKP, OBJ, embedded GLB and ASCII DXF before placement. Set source units and OBJ up axis, then Place in model. Open as new document preserves imported project settings and keeps the current model in another tab. SKP preserves physical dimensions and offers 2017-compatible or 2026-container export through File > Export > SKP. Review conversion warnings before exporting. Click to place; Escape cancels and one Undo removes placement. Unsupported records are reported. OBJ companions are not loaded. DXF closed polylines remain underlay linework. File > Component library captures selection with a name and description, shows wire previews, searches and places reusable assets. Save or merge .ryslib collections to transfer components between projects. The library stays in the session across New/Open; save it before exiting.",
     },
     Topic {
         title: "Parametric components",

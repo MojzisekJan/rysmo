@@ -5,6 +5,9 @@ stays English, operations retain Undo/Redo and cancellation, and old documents
 remain readable. Browser and native paths must share model/I/O implementations.
 Scene animation and spatial decorative freehand remain out of scope.
 
+Performance findings, measurements and the next optimization priorities are in
+[editor performance](performance.md).
+
 - [x] Model/underlay import: OBJ, embedded GLB and ASCII 2D DXF, units and axis
   controls, explicit diagnostics, transactional placement and bounded input work.
 - [x] External component collections: reusable named assets, thumbnails, search,

@@ -55,7 +55,7 @@ pub use ids::{
     CurveId, DefinitionId, DimensionId, EdgeId, Element, FaceId, GuideId, ImageId, InstanceId, MaterialId, TagId,
     TextId, VertexId,
 };
-pub use mesh::{Edge, Face, Mesh, MeshError, TexturePlacement, Vertex};
+pub use mesh::{Edge, Face, Mesh, MeshChanges, MeshError, TexturePlacement, Vertex};
 pub use offset::offset_polyline;
 pub use ops::PushPullResult;
 pub use transform::Template;

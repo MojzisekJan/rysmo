@@ -11,6 +11,7 @@ pub fn plugin(app: &mut App) {
 }
 fn update(
     app: Res<crate::state::App3d>,
+    preparing: Option<Res<crate::faces::DrawnCache>>,
     mut settings: ResMut<WinitSettings>,
     mut frames: Local<u32>,
     mut events: MessageReader<bevy::window::WindowEvent>,
@@ -32,7 +33,10 @@ fn update(
         || preview
         || !app.preferences.sleep_renderer
         || app.walking.is_some()
-        || app.left_down;
+        || app.left_down
+        || preparing.is_some_and(|preparing| preparing.busy())
+        || app.features.skp.busy()
+        || app.features.import.as_ref().is_some_and(|draft| draft.busy());
     *tail = tail.saturating_sub(1);
     let wait = if app.mcp.is_some() { Duration::from_millis(50) } else { Duration::from_secs(1) };
     settings.focused_mode = if active { UpdateMode::Continuous } else { UpdateMode::reactive_low_power(wait) };

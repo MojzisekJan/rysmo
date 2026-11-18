@@ -39,3 +39,9 @@ edits by Jarod Guest, from Poly Haven, dedicated to the public domain under CC0 
 
 `vendor/bevy_pbr` is bevy_pbr 0.20.0 (MIT OR Apache-2.0, licence files included) with
 the change described in `vendor/README.md`.
+
+SKP interchange uses [Skpwright 0.6.1](https://github.com/hew3d/skpwright),
+by Kurt Granroth, under GPL-3.0-only. Its license is included in
+[docs/licenses/skpwright-GPL-3.0.txt](docs/licenses/skpwright-GPL-3.0.txt).
+The SKP interoperability fixtures retain the same license and have pinned source
+links and checksums in `crates/rysmo_io/tests/fixtures/skp/README.md`.

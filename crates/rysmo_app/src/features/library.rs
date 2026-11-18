@@ -213,7 +213,6 @@ impl State {
         self.error.as_deref()
     }
 
-    #[cfg(any(target_arch = "wasm32", test))]
     pub fn recovery_version(&self) -> (u64, bool) {
         (self.revision, self.modified)
     }

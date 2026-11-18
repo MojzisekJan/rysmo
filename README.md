@@ -8,18 +8,22 @@ Written in Rust with Bevy and egui.
 
 **[Open the editor in your browser](https://mojzisekjan.github.io/rysmo/editor/)**
 
-Recent editor additions include OBJ/GLB/DXF import, portable component collections,
+Recent editor additions include [SKP interchange](docs/skp-support.md), OBJ/GLB/DXF import, portable component collections,
 editable windows/doors/stairs, scaled SVG/PDF drawings, photo perspective matching,
 material surface controls and nested solid operations. Editable workflows add live
 operations, component connections and attributes, section hatching, document tabs
 and multi-viewport drawing sheets. See [editable workflows](docs/editable-workflows.md) and
 [editor workflows and limits](docs/editor-expansion.md).
 
-Requires Rust 1.97.1 or newer.
+## Run the desktop editor
+
+Requires Rust 1.97.1 or newer. From the repository root, build and launch the editor:
 
 ```sh
-cargo run -p rysmo_app --release
+cargo run --locked -p rysmo_app --bin rysmo --release
 ```
+
+On Linux, you can launch that build again with `./target/release/rysmo`.
 
 Build, verification and Rust review conventions are in [CONTRIBUTING.md](CONTRIBUTING.md).
 

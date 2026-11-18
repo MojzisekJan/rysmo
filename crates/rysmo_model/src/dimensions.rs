@@ -1264,15 +1264,53 @@ impl Dimension {
 
 impl Document {
     pub(crate) fn refresh_dimensions(&mut self) {
+        self.refresh_dimensions_selected(None);
+    }
+    pub(crate) fn refresh_dimensions_selected(&mut self, selected: Option<&crate::annotation_cache::Targets>) {
         let document = &*self;
-        let updates: Vec<_> = std::iter::once((None, &document.root))
-            .chain(document.definitions.iter().map(|(id, d)| (Some(*id), d)))
-            .filter(|(_, definition)| !definition.dimensions.is_empty())
-            .flat_map(|(owner, definition)| {
-                definition
-                    .dimensions
-                    .iter()
-                    .map(move |(id, dimension)| (owner, *id, dimension.refreshed(document, owner)))
+        let entries: Vec<_> = match selected {
+            Some(keys) => keys
+                .iter()
+                .filter_map(|(owner, element)| match element {
+                    crate::Element::Dimension(id) => {
+                        document.def(*owner)?.dimensions.get(id).map(|dimension| (*owner, *id, dimension))
+                    }
+                    _ => None,
+                })
+                .collect(),
+            None => std::iter::once((None, &document.root))
+                .chain(document.definitions.iter().map(|(id, definition)| (Some(*id), definition)))
+                .flat_map(|(owner, definition)| {
+                    definition.dimensions.iter().map(move |(id, dimension)| (owner, *id, dimension))
+                })
+                .collect(),
+        };
+        let updates: Vec<_> = entries
+            .into_iter()
+            .filter_map(|(owner, id, dimension)| {
+                match &dimension.measure {
+                    DimensionMeasure::Linear { from, to, .. } => {
+                        let (a, attached_a) = from.resolve(document, owner);
+                        let (b, attached_b) = to.resolve(document, owner);
+                        if (!attached_a || a == from.point) && (!attached_b || b == to.point) {
+                            return None;
+                        }
+                        let mut refreshed = dimension.clone();
+                        if let DimensionMeasure::Linear { from, to, .. } = &mut refreshed.measure {
+                            if attached_a {
+                                from.point = a;
+                            }
+                            if attached_b {
+                                to.point = b;
+                            }
+                        }
+                        return Some((owner, id, refreshed));
+                    }
+                    DimensionMeasure::Radial { reference, .. } if reference.curve.is_none() => return None,
+                    _ => {}
+                }
+                let refreshed = dimension.refreshed(document, owner);
+                (refreshed != *dimension).then_some((owner, id, refreshed))
             })
             .collect();
         for (owner, id, dimension) in updates {
@@ -1285,6 +1323,52 @@ impl Document {
 mod tests {
     use super::*;
     use crate::{Command, Editor, Element, format_length};
+    #[test]
+    fn unrelated_edits_preserve_annotation_definition_sharing_through_undo_redo() {
+        use rysmo_math::DVec2;
+        use std::sync::Arc;
+        let mut document = Document::new();
+        let definition = crate::DefinitionId(document.reserve_id());
+        document.definitions.insert(definition, crate::Definition::default().into());
+        for owner in [None, Some(definition)] {
+            let dimension_id = crate::DimensionId(document.reserve_id());
+            let text_id = crate::TextId(document.reserve_id());
+            let target = document.def_mut(owner).unwrap();
+            target.dimensions.insert(
+                dimension_id,
+                Dimension {
+                    measure: DimensionMeasure::Linear {
+                        from: DimensionAnchor { point: DVec3::ZERO, reference: None },
+                        to: DimensionAnchor { point: DVec3::X, reference: None },
+                        axis: None,
+                    },
+                    normal: DVec3::Z,
+                    offset: DVec3::Y,
+                    text: String::new(),
+                    alignment: Default::default(),
+                    font: Default::default(),
+                    text_position: Default::default(),
+                    endpoints: Default::default(),
+                },
+            );
+            target.texts.insert(
+                text_id,
+                crate::text::TextDefaults::default()
+                    .screen("Unchanged".into(), DVec2::ZERO, DVec2::new(800., 600.))
+                    .unwrap(),
+            );
+        }
+        let before = document.clone();
+        let mut editor = Editor::with_document(document);
+        editor.apply(Command::SetUnits { units: crate::Units::Metres }).unwrap();
+        assert!(Arc::ptr_eq(&editor.doc().root, &before.root));
+        assert!(Arc::ptr_eq(&editor.doc().definitions[&definition], &before.definitions[&definition]));
+        assert!(editor.undo());
+        assert_eq!(editor.doc(), &before);
+        assert!(editor.redo());
+        assert!(Arc::ptr_eq(&editor.doc().root, &before.root));
+        assert!(Arc::ptr_eq(&editor.doc().definitions[&definition], &before.definitions[&definition]));
+    }
     #[test]
     fn edge_anchor_follows_move_and_reports_deleted_association() {
         let mut editor = Editor::new();

@@ -1,0 +1,106 @@
+{
+  "date": "2026-11-18",
+  "base_revision": "41e2942882a8d48ed463aaafe969c54433a8f59e",
+  "implementation": "Local uncommitted SKP import/export; previous performance work is a separate batch.",
+  "dependency": {
+    "name": "skpwright",
+    "version": "0.6.1",
+    "license": "GPL-3.0-only",
+    "source_commit": "491e1fc7bb8ba135f7e3863d38abda29004c68bf",
+    "crate_checksum": "fa374de079ed320cace464fce37867d56fee8d108168f0787b087e6ecf3d1261"
+  },
+  "source_sha256": {
+    "Cargo.lock": "dcf6aac95c844031548107c571583a518ca2f09f977a4fa71a50e74b114820fc",
+    "NOTICE.md": "d7db8b8d4bda70bbabb366dcbbac683c70b6e9af93ff3a0a4c21223b73c5c761",
+    "crates/rysmo_io/Cargo.toml": "0efe60b1466d917bde815ff728eb15c99d50319d2913bff38dc6d3191526c942",
+    "crates/rysmo_io/src/lib.rs": "8b20cbb7a4e0ce6448abd41fe7a85f4321052935d5809ab87cbd5032363f1856",
+    "crates/rysmo_io/src/import/mod.rs": "b39cd02ae7d68347067db12dd2ffc65d6cd9ac0c5098d908e8ce6912327201ab",
+    "crates/rysmo_app/src/features/skp.rs": "a194c7647a8d19e49fb2f0a64989ef28fc9282b8126bf302247482e2b734622e",
+    "crates/rysmo_app/src/features/imports.rs": "fbe4c345288743ee6c14a0688efc0c81adf626cd1d94533528ff135d0f5c4f90",
+    "crates/rysmo_app/src/features/data_files.rs": "14c8b8499d04f8cb3fb772d48871cf5c85b7cae630aa830086c185dade88a97d",
+    "crates/rysmo_app/src/features/mod.rs": "c9176ddd02cb2d6779f5f88f859300e791be49161f8deee2c24a2ca245cfff98",
+    "crates/rysmo_app/src/files.rs": "06133e17250722e5151aefc25fbb48373d03ebb7c968624bf2bf60791ea51a8e",
+    "crates/rysmo_app/src/command_search.rs": "409833db8230d61f79094395bd1f85a51c04b078cda5f7fde11fabc8aa7aa81d",
+    "crates/rysmo_app/src/ui.rs": "a21a3f80e611d5648f402aa42946ae02a2e467e0a7012ff635bd58aef9c1e7aa",
+    "crates/rysmo_app/src/idle.rs": "4d23452167cbe9ca3c481d0e0c69612d65758b46112770c23ea692ffabba0461",
+    "crates/rysmo_app/src/help.rs": "227da02fcf5a403c56640096c6db11014798df17ca7655345a67f71cab18de4e",
+    "crates/rysmo_io/src/skp/budget.rs": "72b1a7bfe586b13d639b7ba407123c19b43cb825b8369d9e391e7c81b2576d8b",
+    "crates/rysmo_io/src/skp/write.rs": "8c101606e8f512ec6b72c8f42c9435392ddc603d97916cb0e8cf6d4aaa503172",
+    "crates/rysmo_io/src/skp/mod.rs": "18788746795e130f44103e4d297e1ee0d5a4bf5a16e48d742240f4925f180dc5",
+    "crates/rysmo_io/src/skp/tests.rs": "7537307c6441b86e71b85c192d0d8417003ec1eec8a5508e5032131fb26ee161",
+    "crates/rysmo_io/src/skp/mapping.rs": "f189b92078f87d957eedc6a79fe7564325e6f190c0c3742fbdffb4d3132d8acb",
+    "crates/rysmo_io/src/skp/settings.rs": "457df35834f6861f06c97e8c3ba73f0240b37a2763c5dbb4b6456b7af2f89035",
+    "crates/rysmo_io/src/skp/geometry.rs": "be6375f1db1ad4d8e683931b382f0791dd650c4cccd40fa3333d75806150679e"
+  },
+  "verification": {
+    "strict_workspace_all_targets_clippy": "passed",
+    "rust_workspace_library_passed": 1033,
+    "javascript_tests": "28 passed; node --experimental-vm-modules scripts/web-files.test.mjs",
+    "web_release": "two completed builds; exact runtime checks pending",
+    "target_application_validation": "not performed; Linux host has no vendor desktop application"
+  },
+  "local_interoperability_fixtures": [
+    {
+      "path": "crates/rysmo_io/tests/fixtures/skp/hole-2026.skp",
+      "bytes": 181924,
+      "sha256": "00736422873c1d4f8c962acfc40407f627788d5037337825fbea077d6d698d4b"
+    },
+    {
+      "path": "crates/rysmo_io/tests/fixtures/skp/shared-2017.skp",
+      "bytes": 139581,
+      "sha256": "8daa7e6751e90b0e10d06aad6a2c6ef32f53ee30933cc0b776060f453ebdbf07"
+    },
+    {
+      "path": "crates/rysmo_io/tests/fixtures/skp/texture-2026.skp",
+      "bytes": 156763,
+      "sha256": "6bf2a8940b0ec3fa2020c21c43421d086724fed63f5f1704941737965426679b"
+    }
+  ],
+  "manual_corpus": [
+    {
+      "name": "2026-circle.skp",
+      "bytes": 179560,
+      "sha256": "ca4fdc13bf1a8d7333dc7cdb834116b6010483a05000a05fd4f5b5c36172fb09"
+    },
+    {
+      "name": "2026-nested-3-deep.skp",
+      "bytes": 165598,
+      "sha256": "318e5a9e527c8f9f5ef65187fe55b4b148cce4e872a78ec38452b21bc5d2b7e5"
+    },
+    {
+      "name": "2026-png-texture.skp",
+      "bytes": 189223,
+      "sha256": "15fbc0ef09121a3cc4fbd9a79d7e5b4b352cfa12d0de4b61d7c68bbd69bdf606"
+    },
+    {
+      "name": "2026-two-scenes.skp",
+      "bytes": 191847,
+      "sha256": "388601e185e16980796b5b82c4c0999d60746fd37fd3a1acc620b4728203e3ea"
+    },
+    {
+      "name": "2026-soft-smooth-edges.skp",
+      "bytes": 184165,
+      "sha256": "50efa8b069176d4c08d3d09c936914f627d54c33dc58843744b37f706084bced"
+    },
+    {
+      "name": "2026-layers.skp",
+      "bytes": 184599,
+      "sha256": "18c52c86fbf0ec40e2976e02cee0a5f968d2d7396f8f81fb5a19f30c09b93707"
+    },
+    {
+      "name": "2026-house.skp",
+      "bytes": 2241895,
+      "sha256": "f32845d84f38769b275f295afc37abd814eaf0a1f6481b31c8d5035b3f8b3623"
+    },
+    {
+      "name": "2017-house-plus.skp",
+      "bytes": 2594653,
+      "sha256": "b14470dd8b5b64ba0b0c21a3a7c11d22670f98c49442781854d67846d6402287"
+    }
+  ],
+  "browser_gui": {
+    "status": "in progress"
+  },
+  "manual_corpus_result": "8 models, 16 cross-container conversions passed; geometry counts, visible bounds, total texture payload size and tag counts remain stable. Includes houses, nested groups, layers, scenes, circles, soft/smooth edges and PNG textures.",
+  "limitations": "Conversion warnings identify omitted annotations, custom/procedural/advanced data and per-scene overrides. Existing glue is baked on export. This is not byte-preserving conversion or a guarantee for all versions."
+}

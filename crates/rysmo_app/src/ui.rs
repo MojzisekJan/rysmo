@@ -260,6 +260,7 @@ fn panels(
     mut contexts: EguiContexts,
     mut app: ResMut<App3d>,
     render_view: Res<crate::render_view::RenderView>,
+    preparing: Option<Res<crate::faces::DrawnCache>>,
 ) -> Result {
     let ctx = contexts.ctx_mut()?.clone();
     let ctx = &ctx;
@@ -452,6 +453,12 @@ fn panels(
                                     .clicked()
                             {
                                 app.message = None;
+                            }
+                            #[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
+                            crate::native_files::indicator(ui, &mut app);
+                            if preparing.as_ref().is_some_and(|preparing| preparing.busy()) {
+                                ui.spinner();
+                                ui.label("Preparing surfaces…");
                             }
                             ui.add(egui::Label::new(&status).truncate()).on_hover_text(&status);
                         });
@@ -837,6 +844,7 @@ pub fn menus(ui: &mut egui::Ui, app: &mut App3d) {
             for (label, action) in [
                 ("Wavefront OBJ...", files::export_obj as fn(&mut App3d)),
                 ("glTF (.glb)...", files::export_glb),
+                ("SKP (.skp)...", |app: &mut App3d| app.features.skp.open = true),
                 ("COLLADA (.dae)...", files::export_collada),
                 ("DXF (.dxf)...", files::export_dxf),
             ] {

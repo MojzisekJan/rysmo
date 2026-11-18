@@ -11,7 +11,7 @@ pub enum UpAxis {
     Y,
     Z,
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Options {
     /// Metres per source unit. None uses file units, or metres when unspecified.
     pub unit_scale: Option<f64>,
@@ -63,15 +63,16 @@ pub fn read(name: &str, bytes: &[u8], options: Options) -> Result<Imported> {
             options,
         ),
         "glb" => glb::read(bytes, options),
+        "skp" => crate::skp::read(bytes, options),
         "rysmo" => Ok(Imported {
             document: crate::load(std::str::from_utf8(bytes).map_err(|_| ImportError("Invalid model text.".into()))?)
                 .map_err(|e| ImportError(e.to_string()))?,
             warnings: Vec::new(),
         }),
-        _ => error("Choose OBJ, GLB, DXF or Rysmo."),
+        _ => error("Choose SKP, OBJ, GLB, DXF or Rysmo."),
     }?;
     validate_expansion(&imported.document)?;
-    if imported.document.definition_bounds(None).is_none() {
+    if extension != "skp" && imported.document.definition_bounds(None).is_none() {
         return error("The file contains no supported geometry.");
     }
     imported.document.fix_next_id().map_err(|e| ImportError(e.to_string()))?;

@@ -1,0 +1,110 @@
+{
+  "date": "2026-11-18",
+  "base_revision": "41e2942882a8d48ed463aaafe969c54433a8f59e",
+  "candidate": "local uncommitted background file and glue-index changes",
+  "toolchain": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+  "target": "x86_64 Linux",
+  "profile": "portable; application and I/O opt-level=1; model and mesh opt-level=3; debug assertions enabled",
+  "source_sha256": {
+    "crates/rysmo_app/src/native_files.rs": "d2b60f6eb0ef16a9f543265e3204a32ebe29683d12d50ee19872b6226d405b64",
+    "crates/rysmo_app/src/files.rs": "4b57898059496bc755955678392dac40a901970b0558df9f65e9e3f993e2e242",
+    "crates/rysmo_app/src/unsaved.rs": "71abf3a46268404a2236106b2eb1fe738658543b645b4450ce10af1655d73dc6",
+    "crates/rysmo_app/src/live_mcp.rs": "ca025eec94b3b95e683dab401fe180b308cf0d79624a36424615f4dd7469c668",
+    "crates/rysmo_app/src/lib.rs": "3c8d0dd4fc49c46da4c2b87aba5b16d57183bc8417a6287f0c5a30ec8e31ab21",
+    "crates/rysmo_app/src/documents.rs": "ccb2a6cd3b92d5518dffa627c376b40a601080452995f359f81b3051dff0bff7",
+    "crates/rysmo_app/src/state.rs": "4edb7063bd0e7a4ea058c57410c397edeb76af444c20fb49a9b60c61a2dfff16",
+    "crates/rysmo_app/src/ui.rs": "fa6d09a74ca4bbb9d65e71d285f76ed499e67cff7dc08f41a7d7b87e0fab1b12",
+    "crates/rysmo_app/src/texture_view.rs": "43b9587989f79d479bf81f9441bb6430c2ea850588414a55784c9c00391ce6c1",
+    "crates/rysmo_app/src/features/library.rs": "dd11638a96da86e48b52122545201ec541eccc9b8ca30b3619034cc28d7a6968",
+    "crates/rysmo_model/src/glue_index.rs": "c76edc93a562e0344c6b2d3a0df0ad2dabac4edbfa0fa0a10826c10f0fcaa6ad",
+    "crates/rysmo_model/src/components.rs": "f5d47969a056eac65712570514056e87621fe7912f166b39ab9015cbab1d5178",
+    "crates/rysmo_model/src/document.rs": "313352310b55e2917ca59e26f5064b00f93fd8ec2d25043e46d3f8c929a65e5b",
+    "crates/rysmo_model/src/editor.rs": "b7d53fb08c4fd074a21b360f6cbd7532ef47dfdb6eebea83c88b4efd30a4ff01",
+    "crates/rysmo_model/src/lib.rs": "fcd35c8e550102aef78184e9e502c9140a8fb70e42fef092275c5611dbfd0018",
+    "crates/rysmo_mesh/src/blocks.rs": "3764aaab0f0eb72e9554fd971324182578a0f56cebc13d7bdcf2c45e7549f9aa"
+  },
+  "fixture_sha256": "e71aa5fd7adf008e12b52e4c83a6dc24275114799cad37d0512362888d1f7a96",
+  "methods": {
+    "files": "Three warmups and 21 samples per operation. Fixture parsing/application construction outside dispatch timing. Actual atomic replacement/synchronization for saves. Completion includes worker and 1 ms polling. Poll timing excludes renderer/GPU work. Warm input filesystem cache; worker startup excluded. Canonical saved text checked after each save.",
+    "glue_capture": "Three warmups and 41 samples; 50000 ordinary instances, zero glued. Former full capture loop in the same binary. Cache reset and block mutation outside timing. Capture and result destruction included. This measures a command phase, not whole commands or frames.",
+    "environment": "Our compilations completed before timing. Desktop activity and CPU frequency are uncontrolled. No peak-memory or browser runtime measurement."
+  },
+  "results": {
+    "files": {
+      "input_bytes": 17158892,
+      "results": [
+        {
+          "completion_wall": {
+            "median_ms": 174.99033,
+            "p95_ms": 187.998659
+          },
+          "dispatch": {
+            "median_ms": 0.039601000000000004,
+            "p95_ms": 0.043302
+          },
+          "maximum_poll_per_operation": {
+            "median_ms": 0.022978,
+            "p95_ms": 0.037575
+          },
+          "operation": "save"
+        },
+        {
+          "completion_wall": {
+            "median_ms": 377.092589,
+            "p95_ms": 387.940069
+          },
+          "dispatch": {
+            "median_ms": 0.014388,
+            "p95_ms": 0.020883
+          },
+          "maximum_poll_per_operation": {
+            "median_ms": 0.059646,
+            "p95_ms": 0.07920100000000001
+          },
+          "operation": "open"
+        }
+      ],
+      "samples": 21
+    },
+    "glue_capture": {
+      "changed_block_index": {
+        "median_ms": 0.010336000000000001,
+        "p95_ms": 0.010547
+      },
+      "cold_index": {
+        "median_ms": 0.199399,
+        "p95_ms": 0.36297
+      },
+      "full_scan": {
+        "median_ms": 0.399917,
+        "p95_ms": 0.6136339999999999
+      },
+      "glued": 0,
+      "instances": 50000,
+      "samples": 41,
+      "warm_index": {
+        "median_ms": 0.001396,
+        "p95_ms": 0.0014670000000000002
+      }
+    }
+  },
+  "verification": {
+    "regular_rust_passed": 945,
+    "application": 223,
+    "io": 114,
+    "mesh": 101,
+    "model": 356,
+    "tools": 151,
+    "manual_benchmarks_passed": 2,
+    "javascript_file_recovery_passed": 26,
+    "strict_clippy": "application/model/mesh, all targets: passed",
+    "wasm": "application wasm32-unknown-unknown web-release: passed",
+    "formatting_and_whitespace": "passed",
+    "installed_desktop_updated": false,
+    "browser_package_relinked": false
+  },
+  "binary_sha256": {
+    "rysmo_app": "8b1139bcc149cccbae7a8414614aeb136005c20804c551d3ad292706cb524b55",
+    "rysmo_model": "09472abdb390e5979a02fb9e36c1ea5cfaaa4a31959aac79629f97351bb0a1e2"
+  }
+}

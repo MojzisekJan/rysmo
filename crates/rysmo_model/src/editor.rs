@@ -1,6 +1,8 @@
 //! Editing session, transactional commands, undo history and selection.
 
 use std::collections::BTreeSet;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use rysmo_math::{DMat4, OrbitCamera};
 
@@ -22,18 +24,18 @@ struct Step {
 #[derive(Clone, Debug)]
 struct HistoryState {
     current: u64,
-    next: u64,
+    // Preview clones share the allocator, so divergent clones cannot reuse IDs.
+    next: Arc<AtomicU64>,
     saved: Option<u64>,
 }
 impl Default for HistoryState {
     fn default() -> Self {
-        Self { current: 0, next: 1, saved: Some(0) }
+        Self { current: 0, next: Arc::new(AtomicU64::new(1)), saved: Some(0) }
     }
 }
 impl HistoryState {
     fn advance(&mut self) {
-        self.current = self.next;
-        self.next += 1;
+        self.current = self.next.fetch_add(1, Ordering::Relaxed);
     }
 }
 
@@ -44,6 +46,7 @@ impl HistoryState {
 /// definitions and the blocks of their meshes are shared until an edit writes to them.
 #[derive(Clone, Debug, Default)]
 pub struct Editor {
+    identity: Arc<()>,
     doc: Document,
     undo: Vec<Step>,
     redo: Vec<Step>,
@@ -58,6 +61,13 @@ pub struct Editor {
 
 /// How many steps the history keeps.
 pub const UNDO_LIMIT: usize = 200;
+
+/// An opaque saved state, valid only in the editing session that produced it.
+#[derive(Clone, Debug)]
+pub struct SavePoint {
+    identity: Arc<()>,
+    state: u64,
+}
 
 impl Editor {
     pub fn new() -> Self {
@@ -468,6 +478,20 @@ impl Editor {
         self.history.saved = Some(self.history.current);
     }
 
+    pub fn save_point(&self) -> SavePoint {
+        SavePoint { identity: self.identity.clone(), state: self.history.current }
+    }
+
+    /// A background save may finish after further edits or history movement.
+    /// Remember its actual saved state without making newer edits clean.
+    pub fn mark_saved_point(&mut self, point: &SavePoint) -> bool {
+        if !Arc::ptr_eq(&self.identity, &point.identity) {
+            return false;
+        }
+        self.history.saved = Some(point.state);
+        true
+    }
+
     /// Marks unsaved changes (a document brought back from an autosave).
     pub fn mark_dirty(&mut self) {
         self.history.saved = None;
@@ -482,8 +506,7 @@ impl Editor {
     /// left as it was.
     pub fn apply(&mut self, cmd: Command) -> Result<Outcome, CommandError> {
         let before = self.doc.clone();
-        self.doc.refresh_dimensions();
-        self.doc.refresh_texts();
+        self.doc.refresh_annotations();
         let label = cmd.label().to_string();
         let def = self.active_definition();
         let reselect_curve = if let Command::SetCurveSegments { curve, .. } = &cmd {
@@ -494,8 +517,7 @@ impl Editor {
         match cmd.run(&mut self.doc, def) {
             Ok(outcome) => {
                 if outcome.changed {
-                    self.doc.refresh_dimensions();
-                    self.doc.refresh_texts();
+                    self.doc.refresh_annotations();
                     let camera = before.camera != self.doc.camera;
                     self.undo.push(Step { label, before, camera, state: self.history.current });
                     if self.undo.len() > UNDO_LIMIT {
@@ -529,8 +551,7 @@ impl Editor {
         let previous_camera_change = step.camera;
         let baseline_state = step.state;
         let label = cmd.label().to_string();
-        document.refresh_dimensions();
-        document.refresh_texts();
+        document.refresh_annotations();
         let outcome = cmd.run(&mut document, self.active_definition())?;
         let camera = document.camera != baseline_camera;
         if !camera && !previous_camera_change {
@@ -550,8 +571,7 @@ impl Editor {
             self.prune_selection();
             return Ok(Outcome { changed: true, ..outcome });
         }
-        document.refresh_dimensions();
-        document.refresh_texts();
+        document.refresh_annotations();
         self.doc = document;
         let step = self.undo.last_mut().unwrap();
         step.label = label;
@@ -575,8 +595,9 @@ impl Editor {
         checkpoint.doc.camera = self.doc.camera;
         checkpoint.revision = self.revision + 1;
         checkpoint.selection_changes = self.selection_changes;
-        checkpoint.history.next = checkpoint.history.next.max(self.history.next);
-        checkpoint.history.saved = self.history.saved;
+        checkpoint.history.next.fetch_max(self.history.next.load(Ordering::Relaxed), Ordering::Relaxed);
+        checkpoint.history.saved =
+            if Arc::ptr_eq(&checkpoint.identity, &self.identity) { self.history.saved } else { None };
         *self = checkpoint;
     }
 
@@ -779,6 +800,39 @@ mod shared_history_tests {
     use super::*;
     use rysmo_math::DVec3;
     use std::sync::Arc;
+
+    #[test]
+    fn asynchronous_save_remembers_the_saved_history_state_without_cleaning_new_edits() {
+        let mut editor = Editor::new();
+        editor.apply(Command::DrawLines { lines: vec![[DVec3::ZERO, DVec3::X]], facing: None }).unwrap();
+        let point = editor.save_point();
+        editor.apply(Command::DrawLines { lines: vec![[DVec3::Y, DVec3::X + DVec3::Y]], facing: None }).unwrap();
+        assert!(editor.mark_saved_point(&point));
+        assert!(editor.is_dirty());
+        editor.undo();
+        assert!(!editor.is_dirty());
+        editor.redo();
+        assert!(editor.is_dirty());
+        editor.replace_document(Document::new());
+        editor.mark_dirty();
+        assert!(!editor.mark_saved_point(&point));
+        assert!(editor.is_dirty());
+    }
+
+    #[test]
+    fn forked_preview_histories_cannot_reuse_a_background_save_state_identity() {
+        let mut editor = Editor::new();
+        let mut preview = editor.clone();
+        preview.apply(Command::SetUnits { units: crate::Units::Metres }).unwrap();
+        let point = preview.save_point();
+        editor.apply(Command::SetUnits { units: crate::Units::Centimetres }).unwrap();
+        assert_ne!(editor.history_position(), preview.history_position());
+        assert!(editor.mark_saved_point(&point));
+        assert!(editor.is_dirty());
+        editor.restore_checkpoint(preview);
+        assert!(!editor.is_dirty());
+        assert_eq!(editor.doc().units, crate::Units::Metres);
+    }
 
     #[test]
     fn undo_steps_share_definitions_an_edit_leaves_alone() {

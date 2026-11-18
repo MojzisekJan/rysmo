@@ -41,6 +41,9 @@ fn track_window(mut app: ResMut<App3d>, windows: Query<&Window, With<PrimaryWind
 
 /// Sends a pointer event to the active tool.
 pub fn tool_pointer(app: &mut App3d, at: DVec2, ev: Pointer) {
+    #[cfg(target_arch = "wasm32")]
+    let _profile =
+        crate::web::ProfileSpan::new("pointer_event", app.document_generation, app.editor.content_revision());
     if matches!(ev, Pointer::Move) {
         app.hover_at = Some(at);
     }

@@ -18,7 +18,10 @@ pub struct Guard {
     pending: Option<Action>,
     saving: bool,
     collection: bool,
+    discarded_collection: Option<(u64, bool)>,
     pub close_ready: bool,
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
+    waiting_files: bool,
 }
 
 impl Guard {
@@ -29,6 +32,14 @@ impl Guard {
 
 pub fn request(app: &mut App3d, action: Action) {
     if app.unsaved.pending.is_some() {
+        return;
+    }
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
+    if (action == Action::Close && crate::native_files::saving(app))
+        || (action == Action::CloseTab && app.native_files.saving())
+    {
+        app.unsaved.pending = Some(action);
+        app.unsaved.waiting_files = true;
         return;
     }
     if matches!(action, Action::New | Action::NewWithUnits(_)) && app.documents.full() {
@@ -59,10 +70,17 @@ fn perform(app: &mut App3d, action: Action) {
         Action::Recent(name) => files::open_recent(app, &name),
         Action::CloseTab => crate::documents::close(app),
         Action::Close => {
+            #[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
+            if crate::native_files::saving(app) {
+                app.message = Some("Wait for background saves to finish before closing the application.".into());
+                return;
+            }
             if let Some(id) = app.documents.first_dirty() {
                 crate::documents::switch(app, id);
                 request(app, Action::Close);
-            } else if app.features.library.modified {
+            } else if app.features.library.modified
+                && app.unsaved.discarded_collection != Some(app.features.library.recovery_version())
+            {
                 app.unsaved.pending = Some(Action::Close);
                 app.unsaved.collection = true;
             } else {
@@ -70,6 +88,13 @@ fn perform(app: &mut App3d, action: Action) {
             }
         }
     }
+}
+
+fn decisions_changed(app: &App3d) -> bool {
+    (app.editor.is_dirty() && !app.documents.discarded_for_close(app.editor.revision()))
+        || app.documents.first_dirty().is_some()
+        || (app.features.library.modified
+            && app.unsaved.discarded_collection != Some(app.features.library.recovery_version()))
 }
 
 pub fn close_requests(
@@ -81,6 +106,19 @@ pub fn close_requests(
         request(&mut app, Action::Close);
     }
     if app.unsaved.close_ready {
+        #[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
+        if crate::native_files::saving(&app) {
+            app.unsaved.close_ready = false;
+            app.message = Some("Wait for background saves to finish before closing the application.".into());
+            return;
+        }
+        // Work completing or another main-thread system can change a document
+        // after the close decision. Never exit on an obsolete clean/discard state.
+        if decisions_changed(&app) {
+            app.unsaved.close_ready = false;
+            request(&mut app, Action::Close);
+            return;
+        }
         crate::preferences::flush(&mut app);
         app.unsaved.close_ready = false;
         exit.write(AppExit::Success);
@@ -89,6 +127,32 @@ pub fn close_requests(
 
 pub fn panel(ctx: &egui::Context, app: &mut App3d) {
     if app.unsaved.pending.is_none() {
+        return;
+    }
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
+    if app.unsaved.waiting_files {
+        let saving = if app.unsaved.pending == Some(Action::CloseTab) {
+            app.native_files.saving()
+        } else {
+            crate::native_files::saving(app)
+        };
+        if !saving {
+            app.unsaved.waiting_files = false;
+            if let Some(action) = app.unsaved.pending.take() {
+                request(app, action);
+            }
+        } else {
+            let cancelled = egui::Modal::new(egui::Id::unique("file-save-close-wait"))
+                .show(ctx, |ui| {
+                    ui.strong("Finishing file save...");
+                    ui.spinner();
+                    ui.button("Cancel closing").clicked()
+                })
+                .inner;
+            if cancelled || ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+                choose(app, Choice::Cancel);
+            }
+        }
         return;
     }
     let dirty = if app.unsaved.collection { app.features.library.modified } else { app.editor.is_dirty() };
@@ -199,6 +263,7 @@ fn choose(app: &mut App3d, choice: Choice) {
             if let Some(action) = app.unsaved.pending.take() {
                 app.unsaved.saving = false;
                 if app.unsaved.collection {
+                    app.unsaved.discarded_collection = Some(app.features.library.recovery_version());
                     app.unsaved.collection = false;
                     app.unsaved.close_ready = true;
                     return;
@@ -210,6 +275,11 @@ fn choose(app: &mut App3d, choice: Choice) {
             }
         }
         Choice::Cancel => {
+            app.unsaved.discarded_collection = None;
+            #[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
+            {
+                app.unsaved.waiting_files = false;
+            }
             app.unsaved.pending = None;
             app.unsaved.collection = false;
             app.unsaved.saving = false;
@@ -221,6 +291,44 @@ fn choose(app: &mut App3d, choice: Choice) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn edits_after_a_close_decision_reopen_the_guard_before_app_exit() {
+        let mut state = App3d::new(rysmo_model::Editor::new());
+        request(&mut state, Action::Close);
+        assert!(state.unsaved.close_ready);
+        let mut app = App::new();
+        app.insert_resource(state)
+            .add_message::<AppExit>()
+            .add_message::<bevy::window::WindowCloseRequested>()
+            .add_systems(Update, |mut state: ResMut<App3d>| {
+                state
+                    .editor
+                    .apply(rysmo_model::Command::DrawLines {
+                        lines: vec![[rysmo_math::DVec3::ZERO, rysmo_math::DVec3::X]],
+                        facing: None,
+                    })
+                    .unwrap();
+            })
+            .add_systems(Last, close_requests);
+        app.update();
+        let state = app.world().resource::<App3d>();
+        assert!(state.unsaved.active());
+        assert!(!state.unsaved.close_ready);
+        assert!(state.editor.is_dirty());
+        assert!(app.world().resource::<Messages<AppExit>>().is_empty());
+    }
+
+    #[test]
+    fn collection_discard_is_accepted_only_for_its_current_recovery_version() {
+        let mut app = App3d::new(rysmo_model::Editor::new());
+        app.features.library.modified = true;
+        request(&mut app, Action::Close);
+        choose(&mut app, Choice::Discard);
+        assert!(app.unsaved.close_ready);
+        assert!(!decisions_changed(&app));
+        app.unsaved.discarded_collection = None;
+        assert!(decisions_changed(&app));
+    }
     #[test]
     fn dirty_collection_requires_save_discard_or_cancel_even_with_a_clean_model() {
         let mut app = App3d::new(rysmo_model::Editor::new());

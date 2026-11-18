@@ -1,0 +1,225 @@
+{
+  "date": "2026-11-18",
+  "base_revision": "41e2942882a8d48ed463aaafe969c54433a8f59e",
+  "baseline": "Local uncommitted state after the background-file/glue-index optimization, not clean Git HEAD.",
+  "candidate": "Local hierarchy validation, annotation refresh and scene preparation changes.",
+  "toolchain": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+  "target": "x86_64 Linux",
+  "cpu_affinity": [
+    7
+  ],
+  "profile": "portable; debug assertions enabled; model/mesh/infer/tools package overrides opt-level=3; application opt-level=1",
+  "methods": {
+    "hierarchy_and_commands": "50000 placements of an empty shared definition. Three warmups, 41 samples. Hidden-change timing includes the flag mutation. Move-one timing includes Editor::apply, with persistent history. Baseline and candidate have the same fixtures and timing boundaries; candidate black-boxes the validation Result instead of the unwrapped unit value.",
+    "picking": "4000 shared cubes. Three warmups, 21 samples. Cold scene resets ToolBox, not shared mesh lookup caches. Move occurs before timing the subsequent pick. Sequence does not reach the cumulative full-tree-rebuild threshold; correctness tests cover rebuild paths.",
+    "faces": "12.38 MB root-mesh fixture with 12000 disconnected cubes and 72000 faces; three warmups, nine samples. Cold triangulation/chunk cache with warm mesh lookups. Former metadata path executes the prior DrawnFaces::new path in the same candidate application test binary. Cached metadata path retains the same prepared faces.",
+    "annotations": "Candidate-only smoke measurement using perf_annotation_edits: 5000 screen texts and 5000 detached linear dimensions. Includes command application, 41 samples, Undo/Redo assertions. No paired annotation baseline in this record.",
+    "environment": "Our compilation finished before all timings. CPU affinity was fixed to CPU 7 for baseline and candidate. High host CPU contention was observed; other desktop activity and CPU frequency are uncontrolled. Comparison was repeated in reverse order. Report run-median ranges, not a fixed speedup factor. No peak-memory, GPU-frame or browser runtime measurement."
+  },
+  "source_sha256": {
+    "crates/rysmo_model/src/hierarchy_cache.rs": "ef5c333e773399648a228e90c0d7a829f976207f416b4be9c8db9f3a18e5fa0b",
+    "crates/rysmo_model/src/limits.rs": "ff2052efce735de64e0680e549072785c4a7be8f7912d3bfe40d8349bf9dab59",
+    "crates/rysmo_model/src/document.rs": "f70294c8f5e56d63e1a802144614a9a4c8ab87624e7196ce39a5cf459d2ca482",
+    "crates/rysmo_model/src/lib.rs": "e5fd3c4a6b03f55062384ef512d16e06febc4743fe7b581d7f77e16f320c5ae2",
+    "crates/rysmo_model/src/dimensions.rs": "87eee303f26deacd2e565aa71544560ca4147a287027007642d6a07c68dbfa5f",
+    "crates/rysmo_model/src/text.rs": "af441e07359414c29e080b7ad0706bf76c7ee42701ce648265d638e254301998",
+    "crates/rysmo_mesh/src/mesh.rs": "46bb433b7d7c8cc033ea8be24a336cae6111beb19c3966c572561455aac9a284",
+    "crates/rysmo_mesh/src/spatial.rs": "bb1c652f70848a0266bcc627a43cab1cad165ab41a2fd0331770a3cc91b125a1",
+    "crates/rysmo_infer/src/lib.rs": "ee9abfe8bbd4607fc4a9f366d8c6aa591f6f5b9fe262ec4c12cbc50a995aaad4",
+    "crates/rysmo_infer/src/tests.rs": "78322d2318216799a32b9ae8bb351b23d74391dabc11e893c43fca60d9d4b951",
+    "crates/rysmo_tools/src/tools/mod.rs": "40f5bed7ce8c49defca617c569b307908f01b787efaf5d375c23c99313a06f50",
+    "crates/rysmo_app/src/faces.rs": "e44a0332c1a3f7b946af667114facd6cda6f06ef69dd1f5df751147693750ed3",
+    "crates/rysmo_model/examples/perf_command_finalization.rs": "53db786812488878064b5ed9876511ab3004db8136feaa939bba36bc80eb2e92",
+    "crates/rysmo_model/examples/perf_annotation_edits.rs": "60d0c860353f9aad7e099529f05497736e5f81ab3d8b47b0a2711094af81f375",
+    "crates/rysmo_tools/examples/perf_pick.rs": "62ba56ad8defac0cc8ab948f771eacaf7074d1938ba9921afc0aabdb34235c08",
+    "scripts/create-persistence-benchmark.py": "5a57fa1faec10999b326cfa82a19cf98f5328c96f2dd490e0713c4d47fe6cdf9"
+  },
+  "binary_sha256": {
+    "commands_before": "0d6fe4d30e7fd8d8fb02225422f8476104d68fa1f4780c54427bbaf655c58196",
+    "commands_after": "8af54cff6c95f2c700dab6af75a5bc82f6996ce7a5b9ea86f5050d982335dcc6",
+    "picking_before": "6f3e12e72284bf2b03f24fa2e1f546b700377f5dc2e4d0e2eabba92cc759ff2a",
+    "picking_after": "4c21808f248c4a958905b63e6ff4bc5d164e13e4b0d16f2c68f9d2e253f861ec",
+    "face_preparation_application_tests": "6e05037ba27957194e03f1f906b70ba0661ced8437ee3e7f34c5a2379c29b023",
+    "annotations_after": "27d955288cd1710c45dd9bf6e8adfb7ee1677706f1a8b067fd35096155889d77"
+  },
+  "fixture_sha256": "65af4edbba25c756bcd4496b5db834705b0fd184021cd9b069b0eee7126b9f31",
+  "results": {
+    "commands_before": {
+      "debug_assertions": true,
+      "hierarchy_hidden_change": {
+        "median_ms": 1.67621,
+        "p95_ms": 4.561664
+      },
+      "hierarchy_warm": {
+        "median_ms": 2.883988,
+        "p95_ms": 7.617744
+      },
+      "instances": 50000,
+      "move_one": {
+        "median_ms": 4.673481,
+        "p95_ms": 11.50187
+      },
+      "samples": 41
+    },
+    "commands_after": {
+      "debug_assertions": true,
+      "hierarchy_hidden_change": {
+        "median_ms": 0.021370999999999998,
+        "p95_ms": 0.022350000000000002
+      },
+      "hierarchy_warm": {
+        "median_ms": 0.0014670000000000002,
+        "p95_ms": 0.001956
+      },
+      "instances": 50000,
+      "move_one": {
+        "median_ms": 0.087722,
+        "p95_ms": 0.116357
+      },
+      "samples": 41
+    },
+    "picking_before": {
+      "instances": 4000,
+      "samples": 21,
+      "cold_scene_and_pick": {
+        "median_ms": 17.565767,
+        "p95_ms": 21.420001
+      },
+      "warm_pick": {
+        "median_ms": 0.104344,
+        "p95_ms": 0.121246
+      },
+      "pick_after_move_one": {
+        "median_ms": 17.288493,
+        "p95_ms": 32.241608
+      }
+    },
+    "picking_after": {
+      "instances": 4000,
+      "samples": 21,
+      "cold_scene_and_pick": {
+        "median_ms": 17.478673,
+        "p95_ms": 21.078682
+      },
+      "warm_pick": {
+        "median_ms": 0.175234,
+        "p95_ms": 4.35116
+      },
+      "pick_after_move_one": {
+        "median_ms": 2.987145,
+        "p95_ms": 3.578637
+      }
+    },
+    "annotations_after": {
+      "debug_assertions": true,
+      "definitions": 100,
+      "definitions_shared_with_initial": 100,
+      "dimensions": 5000,
+      "median_ms": 4.69597,
+      "p95_ms": 7.7523990000000005,
+      "samples": 41,
+      "texts": 5000
+    },
+    "face_preparation": {
+      "cached_metadata": {
+        "median_ms": 0.018508999999999998,
+        "p95_ms": 0.019205999999999997
+      },
+      "cold": {
+        "median_ms": 406.023038,
+        "p95_ms": 688.115515
+      },
+      "faces": 72000,
+      "former_metadata_path": {
+        "median_ms": 16.945426,
+        "p95_ms": 17.701187
+      },
+      "samples": 9
+    }
+  },
+  "verification": {
+    "regular_rust_passed": 979,
+    "application": 224,
+    "infer": 29,
+    "io": 114,
+    "mesh": 102,
+    "model": 358,
+    "tools": 152,
+    "javascript_file_recovery_passed": 26,
+    "strict_clippy": "application/model/mesh/infer/tools, all targets: passed",
+    "wasm": "application wasm32-unknown-unknown web-release: passed",
+    "manual_benchmarks": "command finalization, picking, annotations and face preparation: passed",
+    "installed_desktop_updated": false,
+    "browser_package_relinked": false,
+    "formatting_and_whitespace": "passed"
+  },
+  "reverse_order_results": {
+    "commands_before": {
+      "debug_assertions": true,
+      "hierarchy_hidden_change": {
+        "median_ms": 1.6926910000000002,
+        "p95_ms": 7.954724999999999
+      },
+      "hierarchy_warm": {
+        "median_ms": 1.722933,
+        "p95_ms": 12.037689
+      },
+      "instances": 50000,
+      "move_one": {
+        "median_ms": 2.012776,
+        "p95_ms": 4.505508
+      },
+      "samples": 41
+    },
+    "commands_after": {
+      "debug_assertions": true,
+      "hierarchy_hidden_change": {
+        "median_ms": 0.018578,
+        "p95_ms": 0.019975
+      },
+      "hierarchy_warm": {
+        "median_ms": 0.001397,
+        "p95_ms": 0.0014670000000000002
+      },
+      "instances": 50000,
+      "move_one": {
+        "median_ms": 0.07717500000000001,
+        "p95_ms": 0.113633
+      },
+      "samples": 41
+    },
+    "picking_before": {
+      "instances": 4000,
+      "samples": 21,
+      "cold_scene_and_pick": {
+        "median_ms": 12.108928,
+        "p95_ms": 24.828136
+      },
+      "warm_pick": {
+        "median_ms": 0.098826,
+        "p95_ms": 0.111398
+      },
+      "pick_after_move_one": {
+        "median_ms": 5.545176,
+        "p95_ms": 11.262861
+      }
+    },
+    "picking_after": {
+      "instances": 4000,
+      "samples": 21,
+      "cold_scene_and_pick": {
+        "median_ms": 6.407445,
+        "p95_ms": 9.664178
+      },
+      "warm_pick": {
+        "median_ms": 0.096871,
+        "p95_ms": 0.121106
+      },
+      "pick_after_move_one": {
+        "median_ms": 3.627385,
+        "p95_ms": 10.429088
+      }
+    }
+  },
+  "fixture_bytes": 12380154
+}

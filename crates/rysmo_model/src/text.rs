@@ -833,10 +833,36 @@ impl Text {
 
 impl Document {
     pub(crate) fn refresh_texts(&mut self) {
-        let values: Vec<_> = std::iter::once((None, &self.root))
-            .chain(self.definitions.iter().map(|(id, d)| (Some(*id), d)))
-            .flat_map(|(owner, d)| d.texts.iter().map(move |(id, text)| (owner, *id, text)))
-            .map(|(owner, id, text)| (owner, id, text.refreshed(self, owner)))
+        self.refresh_texts_selected(None);
+    }
+    pub(crate) fn refresh_texts_selected(&mut self, selected: Option<&crate::annotation_cache::Targets>) {
+        let entries: Vec<_> = match selected {
+            Some(keys) => keys
+                .iter()
+                .filter_map(|(owner, element)| match element {
+                    crate::Element::Text(id) => self.def(*owner)?.texts.get(id).map(|text| (*owner, *id, text)),
+                    _ => None,
+                })
+                .collect(),
+            None => std::iter::once((None, &self.root))
+                .chain(self.definitions.iter().map(|(id, definition)| (Some(*id), definition)))
+                .flat_map(|(owner, definition)| definition.texts.iter().map(move |(id, text)| (owner, *id, text)))
+                .collect(),
+        };
+        let values: Vec<_> = entries
+            .into_iter()
+            .filter_map(|(owner, id, text)| {
+                let TextPlacement::Attached { anchor, .. } = &text.placement else { return None };
+                let point = anchor.resolve(self, owner).0;
+                if point == anchor.point {
+                    return None;
+                }
+                let mut refreshed = text.clone();
+                if let TextPlacement::Attached { anchor, .. } = &mut refreshed.placement {
+                    anchor.point = point;
+                }
+                Some((owner, id, refreshed))
+            })
             .collect();
         for (owner, id, text) in values {
             self.def_mut(owner).unwrap().texts.insert(id, text);

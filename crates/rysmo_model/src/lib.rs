@@ -8,6 +8,7 @@
 
 #![forbid(unsafe_code)]
 
+mod annotation_cache;
 mod annotation_reparent;
 pub mod arcs;
 pub mod clipboard;
@@ -18,6 +19,8 @@ pub mod contours;
 pub mod dimensions;
 mod document;
 mod editor;
+mod glue_index;
+mod hierarchy_cache;
 mod intersect;
 pub mod limits;
 mod navigation;
@@ -47,7 +50,7 @@ pub use rysmo_mesh::{
 pub use command::{Command, CommandError, ENVIRONMENT_MIMES, MAX_GLOW, Outcome};
 pub use context::ContextError;
 pub use document::{Definition, Document, Guide, Instance, Material, Occurrence, Pbr, Tag, corners};
-pub use editor::{Editor, UNDO_LIMIT};
+pub use editor::{Editor, SavePoint, UNDO_LIMIT};
 pub use navigation::SurfaceHit;
 pub use rysmo_mesh::{ImageId, TexturePlacement};
 pub use style::{

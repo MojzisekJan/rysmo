@@ -1,0 +1,1009 @@
+{
+  "date": "2026-11-18",
+  "base_revision": "41e2942882a8d48ed463aaafe969c54433a8f59e",
+  "candidate": "Local uncommitted background/cooperative surfaces, dependency-indexed annotation refresh and incremental structural validation.",
+  "baseline": "Local state from the preceding optimization batch, not clean Git HEAD. Annotation/command comparison uses saved pre-change executables.",
+  "toolchain": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+  "native_profile": "portable; debug assertions; candidate examples use workspace feature unification, baseline examples were built standalone in the same profile.",
+  "source_sha256": {
+    "crates/rysmo_model/src/annotation_cache.rs": "5efd34a5821c3eada1310e3ed6ff7b12543d284e6df6a495a915dab64d43a389",
+    "crates/rysmo_model/src/hierarchy_cache.rs": "08c3de8881e10f50c14e4555e2e56bea1107bc7baf650c69f958a74d17e1ce22",
+    "crates/rysmo_model/src/limits.rs": "914146852fd30c23b03d7562415bfe5805ad3edac824fe0357ddfe67d0d0901c",
+    "crates/rysmo_model/src/document.rs": "a00f6a3b09d2812ffc1806e1b4265b8cc85f44dcbee3e2f3612129594a532f01",
+    "crates/rysmo_model/src/editor.rs": "60d3b29e4c401c3c147a69910417fcc1782f86de3b08123a598b529e48855ea9",
+    "crates/rysmo_model/src/dimensions.rs": "b7deec4927cea806e7d7d61458a9d2c41e380c81315746f209a593cae507020d",
+    "crates/rysmo_model/src/text.rs": "e4485c812f3f07d8e6d7ada7e3a21139a041ce4c603926a921361c642fe5c4da",
+    "crates/rysmo_model/src/components.rs": "c5b8cc6fb5c0f89c66d409b2d57f26a1edf3beeb59274390932470a006712ea8",
+    "crates/rysmo_model/src/lib.rs": "e6ae3ba706102b0c6c03053cff0ee53811b332a7a850ea9561099e8bbb126514",
+    "crates/rysmo_mesh/src/mesh.rs": "3f7693053fed801ba4454f50eb9f35cf2621a2c54677ba732ad56982a14da97d",
+    "crates/rysmo_mesh/src/blocks.rs": "954b71b5c8b43dc9ee4fe198eb7d2309a2f72cc81accd9a1a92ff904975093b5",
+    "crates/rysmo_mesh/src/flags.rs": "1b4baad47da8ee490172ca0f7ba29c998ecc4af1b71367bab5d7de1aca5bc8ca",
+    "crates/rysmo_mesh/src/lib.rs": "078635e1e2892ba7767ce9e0e320bb10b0807215605a3d70a9fb72a6f7916b2f",
+    "crates/rysmo_app/src/faces.rs": "284f607acc65f67404686d80efb09cd889af3f926c6486fead0f010848fa4f9a",
+    "crates/rysmo_app/src/faces/preparation.rs": "e9122469c73e09817cdd6061491da8aa29bee8d07f97f1d14ed51bdef826ed6e",
+    "crates/rysmo_app/src/idle.rs": "2d41b7c26b971532fecb2a68fb3e50c858b1d1993422964339ec3499eaec6e6e",
+    "crates/rysmo_app/src/ui.rs": "04e81434108f81bd2136d7908df9548541e4ff82e1074109549a8f44d670851e",
+    "crates/rysmo_app/src/input.rs": "4be9888345aa2a2e8028bcd387f32b7862de479409970dac7b28d3727174ed3e",
+    "crates/rysmo_app/src/files.rs": "5251e10b01f9c8ed6d43689556c55cee939bd1b5ad3be4889531861426b1e160",
+    "crates/rysmo_app/src/web.rs": "3a3cc83d7cb5dcd4778f4ec1a8058440a0c009307ee7e4509bfb4cf1808d0102",
+    "crates/rysmo_app/src/web_files.js": "e97c964ce33f1b307d277a2956015b5ddd38fe6cc9be18e8aaead2b3618b9321",
+    "crates/rysmo_io/examples/perf_memory.rs": "49853aaa23c9b720f815c75d170bb88c5e6f59300da25f093c8aac338e6f9b80",
+    "scripts/create-memory-benchmark.py": "9d7ad530bd0ad8ed701fa7b42ee7059bb0b60fd11209885180ae1e0a115a0832",
+    "scripts/stage-web-profile.py": "9c08901129d38d3b5a749a1ce7bc87e191eee70079bb7837dde120667648cfde",
+    "scripts/profile-web.mjs": "e97d388fbbd5ffbf3ed568ca5f6d01b864dd74ee14f8be9a10b18e2aa3d3eaa9",
+    "scripts/web-files.test.mjs": "23719ddab0c7e6e170fffe178472403fcfaacf189e10152e349b354721fc4436",
+    "crates/rysmo_mesh/src/view.rs": "92925bd7cd18a3bbe370eca76b430d9ef929af9ce62ad8b5c48fd68d74309fc0"
+  },
+  "binary_sha256": {
+    "annotations_before": "27d955288cd1710c45dd9bf6e8adfb7ee1677706f1a8b067fd35096155889d77",
+    "annotations_after": "6a661d21653bfeb419913e48b1ff21dfecb47afe01120f54a6893092038bef90",
+    "commands_before": "8af54cff6c95f2c700dab6af75a5bc82f6996ce7a5b9ea86f5050d982335dcc6",
+    "commands_after": "dd304ad2e0d6bd7c203b5a928c85b3be828d7b592b5083ece94d5fa47f9ddbc8",
+    "memory": "3256ea826af54e024f832be1bb5dd738d1f341b7ea8c80d38f9bbbcc3cb3f6da",
+    "surface_job": "f530725569e1590f2860a6be9ce6e261275a5853f5d3cf2ef3ff320954ffc237",
+    "rysmo-f7e9febc889b0a06.js": "ae483761b78f3c5792c9f04c22f86ecba00e2df4fee3dbe77c3e9816a6659295",
+    "rysmo-f7e9febc889b0a06_bg.wasm": "23a6559dae6004e9c1b68480c9e15cf879d5472db6f6e414fcb3c49260872b4e"
+  },
+  "fixture_sha256": {
+    "raw": "65af4edbba25c756bcd4496b5db834705b0fd184021cd9b069b0eee7126b9f31",
+    "unique": "e71aa5fd7adf008e12b52e4c83a6dc24275114799cad37d0512362888d1f7a96",
+    "textured": "38eaff8fd2dc0d051f5c1f2d6f3021016983cc59a4d8eb2aba2ff62732b7c3c0"
+  },
+  "native_results": {
+    "surface_job": {
+      "cooperative_slice_max_ms": 43.58294,
+      "cooperative_slice_median_ms": 6.191912,
+      "cooperative_slice_p95_ms": 6.5652870000000005,
+      "cooperative_slices": 50,
+      "dispatch_ms": 0.164617,
+      "faces": 72000,
+      "maximum_poll_ms": 0.020394000000000002,
+      "native_completion_ms": 377.29301599999997
+    },
+    "structural_validation": {
+      "cold_current_validator_median_ms": 0.816025,
+      "cold_current_validator_p95_ms": 1.175847,
+      "incremental_median_ms": 0.019137,
+      "incremental_p95_ms": 0.033313999999999996,
+      "instances": 50001,
+      "samples": 41
+    },
+    "annotations_before": {
+      "debug_assertions": true,
+      "definitions": 100,
+      "definitions_shared_with_initial": 100,
+      "dimensions": 5000,
+      "median_ms": 1.023104,
+      "p95_ms": 1.5090590000000002,
+      "samples": 41,
+      "texts": 5000
+    },
+    "annotations_after": {
+      "debug_assertions": true,
+      "definitions": 100,
+      "definitions_shared_with_initial": 100,
+      "dimensions": 5000,
+      "median_ms": 0.015574999999999999,
+      "p95_ms": 0.016343,
+      "samples": 41,
+      "texts": 5000
+    },
+    "commands_before": {
+      "debug_assertions": true,
+      "hierarchy_hidden_change": {
+        "median_ms": 0.013899,
+        "p95_ms": 0.014387
+      },
+      "hierarchy_warm": {
+        "median_ms": 0.001397,
+        "p95_ms": 0.0014670000000000002
+      },
+      "instances": 50000,
+      "move_one": {
+        "median_ms": 0.06250800000000001,
+        "p95_ms": 0.082692
+      },
+      "samples": 41
+    },
+    "commands_after": {
+      "debug_assertions": true,
+      "hierarchy_hidden_change": {
+        "median_ms": 0.013759,
+        "p95_ms": 0.013968999999999999
+      },
+      "hierarchy_warm": {
+        "median_ms": 0.001397,
+        "p95_ms": 0.0014670000000000002
+      },
+      "instances": 50000,
+      "move_one": {
+        "median_ms": 0.06146,
+        "p95_ms": 0.13193
+      },
+      "samples": 41
+    },
+    "memory": {
+      "unique": {
+        "input_bytes": 17158892,
+        "stages": [
+          {
+            "peak_rss_kib": 2840,
+            "rss_kib": 2840,
+            "stage": "baseline"
+          },
+          {
+            "peak_rss_kib": 20244,
+            "rss_kib": 20244,
+            "stage": "input"
+          },
+          {
+            "input_bytes": 17158892,
+            "milliseconds": 461.26309799999996,
+            "operation": "load"
+          },
+          {
+            "peak_rss_kib": 122628,
+            "rss_kib": 122628,
+            "stage": "loaded_with_input"
+          },
+          {
+            "peak_rss_kib": 122400,
+            "rss_kib": 105868,
+            "stage": "loaded"
+          },
+          {
+            "peak_rss_kib": 146200,
+            "rss_kib": 146200,
+            "stage": "saved_with_output"
+          },
+          {
+            "milliseconds": 163.525854,
+            "operation": "save",
+            "output_bytes": 22919322
+          },
+          {
+            "peak_rss_kib": 146124,
+            "rss_kib": 123816,
+            "stage": "saved"
+          },
+          {
+            "peak_rss_kib": 146124,
+            "rss_kib": 123992,
+            "stage": "full_history"
+          },
+          {
+            "peak_rss_kib": 146124,
+            "rss_kib": 123992,
+            "stage": "all_undone"
+          },
+          {
+            "peak_rss_kib": 146124,
+            "rss_kib": 123992,
+            "stage": "all_redone"
+          },
+          {
+            "peak_rss_kib": 146124,
+            "rss_kib": 124072,
+            "stage": "document_released"
+          }
+        ],
+        "time_maximum_rss_kib": 146124,
+        "time_elapsed": "0:01.69"
+      },
+      "textured": {
+        "input_bytes": 52173261,
+        "stages": [
+          {
+            "peak_rss_kib": 2788,
+            "rss_kib": 2788,
+            "stage": "baseline"
+          },
+          {
+            "peak_rss_kib": 54340,
+            "rss_kib": 54340,
+            "stage": "input"
+          },
+          {
+            "input_bytes": 52173261,
+            "milliseconds": 564.859025,
+            "operation": "load"
+          },
+          {
+            "peak_rss_kib": 181668,
+            "rss_kib": 181668,
+            "stage": "loaded_with_input"
+          },
+          {
+            "peak_rss_kib": 181476,
+            "rss_kib": 130716,
+            "stage": "loaded"
+          },
+          {
+            "peak_rss_kib": 203084,
+            "rss_kib": 203084,
+            "stage": "saved_with_output"
+          },
+          {
+            "milliseconds": 226.66764,
+            "operation": "save",
+            "output_bytes": 57934620
+          },
+          {
+            "peak_rss_kib": 202948,
+            "rss_kib": 146504,
+            "stage": "saved"
+          },
+          {
+            "peak_rss_kib": 202948,
+            "rss_kib": 146664,
+            "stage": "full_history"
+          },
+          {
+            "peak_rss_kib": 202948,
+            "rss_kib": 146664,
+            "stage": "all_undone"
+          },
+          {
+            "peak_rss_kib": 202948,
+            "rss_kib": 146664,
+            "stage": "all_redone"
+          },
+          {
+            "peak_rss_kib": 202948,
+            "rss_kib": 142628,
+            "stage": "document_released"
+          }
+        ],
+        "time_maximum_rss_kib": 202948,
+        "time_elapsed": "0:01.87"
+      }
+    }
+  },
+  "methods": {
+    "surfaces": "One cold 72000-face root mesh job. Dispatch/poll measures GUI submission/installation, excluding edge-cache building, material decoding, Bevy extraction and GPU work. Cooperative builder run on native for algorithm timings; browser timings are separate. Six-millisecond checks are soft and atomic work/scheduling can exceed the target.",
+    "structure": "50001 shared empty instances. 3 warmups, 41 samples of one added/removed instance. Uncached baseline is the current cold validator, which already aggregates repeated children. Mutation is outside validation timing. Compare with incrementally invalidated graph counts, not whole editor commands.",
+    "annotations": "5000 screen texts and 5000 detached dimensions across 100 definitions; 3 warmups and 41 SetUnits commands; all definitions remain shared, Undo/Redo asserted. Does not establish a numeric speedup for every linked-annotation workload. Linked vertices and cross-context invalidation have oracle correctness tests.",
+    "memory": "Separate Linux process per fixture; /proc/self/status RSS/HWM plus GNU time maximum RSS. Load, save and 200 retained Undo steps followed by full Undo/Redo and document replacement. Native I/O retains compressed image payloads, not decoded GPU textures. RSS includes allocator-retained pages and cannot identify live allocations; slight /proc HWM variations are OS accounting artifacts. No conclusion of zero leaks or free history memory from flat RSS.",
+    "environment": "Our compilations completed before native measurements; host activity and CPU frequency uncontrolled."
+  },
+  "verification": {
+    "workspace_rust_library_passed": 1019,
+    "javascript_passed": 28,
+    "strict_workspace_clippy": "passed",
+    "manual_native_benchmarks": "passed",
+    "web_build": "passed; isolated web-release artifact",
+    "installed_desktop_updated": false,
+    "published": false,
+    "wasm_check": "passed after final native-only lookup-cache fork",
+    "native_surface_cache_fork": "passed; immutable trees shared, mutexes independent; busy source cache never blocks fork",
+    "performance_scope": "SKP work started separately after this build and is not included in these measurements.",
+    "browser_hardware": "passed; three cases; 24 verified edits in each shared-instance case; no page or console errors",
+    "scope_note": "Rust performance source hashes refer to the measured pre-SKP build. Subsequent SKP integration is separate and requires its own verification."
+  },
+  "web_results": {
+    "status": "passed; hardware GPU timers and visible surfaces verified for all three cases",
+    "profile": "fresh isolated web-release build; Chromium WebGL2 on AMD Radeon 610M; no own builds running during measurements",
+    "case_protocol": "separate browser contexts; two shared-instance cases each verify 24 alternating whole-model moves plus Undo/Redo; raw case exercises pointer without editing",
+    "timing_limits": "Localhost warm filesystem, uncontrolled other desktop activity. First-visible time is a screenshot-confirmed upper bound. Scripted editing cadence includes action/automation gaps; observed long main-thread tasks independently show large-selection stalls. No browser before/after speedup is claimed.",
+    "raw_fixture_note": "Same 72,000-face topology as native persistence fixture; cubes enlarged from 0.2 m to 1.5 m at 2 m spacing for visible-pixel confirmation.",
+    "cases": [
+      {
+        "name": "flat",
+        "browserVersion": "156.0.8078.4",
+        "browserEnvironment": {
+          "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+          "hardwareConcurrency": 8,
+          "deviceMemoryGiB": 16,
+          "crossOriginIsolated": false
+        },
+        "chromiumArgs": [
+          "--no-sandbox",
+          "--enable-precise-memory-info",
+          "--enable-gpu",
+          "--use-angle=gl"
+        ],
+        "firstVisibleConfirmationUpperBoundMs": 5366.70000000298,
+        "firstVisibleAfterModelInstallUpperBoundMs": 963.1000000089407,
+        "firstPointer": {
+          "stage": "pointer_event",
+          "milliseconds": 12.4,
+          "time": 5555.0999999940395,
+          "generation": "3",
+          "revision": "1",
+          "wasmBytes": 52559872
+        },
+        "visiblePixels": 115900,
+        "editAttempted": 24,
+        "undoDepth": 24,
+        "editVerified": true,
+        "gpuTimingVerified": true,
+        "phaseMilliseconds": {
+          "editor_update": {
+            "count": 627,
+            "median": 0,
+            "p95": 0,
+            "maximum": 0
+          },
+          "asset_prepare_cpu": {
+            "count": 627,
+            "median": 1.2000000029802322,
+            "p95": 3.5,
+            "maximum": 27.5
+          },
+          "render_cpu": {
+            "count": 627,
+            "median": 6.5,
+            "p95": 12.299999997019768,
+            "maximum": 248.79999999701977
+          },
+          "surfaces_ready": {
+            "count": 2,
+            "median": 0,
+            "p95": 0,
+            "maximum": 0
+          },
+          "surface_batch": {
+            "count": 2,
+            "median": 3.4,
+            "p95": 3.4,
+            "maximum": 3.4
+          },
+          "surfaces_uploaded": {
+            "count": 28,
+            "median": 0,
+            "p95": 0,
+            "maximum": 0
+          },
+          "render_assets_submitted": {
+            "count": 101,
+            "median": 7.7,
+            "p95": 10.6,
+            "maximum": 13.5
+          },
+          "gpu_elapsed": {
+            "count": 626,
+            "median": 8.07033,
+            "p95": 20.1171,
+            "maximum": 20.72935
+          },
+          "model_installed": {
+            "count": 1,
+            "median": 0,
+            "p95": 0,
+            "maximum": 0
+          },
+          "model_open": {
+            "count": 1,
+            "median": 26.5,
+            "p95": 26.5,
+            "maximum": 26.5
+          },
+          "pointer_event": {
+            "count": 409,
+            "median": 0.8,
+            "p95": 2.3,
+            "maximum": 36.8
+          }
+        },
+        "phaseBoundaries": {
+          "coldEnd": 5463.0999999940395,
+          "pointerEnd": 8847,
+          "editEnd": 201931,
+          "idleEnd": 204299.09999999404
+        },
+        "pointerEditorCadence": {
+          "updates": 169,
+          "fps": 50.52175743546464,
+          "intervalMilliseconds": {
+            "count": 168,
+            "median": 17.700000002980232,
+            "p95": 32.80000001192093,
+            "maximum": 74.8999999910593
+          }
+        },
+        "editingEditorCadence": {
+          "updates": 422,
+          "fps": 2.181654616609214,
+          "intervalMilliseconds": {
+            "count": 421,
+            "median": 36.5,
+            "p95": 1507.2999999970198,
+            "maximum": 2228.5999999940395
+          }
+        },
+        "pointerRafMilliseconds": {
+          "count": 168,
+          "median": 16.699999999999818,
+          "p95": 33.399999999999636,
+          "maximum": 66.60000000000036
+        },
+        "processMemory": [
+          {
+            "type": "browser",
+            "pid": 2735816,
+            "rssKiB": 198328,
+            "peakRssKiB": 203524
+          },
+          {
+            "type": "renderer",
+            "pid": 2735921,
+            "rssKiB": 72624,
+            "peakRssKiB": 72624
+          },
+          {
+            "type": "renderer",
+            "pid": 2735923,
+            "rssKiB": 341032,
+            "peakRssKiB": 354992
+          },
+          {
+            "type": "renderer",
+            "pid": 2735910,
+            "rssKiB": 135784,
+            "peakRssKiB": 135784
+          },
+          {
+            "type": "GPU",
+            "pid": 2735848,
+            "rssKiB": 232204,
+            "peakRssKiB": 235520
+          },
+          {
+            "type": "network.mojom.NetworkService",
+            "pid": 2735851,
+            "rssKiB": 116224,
+            "peakRssKiB": 116224
+          },
+          {
+            "type": "storage.mojom.StorageService",
+            "pid": 2735855,
+            "rssKiB": 52840,
+            "peakRssKiB": 52840
+          }
+        ],
+        "pageErrors": [],
+        "consoleErrors": [],
+        "consoleWarnings": [],
+        "renderer": "ANGLE (AMD, AMD Radeon 610M (radeonsi raphael_mendocino LLVM 20.1.2), OpenGL 4.6)",
+        "wasm_capacity_bytes": 78708736,
+        "js_heap_bytes": 11105654,
+        "long_task_ms": {
+          "count": 186,
+          "median": 951,
+          "p95": 1730,
+          "maximum": 2218
+        },
+        "milestones": [
+          {
+            "stage": "surfaces_ready",
+            "milliseconds": 0,
+            "time": 1761,
+            "generation": "2",
+            "revision": "0",
+            "wasmBytes": 46071808
+          },
+          {
+            "stage": "surfaces_uploaded",
+            "milliseconds": 0,
+            "time": 1762.2999999970198,
+            "generation": "2",
+            "revision": "0",
+            "wasmBytes": 46071808
+          },
+          {
+            "stage": "model_installed",
+            "milliseconds": 0,
+            "time": 4403.5999999940395,
+            "generation": "3",
+            "revision": "1",
+            "wasmBytes": 47120384
+          },
+          {
+            "stage": "model_open",
+            "milliseconds": 26.5,
+            "time": 4403.70000000298,
+            "generation": "2",
+            "revision": "0",
+            "wasmBytes": 47120384
+          },
+          {
+            "stage": "surfaces_ready",
+            "milliseconds": 0,
+            "time": 4522,
+            "generation": "3",
+            "revision": "1",
+            "wasmBytes": 47120384
+          },
+          {
+            "stage": "surfaces_uploaded",
+            "milliseconds": 0,
+            "time": 5011.399999991059,
+            "generation": "3",
+            "revision": "1",
+            "wasmBytes": 52559872
+          }
+        ],
+        "raw_result_sha256": "38d854535fb0a0ef7fc1a1f331a981fdfa5d123668a4d9492935ad915fad24bd",
+        "fixture_sha256": "ca9deb9062c802bca8c22341a969c36033c0c6dccd6fcde58fa9bd7a69039aa8"
+      },
+      {
+        "name": "textured",
+        "browserVersion": "156.0.8078.4",
+        "browserEnvironment": {
+          "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+          "hardwareConcurrency": 8,
+          "deviceMemoryGiB": 16,
+          "crossOriginIsolated": false
+        },
+        "chromiumArgs": [
+          "--no-sandbox",
+          "--enable-precise-memory-info",
+          "--enable-gpu",
+          "--use-angle=gl"
+        ],
+        "firstVisibleConfirmationUpperBoundMs": 11318.60000000894,
+        "firstVisibleAfterModelInstallUpperBoundMs": 2642.5,
+        "firstPointer": {
+          "stage": "pointer_event",
+          "milliseconds": 37.8,
+          "time": 11711.10000000894,
+          "generation": "3",
+          "revision": "1",
+          "wasmBytes": 67305472
+        },
+        "visiblePixels": 46715,
+        "editAttempted": 24,
+        "undoDepth": 24,
+        "editVerified": true,
+        "gpuTimingVerified": true,
+        "phaseMilliseconds": {
+          "editor_update": {
+            "count": 524,
+            "median": 0,
+            "p95": 0,
+            "maximum": 0
+          },
+          "asset_prepare_cpu": {
+            "count": 524,
+            "median": 2.1000000089406967,
+            "p95": 6.399999991059303,
+            "maximum": 64.29999999701977
+          },
+          "render_cpu": {
+            "count": 524,
+            "median": 11.300000011920929,
+            "p95": 28.30000001192093,
+            "maximum": 3858
+          },
+          "surfaces_ready": {
+            "count": 2,
+            "median": 0,
+            "p95": 0,
+            "maximum": 0
+          },
+          "surface_batch": {
+            "count": 2,
+            "median": 3.7,
+            "p95": 3.7,
+            "maximum": 3.7
+          },
+          "surfaces_uploaded": {
+            "count": 27,
+            "median": 0,
+            "p95": 0,
+            "maximum": 0
+          },
+          "render_assets_submitted": {
+            "count": 138,
+            "median": 9.799999999999999,
+            "p95": 17.4,
+            "maximum": 330
+          },
+          "gpu_elapsed": {
+            "count": 523,
+            "median": 23.78982,
+            "p95": 36.1655,
+            "maximum": 41.08275
+          },
+          "model_installed": {
+            "count": 1,
+            "median": 0,
+            "p95": 0,
+            "maximum": 0
+          },
+          "model_open": {
+            "count": 1,
+            "median": 56.9,
+            "p95": 56.9,
+            "maximum": 56.9
+          },
+          "pointer_event": {
+            "count": 409,
+            "median": 1.1,
+            "p95": 7.4,
+            "maximum": 110.60000000000001
+          }
+        },
+        "phaseBoundaries": {
+          "coldEnd": 11497.20000000298,
+          "pointerEnd": 16808.40000000596,
+          "editEnd": 321550.10000000894,
+          "idleEnd": 324277
+        },
+        "pointerEditorCadence": {
+          "updates": 105,
+          "fps": 19.989620773817524,
+          "intervalMilliseconds": {
+            "count": 104,
+            "median": 47.400000005960464,
+            "p95": 92.90000000596046,
+            "maximum": 184.90000000596046
+          }
+        },
+        "editingEditorCadence": {
+          "updates": 377,
+          "fps": 1.2344381992961075,
+          "intervalMilliseconds": {
+            "count": 376,
+            "median": 87.90000000596046,
+            "p95": 2026.4000000059605,
+            "maximum": 2719.5999999940395
+          }
+        },
+        "pointerRafMilliseconds": {
+          "count": 104,
+          "median": 50,
+          "p95": 83.39999999999964,
+          "maximum": 183.29999999999927
+        },
+        "processMemory": [
+          {
+            "type": "browser",
+            "pid": 2746593,
+            "rssKiB": 174772,
+            "peakRssKiB": 180676
+          },
+          {
+            "type": "renderer",
+            "pid": 2746736,
+            "rssKiB": 66980,
+            "peakRssKiB": 66980
+          },
+          {
+            "type": "renderer",
+            "pid": 2746738,
+            "rssKiB": 317296,
+            "peakRssKiB": 328588
+          },
+          {
+            "type": "renderer",
+            "pid": 2746721,
+            "rssKiB": 115624,
+            "peakRssKiB": 115624
+          },
+          {
+            "type": "GPU",
+            "pid": 2746650,
+            "rssKiB": 200800,
+            "peakRssKiB": 205252
+          },
+          {
+            "type": "network.mojom.NetworkService",
+            "pid": 2746653,
+            "rssKiB": 109516,
+            "peakRssKiB": 109516
+          },
+          {
+            "type": "storage.mojom.StorageService",
+            "pid": 2746672,
+            "rssKiB": 51384,
+            "peakRssKiB": 51384
+          }
+        ],
+        "pageErrors": [],
+        "consoleErrors": [],
+        "consoleWarnings": [],
+        "renderer": "ANGLE (AMD, AMD Radeon 610M (radeonsi raphael_mendocino LLVM 20.1.2), OpenGL 4.6)",
+        "wasm_capacity_bytes": 82378752,
+        "js_heap_bytes": 8788993,
+        "long_task_ms": {
+          "count": 262,
+          "median": 1584,
+          "p95": 2081,
+          "maximum": 3935
+        },
+        "milestones": [
+          {
+            "stage": "surfaces_ready",
+            "milliseconds": 0,
+            "time": 4029.6000000089407,
+            "generation": "2",
+            "revision": "0",
+            "wasmBytes": 46071808
+          },
+          {
+            "stage": "surfaces_uploaded",
+            "milliseconds": 0,
+            "time": 4031.2999999970198,
+            "generation": "2",
+            "revision": "0",
+            "wasmBytes": 46071808
+          },
+          {
+            "stage": "model_installed",
+            "milliseconds": 0,
+            "time": 8676.10000000894,
+            "generation": "3",
+            "revision": "1",
+            "wasmBytes": 47120384
+          },
+          {
+            "stage": "model_open",
+            "milliseconds": 56.9,
+            "time": 8676.20000000298,
+            "generation": "2",
+            "revision": "0",
+            "wasmBytes": 47120384
+          },
+          {
+            "stage": "surfaces_ready",
+            "milliseconds": 0,
+            "time": 9025.40000000596,
+            "generation": "3",
+            "revision": "1",
+            "wasmBytes": 47120384
+          },
+          {
+            "stage": "surfaces_uploaded",
+            "milliseconds": 0,
+            "time": 10436.79999999702,
+            "generation": "3",
+            "revision": "1",
+            "wasmBytes": 67305472
+          }
+        ],
+        "raw_result_sha256": "54ba2ad40c851f25433ea19b46f6b81521c8494e1c1936f284b5315d00b5757a",
+        "fixture_sha256": "dc59236d030f1b949e52cfb3eab330f1a74d6055ef183ac787b955e50084f74e"
+      },
+      {
+        "name": "raw",
+        "browserVersion": "156.0.8078.4",
+        "browserEnvironment": {
+          "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+          "hardwareConcurrency": 8,
+          "deviceMemoryGiB": 16,
+          "crossOriginIsolated": false
+        },
+        "chromiumArgs": [
+          "--no-sandbox",
+          "--enable-precise-memory-info",
+          "--enable-gpu",
+          "--use-angle=gl"
+        ],
+        "firstVisibleConfirmationUpperBoundMs": 22590.59999999404,
+        "firstVisibleAfterModelInstallUpperBoundMs": 11148.199999988079,
+        "firstPointer": {
+          "stage": "pointer_event",
+          "milliseconds": 770.4,
+          "time": 29568.09999999404,
+          "generation": "3",
+          "revision": "1",
+          "wasmBytes": 222035968
+        },
+        "visiblePixels": 16027,
+        "editAttempted": 0,
+        "undoDepth": 0,
+        "editVerified": null,
+        "gpuTimingVerified": true,
+        "phaseMilliseconds": {
+          "editor_update": {
+            "count": 350,
+            "median": 0,
+            "p95": 0,
+            "maximum": 0
+          },
+          "asset_prepare_cpu": {
+            "count": 350,
+            "median": 1.0999999940395355,
+            "p95": 7.5,
+            "maximum": 22.69999998807907
+          },
+          "render_cpu": {
+            "count": 350,
+            "median": 22.599999994039536,
+            "p95": 50.599999994039536,
+            "maximum": 4191.20000000298
+          },
+          "surfaces_ready": {
+            "count": 2,
+            "median": 0,
+            "p95": 0,
+            "maximum": 0
+          },
+          "surface_batch": {
+            "count": 137,
+            "median": 6.8999999999999995,
+            "p95": 12.8,
+            "maximum": 36.900000000000006
+          },
+          "surfaces_uploaded": {
+            "count": 2,
+            "median": 0,
+            "p95": 0,
+            "maximum": 0
+          },
+          "render_assets_submitted": {
+            "count": 101,
+            "median": 8.1,
+            "p95": 17,
+            "maximum": 32.4
+          },
+          "gpu_elapsed": {
+            "count": 349,
+            "median": 12.58527,
+            "p95": 19.0439,
+            "maximum": 20.30865
+          },
+          "model_installed": {
+            "count": 1,
+            "median": 0,
+            "p95": 0,
+            "maximum": 0
+          },
+          "model_open": {
+            "count": 1,
+            "median": 1378.1,
+            "p95": 1378.1,
+            "maximum": 1378.1
+          },
+          "pointer_event": {
+            "count": 91,
+            "median": 3.9,
+            "p95": 13.100000000000001,
+            "maximum": 770.4
+          }
+        },
+        "phaseBoundaries": {
+          "coldEnd": 28447.59999999404,
+          "pointerEnd": 34331.29999999702,
+          "editEnd": 34641.40000000596,
+          "idleEnd": 36939
+        },
+        "pointerEditorCadence": {
+          "updates": 93,
+          "fps": 16.001113120929347,
+          "intervalMilliseconds": {
+            "count": 92,
+            "median": 50.599999994039536,
+            "p95": 75.5,
+            "maximum": 1001.6000000089407
+          }
+        },
+        "editingEditorCadence": {
+          "updates": 5,
+          "fps": 21.34471718351567,
+          "intervalMilliseconds": {
+            "count": 4,
+            "median": 55.6000000089407,
+            "p95": 60.69999998807907,
+            "maximum": 60.69999998807907
+          }
+        },
+        "pointerRafMilliseconds": {
+          "count": 97,
+          "median": 50,
+          "p95": 83.40000000000146,
+          "maximum": 899.9000000000015
+        },
+        "processMemory": [
+          {
+            "type": "browser",
+            "pid": 2760774,
+            "rssKiB": 199232,
+            "peakRssKiB": 204020
+          },
+          {
+            "type": "renderer",
+            "pid": 2760909,
+            "rssKiB": 71476,
+            "peakRssKiB": 71476
+          },
+          {
+            "type": "renderer",
+            "pid": 2760910,
+            "rssKiB": 434908,
+            "peakRssKiB": 442284
+          },
+          {
+            "type": "renderer",
+            "pid": 2760898,
+            "rssKiB": 137476,
+            "peakRssKiB": 137476
+          },
+          {
+            "type": "GPU",
+            "pid": 2760824,
+            "rssKiB": 217108,
+            "peakRssKiB": 220360
+          },
+          {
+            "type": "network.mojom.NetworkService",
+            "pid": 2760827,
+            "rssKiB": 116460,
+            "peakRssKiB": 116460
+          },
+          {
+            "type": "storage.mojom.StorageService",
+            "pid": 2760837,
+            "rssKiB": 52356,
+            "peakRssKiB": 52356
+          }
+        ],
+        "pageErrors": [],
+        "consoleErrors": [],
+        "consoleWarnings": [],
+        "renderer": "ANGLE (AMD, AMD Radeon 610M (radeonsi raphael_mendocino LLVM 20.1.2), OpenGL 4.6)",
+        "wasm_capacity_bytes": 222035968,
+        "js_heap_bytes": 8977154,
+        "long_task_ms": {
+          "count": 150,
+          "median": 63,
+          "p95": 162,
+          "maximum": 4271
+        },
+        "milestones": [
+          {
+            "stage": "surfaces_ready",
+            "milliseconds": 0,
+            "time": 4508.29999999702,
+            "generation": "2",
+            "revision": "0",
+            "wasmBytes": 46071808
+          },
+          {
+            "stage": "surfaces_uploaded",
+            "milliseconds": 0,
+            "time": 4514.29999999702,
+            "generation": "2",
+            "revision": "0",
+            "wasmBytes": 46071808
+          },
+          {
+            "stage": "model_installed",
+            "milliseconds": 0,
+            "time": 11442.40000000596,
+            "generation": "3",
+            "revision": "1",
+            "wasmBytes": 139132928
+          },
+          {
+            "stage": "model_open",
+            "milliseconds": 1378.1,
+            "time": 11442.40000000596,
+            "generation": "2",
+            "revision": "0",
+            "wasmBytes": 139132928
+          },
+          {
+            "stage": "surfaces_ready",
+            "milliseconds": 0,
+            "time": 20636.09999999404,
+            "generation": "3",
+            "revision": "1",
+            "wasmBytes": 173867008
+          },
+          {
+            "stage": "surfaces_uploaded",
+            "milliseconds": 0,
+            "time": 28405.40000000596,
+            "generation": "3",
+            "revision": "1",
+            "wasmBytes": 173867008
+          }
+        ],
+        "raw_result_sha256": "67cb0bffe3ed4036109be7b32e293347a25b627ba1c7e0285887608bbd985667",
+        "fixture_sha256": "500117f7a242d17166c147eab7647bf6d35176188e84545509e42726ee5da20d"
+      }
+    ]
+  }
+}

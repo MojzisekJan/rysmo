@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
 const source = await readFile(new URL("../crates/rysmo_app/src/web_files.js", import.meta.url), "utf8");
-async function fixture({ embedded=false, pickerError=null, readError=false, cancelInput=false, diagnosticsPanel=null, storage=null, indexedDB=null }={}) {
+async function fixture({ diagnostics=false, embedded=false, pickerError=null, readError=false, cancelInput=false, diagnosticsPanel=null, storage=null, indexedDB=null }={}) {
   const calls={open:0,save:0,inputs:0,downloads:[],writes:[],attached:0,removed:0};
   const listeners = new Map();
   const window={addEventListener(type, callback){listeners.set(type, callback);},showOpenFilePicker:async()=>{calls.open++;if(pickerError)throw pickerError;return [{name:"picked.rysmo",getFile:async()=>({text:async()=>"model"})}];},showSaveFilePicker:async()=>{calls.save++;return {name:"saved.rysmo",queryPermission:async()=>"granted",createWritable:async()=>({write:async text=>calls.writes.push(text),close:async()=>{}})};}};
@@ -14,7 +14,7 @@ async function fixture({ embedded=false, pickerError=null, readError=false, canc
     if(type==="a")return {click(){calls.downloads.push(this.download);},remove(){}};
     throw Error(`Unexpected element ${type}`);
   }};
-  const context=vm.createContext({window,document,indexedDB:indexedDB || {open(){throw Error("storage unavailable");}},console:{warn(){}},URL:{createObjectURL(){return "blob:test";},revokeObjectURL(){}},Blob,TextEncoder,Uint8Array,setTimeout(){},queueMicrotask});
+  const context=vm.createContext({window,document,location:{search:diagnostics ? "?diagnostics" : ""},URLSearchParams,performance:{now:()=>42},WebAssembly,indexedDB:indexedDB || {open(){throw Error("storage unavailable");}},console:{warn(){}},URL:{createObjectURL(){return "blob:test";},revokeObjectURL(){}},Blob,TextEncoder,Uint8Array,setTimeout(){},queueMicrotask});
   const module=new vm.SourceTextModule(source,{context});await module.link(()=>{});await module.evaluate();
   return {api:module.namespace,calls,window,listeners};
 }
@@ -429,4 +429,31 @@ test("queued Save As opens its picker during the user gesture but writes after t
   release.resolve();
   await Promise.all([saving, renamed]);
   assert.deepEqual(writes, ["first.rysmo:initial", "first.rysmo:earlier", "renamed.rysmo:latest"]);
+});
+
+
+test("performance diagnostics are opt-in, bounded and do not require GPU timing support", async () => {
+  const normal = await fixture();
+  normal.api.profile_sample("pointer_event", 2, 1n, 2n);
+  assert.equal(normal.window.rysmoPerformance, undefined);
+  const enabled = await fixture({diagnostics:true});
+  for (let i=0; i<4100; i++) enabled.api.profile_sample("pointer_event", i, 1n, BigInt(i));
+  const profile = enabled.window.rysmoPerformance;
+  assert.equal(profile.samples.length,4096); assert.equal(profile.dropped,4);
+  assert.equal(profile.samples.at(-1).revision,"4099");
+  enabled.window.rysmoProfileGL = {getExtension:()=>null};
+  enabled.api.profile_gpu_begin(); enabled.api.profile_gpu_assets(); enabled.api.profile_gpu_end();
+  assert.equal(profile.gpu.supported,false);
+  assert.equal(profile.samples.at(-1).stage,"render_cpu");
+  assert.equal(enabled.calls.writes.length,0);
+});
+
+
+test("cold-load milestones survive the bounded frame sample ring", async () => {
+  const {api,window}=await fixture({diagnostics:true});
+  api.profile_sample("model_installed",0,7n,0n);
+  for(let i=0;i<4200;i++)api.profile_sample("editor_update",0,7n,0n);
+  assert.equal(window.rysmoPerformance.samples.length,4096);
+  assert.equal(window.rysmoPerformance.milestones[0].stage,"model_installed");
+  assert.equal(window.rysmoPerformance.milestones[0].generation,"7");
 });

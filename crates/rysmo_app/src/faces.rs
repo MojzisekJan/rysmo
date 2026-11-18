@@ -30,6 +30,7 @@ use rysmo_model::sections::SectionPlane;
 use rysmo_model::{FaceStyle, Lighting, Occurrence};
 
 use crate::state::App3d;
+mod preparation;
 
 pub const FRONT: [f32; 3] = [0.96, 0.95, 0.92];
 pub const BACK: [f32; 3] = [0.64, 0.70, 0.80];
@@ -42,7 +43,7 @@ pub fn plugin(app: &mut App) {
         .init_resource::<Highlight>()
         .add_systems(
             PostUpdate,
-            (update_edge_cache, (rebuild_faces, rebuild_highlight)).chain().before(TransformSystems::Propagate),
+            (update_edge_cache, rebuild_faces, rebuild_highlight).chain().before(TransformSystems::Propagate),
         );
 }
 
@@ -149,6 +150,7 @@ type CachedImage = (Arc<Vec<u8>>, Handle<Image>);
 
 #[derive(Resource, Default)]
 struct FaceMeshes {
+    document_generation: Option<u64>,
     key: Option<(u64, u64, Vec<InstanceId>)>,
     look: Option<Look>,
     pieces: HashMap<PieceKey, Piece>,
@@ -187,6 +189,15 @@ struct DrawnFace {
 
 impl FaceChunk {
     fn new(mesh: &rysmo_mesh::Mesh, view: &MeshView, block: u64, ids: &[FaceId]) -> Self {
+        Self::build(mesh, block, ids, |vertices| mesh.smooth_normals_at(view, vertices))
+    }
+
+    fn build(
+        mesh: &rysmo_mesh::Mesh,
+        block: u64,
+        ids: &[FaceId],
+        normals: impl FnOnce(&BTreeSet<VertexId>) -> rysmo_mesh::SmoothNormals,
+    ) -> Self {
         let faces: Vec<_> = ids
             .iter()
             .filter_map(|id| {
@@ -196,7 +207,7 @@ impl FaceChunk {
         let vertices: HashSet<VertexId> =
             ids.iter().filter_map(|id| mesh.face(*id)).flat_map(|f| f.loops().flatten().copied()).collect();
         let corners: BTreeSet<_> = vertices.iter().copied().collect();
-        let mut smooth = mesh.smooth_normals_at(view, &corners);
+        let mut smooth = normals(&corners);
         smooth.retain(|(face, _), _| face.0 >> CHUNK_BITS == block);
         FaceChunk { block, faces, vertices, smooth }
     }
@@ -269,15 +280,24 @@ impl DrawnFaces {
 /// than change it in place, so an equal pointer means the same geometry. Evaluated
 /// meshes depend on other definitions and are looked at again each content revision.
 #[derive(Resource, Default)]
-struct DrawnCache {
+pub(crate) struct DrawnCache {
     kept: HashMap<Option<DefinitionId>, (Arc<rysmo_model::Definition>, Arc<DrawnFaces>)>,
     /// Which evaluated meshes are up to date.
     evaluated: HashSet<Option<DefinitionId>>,
     revision: Option<(u64, u64)>,
+    job: Option<preparation::Job>,
+    uploading: bool,
 }
 
 impl DrawnCache {
     fn prepare(&mut self, doc: &rysmo_model::Document, revision: (u64, u64)) {
+        let different_document = self.revision.is_some_and(|previous| previous.0 != revision.0);
+        self.poll(revision);
+        if different_document {
+            // Numeric definition IDs can recur in another model. Hidden or unused
+            // definitions must not keep that other model's prepared geometry alive.
+            self.kept.clear();
+        }
         if self.revision != Some(revision) {
             self.revision = Some(revision);
             self.evaluated.clear();
@@ -289,7 +309,10 @@ impl DrawnCache {
         let definition = doc.def_arc(owner).expect("an occurrence's definition");
         let known = self.kept.get(&owner);
         if let Some((held, faces)) = known
-            && (self.evaluated.contains(&owner) || (Arc::ptr_eq(held, definition) && !has_openings(definition)))
+            && (self.evaluated.contains(&owner)
+                || (!has_openings(definition)
+                    && (Arc::ptr_eq(held, definition)
+                        || (!has_openings(held) && faces.mesh.shares_storage_with(&definition.mesh)))))
         {
             return faces.clone();
         }
@@ -305,6 +328,89 @@ impl DrawnCache {
 
 fn has_openings(definition: &rysmo_model::Definition) -> bool {
     definition.instances.values().any(|instance| instance.glued_to.is_some())
+}
+
+#[cfg(test)]
+mod preparation_tests {
+    use super::*;
+
+    #[test]
+    fn switching_documents_releases_prepared_geometry_even_for_reused_ids() {
+        let mut doc = rysmo_model::Document::new();
+        let id = DefinitionId(doc.reserve_id());
+        doc.definitions.insert(id, rysmo_model::Definition::default().into());
+        let mut cache = DrawnCache::default();
+        cache.prepare(&doc, (1, 0));
+        let prepared = cache.get(&doc, Some(id));
+        let weak = Arc::downgrade(&prepared);
+        drop(prepared);
+        let replacement = doc.clone();
+        cache.prepare(&replacement, (2, 0));
+        assert!(weak.upgrade().is_none());
+        assert!(cache.kept.is_empty());
+    }
+
+    #[test]
+    fn metadata_reuses_faces_but_geometry_changes_do_not() {
+        let mut editor = rysmo_model::Editor::new();
+        editor
+            .apply(rysmo_model::Command::DrawRectangle {
+                corner: DVec3::ZERO,
+                u: DVec3::X * 4.,
+                v: DVec3::Y * 4.,
+                facing: None,
+            })
+            .unwrap();
+        let mut doc = editor.doc().clone();
+        let mut cache = DrawnCache::default();
+        cache.prepare(&doc, (1, 0));
+        let first = cache.get(&doc, None);
+        doc.root_mut().name = "Renamed".into();
+        cache.prepare(&doc, (1, 1));
+        assert!(Arc::ptr_eq(&first, &cache.get(&doc, None)));
+        let edge = doc.root.mesh.edges().next().unwrap().0;
+        doc.with_mesh(None, |mesh| mesh.move_elements(&[Element::Edge(edge)], DVec3::Z).unwrap());
+        cache.prepare(&doc, (1, 2));
+        let moved = cache.get(&doc, None);
+        assert!(!Arc::ptr_eq(&first, &moved));
+        assert_eq!(moved.mesh, doc.root.mesh);
+    }
+
+    #[test]
+    #[ignore = "manual CPU benchmark; requires RYSMO_RECOVERY_BENCH_MODEL"]
+    fn benchmark_face_preparation() {
+        use std::{hint::black_box, time::Instant};
+        fn measure(mut run: impl FnMut()) -> serde_json::Value {
+            let mut samples = Vec::new();
+            for index in 0..12 {
+                let start = Instant::now();
+                run();
+                if index >= 3 {
+                    samples.push(start.elapsed().as_secs_f64() * 1000.);
+                }
+            }
+            samples.sort_by(f64::total_cmp);
+            serde_json::json!({"median_ms": samples[4], "p95_ms": samples[8]})
+        }
+        let path = std::env::var("RYSMO_RECOVERY_BENCH_MODEL").expect("fixture path");
+        let mut doc = rysmo_io::load(&std::fs::read_to_string(path).unwrap()).unwrap();
+        assert!(doc.root.instances.is_empty());
+        let cold = measure(|| drop(black_box(DrawnFaces::new(doc.root.mesh.clone(), None))));
+        let mut cache = DrawnCache::default();
+        cache.prepare(&doc, (1, 0));
+        let before = cache.get(&doc, None);
+        doc.root_mut().name = "Metadata edit".into();
+        cache.prepare(&doc, (1, 1));
+        let former_metadata_path = measure(|| drop(black_box(DrawnFaces::new(doc.root.mesh.clone(), Some(&before)))));
+        let cached_metadata = measure(|| drop(black_box(cache.get(&doc, None))));
+        assert!(Arc::ptr_eq(&before, &cache.get(&doc, None)));
+        println!(
+            "face-preparation-benchmark: {}",
+            serde_json::json!({"faces": doc.root.mesh.face_count(),
+            "samples": 9, "cold": cold, "former_metadata_path": former_metadata_path,
+            "cached_metadata": cached_metadata})
+        );
+    }
 }
 
 /// An edge as the gizmos draw it: ends, the normals of its faces, a colour for
@@ -592,12 +698,48 @@ fn rebuild_faces(
 ) {
     let revision = (app.document_generation, app.editor.content_revision());
     let key = (revision.0, revision.1, app.editor.context().to_vec());
+    drawn.prepare(app.editor.doc(), revision);
     if state.key.as_ref() == Some(&key) {
         return;
     }
+    if state.document_generation != Some(revision.0) {
+        for piece in state.pieces.values() {
+            for entity in &piece.entities {
+                commands.entity(*entity).despawn();
+            }
+        }
+        state.pieces.clear();
+        for entity in state.lights.drain(..) {
+            commands.entity(entity).despawn();
+        }
+        state.materials.clear();
+        state.look = None;
+        state.key = None;
+        state.document_generation = Some(revision.0);
+    }
+    drawn.uploading = true;
     let editor = &app.editor;
     let doc = editor.doc();
     let style = doc.style;
+    let owners = if style.faces == FaceStyle::Wireframe {
+        BTreeSet::new()
+    } else {
+        edges.placed.iter().map(|placed| placed.occurrence.definition).collect()
+    };
+    if !drawn.ready(doc, revision, owners) && style.faces != FaceStyle::Wireframe {
+        if state.key.as_ref().is_some_and(|old| old.0 != revision.0) {
+            for piece in state.pieces.values() {
+                for entity in &piece.entities {
+                    commands.entity(*entity).despawn();
+                }
+            }
+            state.pieces.clear();
+            state.key = None;
+        }
+        return;
+    }
+    #[cfg(target_arch = "wasm32")]
+    let _profile = crate::web::ProfileSpan::new("render_assets_submitted", revision.0, revision.1);
     let lit = style.lighting != Lighting::Flat;
     if state.texture_settings != Some((style.texture_limit, style.texture_anisotropy)) {
         state.images.clear();
@@ -717,10 +859,18 @@ fn rebuild_faces(
     // The model is Z up; Bevy is Y up. One rotation on each mesh maps one to the other.
     let to_y_up = Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2));
     let unlit = !lit || style.faces == FaceStyle::HiddenLine;
+    let upload_start = bevy::platform::time::Instant::now();
+    let mut complete = true;
+    let mut built = 0;
     for (key, plan) in plans {
         if pieces.get(&key).is_some_and(|piece| piece.signature == plan.signature) {
             continue;
         }
+        if built > 0 && upload_start.elapsed().as_secs_f64() >= 0.006 {
+            complete = false;
+            break;
+        }
+        built += 1;
         if let Some(old) = pieces.remove(&key) {
             for entity in old.entities {
                 commands.entity(entity).despawn();
@@ -950,7 +1100,12 @@ fn rebuild_faces(
     }
     state.pieces = pieces;
     state.materials = shared_materials;
-    state.key = Some(key);
+    if complete {
+        drawn.uploading = false;
+        #[cfg(target_arch = "wasm32")]
+        crate::web::profile_mark("surfaces_uploaded", revision.0, revision.1);
+        state.key = Some(key);
+    }
 }
 
 /// The selected and hovered faces, as a see-through blue skin over the model. Kept apart
@@ -963,6 +1118,8 @@ struct Highlight {
 
 const HIGHLIGHT_OPACITY: f32 = 0.45;
 
+// TODO: Incrementally rebuild large selection highlights and move previews.
+// Whole-model edits still produce long tasks; see docs/performance.md.
 fn rebuild_highlight(
     mut commands: Commands,
     app: Res<App3d>,
@@ -997,6 +1154,9 @@ fn rebuild_highlight(
     }
     let mut buffer = Buffers::default();
     drawn.prepare(doc, (app.document_generation, editor.content_revision()));
+    if drawn.busy() {
+        return;
+    }
     if doc.style.faces != FaceStyle::Wireframe && (!faces.is_empty() || !instances.is_empty()) {
         let colour = [SELECTED[0], SELECTED[1], SELECTED[2], HIGHLIGHT_OPACITY];
         for placed in &edges.placed {

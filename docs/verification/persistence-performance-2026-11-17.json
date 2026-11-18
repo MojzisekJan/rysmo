@@ -1,0 +1,158 @@
+{
+  "date": "2026-11-17",
+  "baseline_revision": "41e2942882a8d48ed463aaafe969c54433a8f59e",
+  "candidate": "local changes to native.rs and mesh.rs",
+  "toolchain": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+  "target": "x86_64 Linux",
+  "profile": "dev: io opt-level=1; math/mesh/model/tools opt-level=3; debug assertions enabled",
+  "scope": "CPU load from in-memory UTF-8, validation/index construction and drop; save to memory and drop. No disk I/O, GPU, browser or memory-peak measurement.",
+  "method": "21 samples per operation, three warmups, baseline then candidate without overlapping our compilations. Desktop background activity is uncontrolled.",
+  "fixtures": [
+    {
+      "sha256": "9d482805b97bd8ea6834dff25d1854895594cdd1d9a2b4eef26821f656e1aebd",
+      "baseline": {
+        "file": "target/persistence-benchmark/shared.rysmo",
+        "bytes": 937172,
+        "occurrences": 12001,
+        "occurrence_faces": 72000,
+        "samples": 21,
+        "debug_assertions": true,
+        "load": {
+          "median_ms": 13.754779,
+          "p95_ms": 14.806671
+        },
+        "save": {
+          "median_ms": 7.971292,
+          "p95_ms": 8.49427
+        },
+        "clone_and_drop": {
+          "median_ms": 0.005727,
+          "p95_ms": 0.007542999999999999
+        },
+        "move_instance": {
+          "median_ms": 0.523327,
+          "p95_ms": 0.803184
+        },
+        "undo": {
+          "median_ms": 0.0019549999999999997,
+          "p95_ms": 0.0024449999999999997
+        },
+        "redo": {
+          "median_ms": 0.0014670000000000002,
+          "p95_ms": 0.001956
+        }
+      },
+      "candidate": {
+        "file": "target/persistence-benchmark/shared.rysmo",
+        "bytes": 937172,
+        "occurrences": 12001,
+        "occurrence_faces": 72000,
+        "samples": 21,
+        "debug_assertions": true,
+        "load": {
+          "median_ms": 8.919818,
+          "p95_ms": 9.446496999999999
+        },
+        "save": {
+          "median_ms": 5.381755,
+          "p95_ms": 5.751639
+        },
+        "clone_and_drop": {
+          "median_ms": 0.005657000000000001,
+          "p95_ms": 0.007613
+        },
+        "move_instance": {
+          "median_ms": 0.496158,
+          "p95_ms": 0.828607
+        },
+        "undo": {
+          "median_ms": 0.001886,
+          "p95_ms": 0.002375
+        },
+        "redo": {
+          "median_ms": 0.001397,
+          "p95_ms": 0.001885
+        }
+      }
+    },
+    {
+      "sha256": "e71aa5fd7adf008e12b52e4c83a6dc24275114799cad37d0512362888d1f7a96",
+      "baseline": {
+        "file": "target/persistence-benchmark/unique.rysmo",
+        "bytes": 17158892,
+        "occurrences": 12001,
+        "occurrence_faces": 72000,
+        "samples": 21,
+        "debug_assertions": true,
+        "load": {
+          "median_ms": 494.146762,
+          "p95_ms": 557.140853
+        },
+        "save": {
+          "median_ms": 145.590736,
+          "p95_ms": 170.201988
+        },
+        "clone_and_drop": {
+          "median_ms": 0.157913,
+          "p95_ms": 0.253806
+        },
+        "move_instance": {
+          "median_ms": 17.135348,
+          "p95_ms": 24.699740000000002
+        },
+        "undo": {
+          "median_ms": 0.002375,
+          "p95_ms": 0.003282
+        },
+        "redo": {
+          "median_ms": 0.001397,
+          "p95_ms": 0.0019549999999999997
+        }
+      },
+      "candidate": {
+        "file": "target/persistence-benchmark/unique.rysmo",
+        "bytes": 17158892,
+        "occurrences": 12001,
+        "occurrence_faces": 72000,
+        "samples": 21,
+        "debug_assertions": true,
+        "load": {
+          "median_ms": 389.483107,
+          "p95_ms": 408.57570100000004
+        },
+        "save": {
+          "median_ms": 92.780733,
+          "p95_ms": 96.053814
+        },
+        "clone_and_drop": {
+          "median_ms": 0.177958,
+          "p95_ms": 0.205545
+        },
+        "move_instance": {
+          "median_ms": 15.103082,
+          "p95_ms": 16.828742000000002
+        },
+        "undo": {
+          "median_ms": 0.001886,
+          "p95_ms": 0.003282
+        },
+        "redo": {
+          "median_ms": 0.0014670000000000002,
+          "p95_ms": 0.0014670000000000002
+        }
+      }
+    }
+  ],
+  "verification": {
+    "library_tests_passed": 714,
+    "packages": [
+      "rysmo_io",
+      "rysmo_mesh",
+      "rysmo_model",
+      "rysmo_tools"
+    ],
+    "clippy": "rysmo_io and rysmo_mesh, all targets, -D warnings: passed",
+    "formatting": "passed",
+    "browser_runtime_measured": false
+  }
+}
