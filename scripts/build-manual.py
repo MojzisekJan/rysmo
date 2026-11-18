@@ -15,8 +15,8 @@ INPUT = ROOT / "crates/rysmo_app/src/input.rs"
 # A Rust string literal: raw r###"..."### or plain "...".
 STRING = r'(r###"(?:.|\n)*?"###|"(?:[^"\\]|\\.)*")'
 TOPIC = re.compile(
-    r"Topic \{\s*title: " + STRING + r",\s*category: " + STRING
-    + r",\s*icon: (None|Some\(Icon::\w+\((?:ToolKind|Action)::(\w+)\)\)),\s*body: " + STRING + r",\s*\}"
+    r"Topic \{\s*title:\s*" + STRING + r",\s*category:\s*" + STRING
+    + r",\s*icon:\s*(None|Some\(Icon::\w+\((?:ToolKind|Action)::(\w+)\)\)),\s*body:\s*" + STRING + r",?\s*\}"
 )
 
 
