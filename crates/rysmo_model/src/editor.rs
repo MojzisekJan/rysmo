@@ -734,6 +734,41 @@ impl Editor {
         self.selection_changes += 1;
     }
 
+    /// Select all eligible elements of the active context without revalidating
+    /// identifiers just read from that context. Selection never changes history.
+    pub fn select_all(&mut self) {
+        let active = self.active();
+        let document = self.doc();
+        let all = active
+            .mesh
+            .edges()
+            .filter(|(_, edge)| document.style.show_hidden_geometry || !edge.hidden)
+            .map(|(id, _)| Element::Edge(id))
+            .chain(
+                active
+                    .mesh
+                    .faces()
+                    .filter(|(_, f)| document.style.show_hidden_geometry || !f.hidden)
+                    .map(|(id, _)| Element::Face(id)),
+            )
+            .chain(
+                active
+                    .instances
+                    .iter()
+                    .filter(|(_, instance)| !instance.hidden && document.tag_visible(instance.tag))
+                    .map(|(id, _)| Element::Instance(*id)),
+            )
+            .chain(active.guides.keys().copied().map(Element::Guide))
+            .chain(active.dimensions.keys().copied().map(Element::Dimension))
+            .chain(active.texts.keys().copied().map(Element::Text))
+            .chain(
+                active.sections.planes.keys().copied().filter(|_| document.style.section_planes).map(Element::Section),
+            )
+            .collect();
+        self.selection = all;
+        self.note_selection_change();
+    }
+
     pub fn set_selection(&mut self, elements: impl IntoIterator<Item = Element>) {
         self.selection = elements.into_iter().filter(|e| self.contains(*e)).collect();
         self.note_selection_change();

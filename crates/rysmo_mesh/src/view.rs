@@ -7,7 +7,7 @@
 
 use rustc_hash::FxHashMap;
 use std::collections::BTreeSet;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use rysmo_math::{EPS, Plane};
 
@@ -27,10 +27,11 @@ struct Snapshot {
     vertices: BlockMap<VertexId, Vertex>,
     edges: BlockMap<EdgeId, Edge>,
     faces: BlockMap<FaceId, Face>,
-    vertex_tree: Bvh<VertexId>,
+    vertex_tree: OnceLock<Bvh<VertexId>>,
+    vertex_bounds: Aabb,
     edge_tree: Bvh<EdgeId>,
     face_tree: Bvh<FaceId>,
-    around: FxHashMap<VertexId, Vec<FaceId>>,
+    around: OnceLock<FxHashMap<VertexId, Vec<FaceId>>>,
     curves: FxHashMap<CurveId, Vec<EdgeId>>,
 }
 
@@ -99,20 +100,43 @@ fn curve_lists<'a>(edges: impl Iterator<Item = (EdgeId, &'a Edge)>) -> FxHashMap
 
 impl Snapshot {
     fn of(mesh: &Mesh) -> Self {
+        // Edge and face bounds repeatedly use the same vertices. One temporary
+        // table avoids two levels of ordered-block lookup for every reference;
+        // it is released after construction. Picking does not need vertex queries
+        // or adjacency, so those indices are initialized only when requested.
+        let mut positions = FxHashMap::with_capacity_and_hasher(mesh.vertex_count(), Default::default());
+        positions.extend(mesh.vertices().map(|(id, v)| (id, v.pos)));
         Snapshot {
             vertices: mesh.vertices.clone(),
             edges: mesh.edges.clone(),
             faces: mesh.faces.clone(),
-            vertex_tree: Bvh::new(mesh.vertices().filter_map(|(id, _)| vertex_box(mesh, id)).collect()),
-            edge_tree: Bvh::new(mesh.edges().filter_map(|(id, _)| edge_box(mesh, id)).collect()),
-            face_tree: Bvh::new(mesh.faces().filter_map(|(id, _)| face_box(mesh, id)).collect()),
-            around: faces_around(mesh.faces()),
+            vertex_tree: OnceLock::new(),
+            vertex_bounds: Aabb::of(positions.values().copied()).expanded(MARGIN),
+            edge_tree: Bvh::new(
+                mesh.edges().map(|(id, e)| (Aabb::of(e.v.map(|v| positions[&v])).expanded(MARGIN), id)).collect(),
+            ),
+            face_tree: Bvh::new(
+                mesh.faces()
+                    .map(|(id, f)| (Aabb::of(f.outer.iter().map(|v| positions[v])).expanded(MARGIN), id))
+                    .collect(),
+            ),
+            around: OnceLock::new(),
             curves: curve_lists(mesh.edges()),
         }
     }
 
     fn size(&self) -> usize {
         self.vertices.len() + self.edges.len() + self.faces.len()
+    }
+
+    fn vertex_tree(&self) -> &Bvh<VertexId> {
+        self.vertex_tree.get_or_init(|| {
+            Bvh::new(self.vertices.iter().map(|(id, v)| (Aabb::at(v.pos).expanded(MARGIN), *id)).collect())
+        })
+    }
+
+    fn around(&self) -> &FxHashMap<VertexId, Vec<FaceId>> {
+        self.around.get_or_init(|| faces_around(self.faces.iter().map(|(id, face)| (*id, face))))
     }
 }
 
@@ -136,10 +160,16 @@ fn sorted<T: Ord>(mut found: Vec<T>) -> Vec<T> {
 }
 
 impl MeshView {
+    /// Conservative vertex bounds, including the small overlay after edits.
+    /// Removed or moved base vertices may enlarge the result until the next rebuild.
+    pub fn bounds(&self) -> Aabb {
+        self.base.vertex_bounds.union(self.vertices.bounds())
+    }
+
     /// The vertices within `area`, in id order.
     pub fn vertices_in(&self, mesh: &Mesh, area: Aabb) -> Vec<VertexId> {
         let mut found = Vec::new();
-        self.base.vertex_tree.overlapping(area, |id| found.push(*id));
+        self.base.vertex_tree().overlapping(area, |id| found.push(*id));
         self.vertices.overlapping(area, |id| found.push(*id));
         found.retain(|id| vertex_box(mesh, *id).is_some_and(|(b, _)| b.overlaps(&area)));
         sorted(found)
@@ -184,7 +214,7 @@ impl MeshView {
 
     /// The faces with a loop through `v`, in id order.
     pub fn faces_at(&self, mesh: &Mesh, v: VertexId) -> Vec<FaceId> {
-        let known = self.base.around.get(&v).into_iter().flatten();
+        let known = self.base.around().get(&v).into_iter().flatten();
         let mut found: Vec<_> = known.chain(self.around.get(&v).into_iter().flatten()).copied().collect();
         found.retain(|id| mesh.face(*id).is_some_and(|f| f.has_vertex(v)));
         sorted(found)
@@ -238,7 +268,7 @@ impl Mesh {
         drop(slot);
         // What hangs off a moved vertex has moved too.
         let moved = vertices.iter().filter(|v| self.vertices.contains_key(v));
-        let faces_moved = moved.clone().flat_map(|v| base.around.get(v).into_iter().flatten()).copied();
+        let faces_moved = moved.clone().flat_map(|v| base.around().get(v).into_iter().flatten()).copied();
         let faces = sorted(faces.iter().copied().chain(faces_moved).collect());
         let edges_moved = moved.flat_map(|v| self.edges_of_vertex(*v));
         let curves = curve_lists(edges.iter().filter_map(|id| Some((*id, self.edge(*id)?))));
@@ -260,6 +290,39 @@ mod tests {
     use crate::Element;
     use crate::tests::{rect, unit_box};
     use rysmo_math::DVec3;
+
+    #[test]
+    fn edge_and_face_queries_do_not_build_unused_vertex_or_adjacency_indices() {
+        let mesh = unit_box();
+        let view = mesh.view();
+        let area = Aabb::at(DVec3::splat(0.5)).expanded(1.);
+        assert_eq!(view.edges_in(&mesh, area).len(), mesh.edge_count());
+        assert_eq!(view.faces_in(&mesh, area).len(), mesh.face_count());
+        assert!(view.base.vertex_tree.get().is_none());
+        assert!(view.base.around.get().is_none());
+        assert_eq!(view.vertices_in(&mesh, area).len(), mesh.vertex_count());
+        let vertex = mesh.vertices().next().unwrap().0;
+        assert_eq!(view.faces_at(&mesh, vertex).len(), 3);
+        assert!(view.base.vertex_tree.get().is_some());
+        assert!(view.base.around.get().is_some());
+    }
+
+    #[test]
+    fn view_bounds_cover_cold_and_changed_vertices_including_isolated_points() {
+        let mut mesh = Mesh::new();
+        assert_eq!(mesh.view().bounds(), Aabb::EMPTY);
+        for k in 0..80 {
+            rect(&mut mesh, k as f64 * 2., 0., k as f64 * 2. + 1., 1., 0.);
+        }
+        let cold = mesh.view();
+        assert!(mesh.vertices().all(|(_, v)| cold.bounds().overlaps(&Aabb::at(v.pos))));
+        let edge = mesh.edges().next().unwrap().0;
+        mesh.move_elements(&[Element::Edge(edge)], DVec3::new(-100., 0., 5.)).unwrap();
+        mesh.add_vertex(DVec3::new(500., 500., 500.));
+        let edited = mesh.view();
+        assert!(mesh.vertices().all(|(_, v)| edited.bounds().overlaps(&Aabb::at(v.pos))));
+        assert_agrees(&mesh);
+    }
 
     /// A view must agree with a scan of the mesh, whatever happened since its snapshot.
     fn assert_agrees(mesh: &Mesh) {

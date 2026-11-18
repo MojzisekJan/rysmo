@@ -73,6 +73,14 @@ opt-level = "z"
 lto = "fat"
 codegen-units = 1
 
+# Spatial queries run on the browser input path. Keep their hot loops optimized
+# for execution speed while the rest of the application prioritizes download size.
+[profile.web-release.package.rysmo_mesh]
+opt-level = 3
+
+[profile.web-release.package.rysmo_infer]
+opt-level = 3
+
 # Cross-platform smoke builds avoid multi-gigabyte debug symbols and incremental data.
 [profile.portable]
 inherits = "dev"

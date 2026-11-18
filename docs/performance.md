@@ -550,8 +550,8 @@ task. Cooperative surface batches peaked at 6.2 ms in this run. The earlier Linu
 ### Established limits
 
 The changes above remove repeated hierarchy traversals, redundant previews and a
-texture-payload copy; they do not make all model operations incremental. Cold
-spatial-index construction and the large selection highlight remain synchronous,
+texture-payload copy; they do not make all model operations incremental. At that revision, cold
+spatial-index construction and the large selection highlight remained synchronous,
 as demonstrated by the stress check. Individual polygons, glued openings,
 edge-cache preparation, image decoding, main-thread worker transfer and individual
 render pieces can still exceed a frame budget. The six-millisecond cooperative
@@ -567,3 +567,68 @@ strict workspace all-target Clippy and WASM app/worker Clippy. The web release a
 its static module/asset validation passed. Four MCP integration tests passed earlier
 in this change. Independent SketchUp acceptance remains explicitly unverified at
 the user's request; internal round trips are not a substitute.
+
+## Selection latency, 2026-11-19
+
+Large selection highlights now prepare and submit multiple small meshes instead of
+one complete skin. Work yields after a soft three-millisecond budget (checked every
+64 steps) or 12,288 generated vertices. Even one large polygon yields between its
+triangles. The unchanged selection keeps the renderer awake until all pieces have
+been submitted. A changed selection, preview, content revision or document generation
+cancels pending work and removes its already submitted pieces. Hidden geometry,
+section cuts, occurrence transforms and the editing context retain their previous
+semantics. Uncut triangles avoid an intermediate clipping allocation, and small
+selections only visit chunks containing selected faces. One material is shared by
+all highlight pieces.
+
+Select All now builds its ordered set directly from the active context's eligible
+records. It does not look up every identifier a second time or allocate a separate
+intermediate vector. The existing hidden-geometry, tag, instance and section-plane
+rules are unchanged. It remains a selection change, without changing content
+revision or Undo history; arbitrary externally supplied selections still validate
+identifiers.
+
+Cold edge/face picking no longer builds the vertex-query tree or face adjacency.
+Those immutable indices initialize once when their first actual consumer needs
+them. Edge and face bounds use a temporary vertex-position table instead of
+repeated ordered-block searches. The table is released after index construction.
+Placement bounds reuse the spatial snapshot's conservative vertex bounds plus
+curve centres, including small edits, instead of rescanning every edge. Old or
+removed vertices may conservatively enlarge bounds until the next rebuild; exact
+query filters still use the current geometry. This trades a temporary position
+lookup table for fewer searches and defers indices unused by ordinary picking.
+
+The temporary position table reserves the known vertex count up front. Web release
+builds optimize the mesh and inference crates for execution speed (`opt-level = 3`);
+other crates retain size optimization, and the final package still uses wasm-opt
+`-Oz`. This specifically targets the remaining cold spatial-tree work. The package
+size and cursor verification are recorded alongside the structural changes.
+
+### Cursor verification and remaining limits
+
+On the same 72,000-face / 144,000-edge fixture at 1280 × 720, the structural
+fix reduced the first pointer handler from 141.6 to 75.2 ms. Select All previously
+produced an 81 ms browser long task; the candidate produced none above the browser's
+50 ms threshold. Highlight generation ran in 37 measured batches (maximum 6.6 ms),
+finishing over approximately 0.99 seconds while yielding between frames. These are
+single paired desktop observations, not worst-case guarantees.
+
+The final build additionally reserves the position table and enables the crate
+optimization overrides. Cursor verification confirmed selection of all 216,000
+elements, complete highlights, and clean replacement with one selected element;
+there were no console errors. Its profile download could not be retrieved through
+the automation interface, so no additional speedup is attributed to those last
+changes. Main WASM gzip size is 10,449,967 bytes, versus 10,287,991 at baseline.
+
+Cold spatial-tree construction still has synchronous work: the measured 75.2 ms
+handler remains above a frame budget. Select All set construction and initial work
+queue preparation also remain synchronous; the cooperative three-millisecond limit
+is soft and excludes upload/setup costs. The other established limits above remain
+outside this selection-focused change. Independent SketchUp acceptance remains
+explicitly unverified.
+
+Validation passed 1,012 relevant Rust tests (six manual benchmarks ignored), strict
+workspace all-target Clippy, formatting, and web release/static package checks.
+The final reservation change was rechecked with 134 mesh/inference tests and Clippy.
+Detailed provenance and measurement limitations are in
+[selection-latency-2026-11-19.json](verification/selection-latency-2026-11-19.json).

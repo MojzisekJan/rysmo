@@ -199,10 +199,10 @@ pub struct MeshIndex {
 
 impl MeshIndex {
     pub fn new(mesh: &Mesh) -> Self {
-        let lines = mesh.edges().map(|(_, e)| Aabb::of(e.v.map(|v| mesh.pos(v))));
+        let view = mesh.view();
         let centres = mesh.curves().map(|(_, curve)| Aabb::at(curve.centre));
-        let bounds = lines.chain(centres).fold(Aabb::EMPTY, Aabb::union).expanded(EPS * 4.);
-        MeshIndex { view: mesh.view(), bounds }
+        let bounds = centres.fold(view.bounds(), Aabb::union).expanded(EPS * 4.);
+        MeshIndex { view, bounds }
     }
 
     pub fn bounds(&self) -> Aabb {

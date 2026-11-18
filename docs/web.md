@@ -93,7 +93,11 @@ the Rust half is `web.rs`.
 Historical baseline before the renderer additions. Current sizes are recorded by
 `scripts/build-web.sh` in `target/web/build-report.json`. Trunk builds with the `web-release` profile
 (`opt-level = "z"`, fat LTO, one codegen unit; see the workspace `Cargo.toml`) and runs
-`wasm-opt -Oz`:
+`wasm-opt -Oz`.
+
+The mesh and inference crates override the Rust optimization level to `3` because
+their spatial queries execute on the input path. The remaining crates retain size
+optimization; the final package report records the resulting download size.
 
 | File | Raw | gzip -9 | brotli 11 |
 | --- | --- | --- | --- |

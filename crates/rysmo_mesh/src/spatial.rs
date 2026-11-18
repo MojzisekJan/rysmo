@@ -116,6 +116,11 @@ impl<T> Bvh<T> {
         self.items.is_empty()
     }
 
+    /// Conservative bounds of every item, or EMPTY for an empty tree.
+    pub fn bounds(&self) -> Aabb {
+        self.nodes.first().map_or(Aabb::EMPTY, |node| node.bounds)
+    }
+
     /// Updates bounds without changing membership or splitting the tree again.
     /// Callers should rebuild after many movements to retain useful spatial grouping.
     pub fn refit(&mut self, mut bounds: impl FnMut(&T, Aabb) -> Aabb) {

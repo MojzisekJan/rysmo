@@ -72,6 +72,34 @@ fn erased_elements_leave_the_selection() {
 }
 
 #[test]
+fn select_all_respects_hidden_geometry_and_context_without_editing_history() {
+    let mut editor = Editor::new();
+    let geometry = rect(&mut editor).created;
+    let face = the_face(&editor);
+    editor.apply(Command::SetGeometryHidden { elements: vec![Element::Face(face)], hidden: true }).unwrap();
+    let content_revision = editor.content_revision();
+    let revision = editor.revision();
+    let history = editor.undo_label().unwrap().to_owned();
+    editor.select_all();
+    assert_eq!(editor.selection().len(), 4);
+    assert!(!editor.is_selected(Element::Face(face)));
+    assert_eq!(editor.revision(), revision + 1);
+    assert_eq!(editor.content_revision(), content_revision);
+    assert_eq!(editor.undo_label(), Some(history.as_str()));
+    editor.apply(Command::SetGeometryHidden { elements: vec![Element::Face(face)], hidden: false }).unwrap();
+    let instance =
+        editor.apply(Command::MakeComponent { elements: geometry, name: Some("box".into()) }).unwrap().created[0];
+    editor.select_all();
+    assert_eq!(editor.selected(), vec![instance]);
+    let Element::Instance(id) = instance else { panic!() };
+    editor.enter(id).unwrap();
+    editor.select_all();
+    assert_eq!(editor.selection().len(), 5);
+    assert!(!editor.is_selected(instance));
+    assert!(editor.selection().iter().all(|element| editor.contains(*element)));
+}
+
+#[test]
 fn materials_and_paint() {
     let mut e = Editor::new();
     rect(&mut e);

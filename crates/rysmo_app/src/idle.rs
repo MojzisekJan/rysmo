@@ -11,7 +11,7 @@ pub fn plugin(app: &mut App) {
 }
 fn update(
     app: Res<crate::state::App3d>,
-    preparing: Option<Res<crate::faces::DrawnCache>>,
+    (preparing, highlighting): (Option<Res<crate::faces::DrawnCache>>, Option<Res<crate::faces::Highlight>>),
     mut settings: ResMut<WinitSettings>,
     mut frames: Local<u32>,
     mut events: MessageReader<bevy::window::WindowEvent>,
@@ -35,6 +35,7 @@ fn update(
         || app.walking.is_some()
         || app.left_down
         || preparing.is_some_and(|preparing| preparing.busy())
+        || highlighting.is_some_and(|highlighting| highlighting.busy())
         || app.features.skp.busy()
         || app.features.import.as_ref().is_some_and(|draft| draft.busy());
     *tail = tail.saturating_sub(1);

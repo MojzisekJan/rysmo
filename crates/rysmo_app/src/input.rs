@@ -450,33 +450,7 @@ pub fn erase_selection(app: &mut App3d) {
 }
 
 pub fn select_all(app: &mut App3d) {
-    let active = app.editor.active();
-    let document = app.editor.doc();
-    let all: Vec<Element> = active
-        .mesh
-        .edges()
-        .filter(|(_, edge)| document.style.show_hidden_geometry || !edge.hidden)
-        .map(|(id, _)| Element::Edge(id))
-        .chain(
-            active
-                .mesh
-                .faces()
-                .filter(|(_, f)| document.style.show_hidden_geometry || !f.hidden)
-                .map(|(id, _)| Element::Face(id)),
-        )
-        .chain(
-            active
-                .instances
-                .iter()
-                .filter(|(_, instance)| !instance.hidden && document.tag_visible(instance.tag))
-                .map(|(id, _)| Element::Instance(*id)),
-        )
-        .chain(active.guides.keys().copied().map(Element::Guide))
-        .chain(active.dimensions.keys().copied().map(Element::Dimension))
-        .chain(active.texts.keys().copied().map(Element::Text))
-        .chain(active.sections.planes.keys().copied().filter(|_| document.style.section_planes).map(Element::Section))
-        .collect();
-    app.editor.set_selection(all);
+    app.editor.select_all();
 }
 
 fn shortcut(c: char) -> Option<ToolKind> {

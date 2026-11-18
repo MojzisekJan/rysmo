@@ -1,0 +1,194 @@
+{
+  "date": "2026-11-19",
+  "baseline_revision": "27ece931dd39a7ef43c0fc6d9ad923e72c973e71",
+  "environment": {
+    "os": "macOS 27.0.1 (26A434)",
+    "architecture": "aarch64",
+    "browser": "ChatGPT in-app Chromium",
+    "viewport": [
+      1280,
+      720
+    ]
+  },
+  "fixture": {
+    "name": "raw-72000.rysmo",
+    "faces": 72000,
+    "edges": 144000,
+    "selected_elements": 216000,
+    "sha256": "452264d84d46440054a24fe200b36d810dc18f6e44c4209c9254e719579dffad"
+  },
+  "protocol": "Isolated local copies staged by scripts/stage-web-profile.py; replace profile-raw.rysmo with the same fixture in both copies. Only the startup restore adapter differs from the packaged application. Actual cursor first selection at (677,350), then profile download. Reset, focus empty viewport at (105,100), Cmd+A and download. No hidden browser state read. Raw profiles stay under ignored target/selection-verification.",
+  "preliminary_runs": {
+    "cold-before": {
+      "sha256": "59c36ab32db3feb3309bd7ab82e5e50c8f3020a56e9b59f2edc7182b96eed1f1",
+      "long_tasks_ms": [
+        125,
+        228,
+        383,
+        65,
+        144,
+        148
+      ],
+      "pointer_handler_ms": [
+        138.9,
+        1.3,
+        0.9,
+        3.4,
+        1,
+        0.8
+      ],
+      "note": "Native compilation ran in the background; retain as preliminary, not the final paired measurement."
+    },
+    "select-before": {
+      "sha256": "23733d6437940d23e35e60e6deac005233d5368131e2cc469ae74581733ac7a2",
+      "long_tasks_ms": [
+        116
+      ],
+      "pointer_handler_ms": [
+        0.1,
+        0.1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "note": "Native compilation ran in the background; retain as preliminary, not the final paired measurement."
+    }
+  },
+  "builds": {
+    "before": {
+      "rysmo-727c2b212dd6f67b_bg.wasm": "1cad60dd9c654ead29a4ec16fbd567e0307eb5de6b619087cbec0e29cf1e4411"
+    },
+    "intermediate": {
+      "rysmo-a73a4262eda0bb5c_bg.wasm": "77dcd7486473befa008c18c97bf2e595ac92215c3b59a4af21e506ecb6514f2c"
+    },
+    "final": {}
+  },
+  "runs": {
+    "cold-before-paired": {
+      "sha256": "a99975f1c10c8e5bb5658d27019cdc80edc2bc283a23a98c4e5142cbab0064a5",
+      "long_tasks_ms": [
+        123,
+        235,
+        385,
+        68,
+        151
+      ],
+      "pointer_handler_ms": [
+        141.6,
+        1.3,
+        1,
+        3.3,
+        1.1,
+        0.8
+      ],
+      "dropped_samples": 0,
+      "dropped_long_tasks": 0,
+      "final_editor": "Editor updates: 1.0 FPS\nEditor frame: 255 / revision 2\nRoot instances: 0 / mesh entities: 295\nCamera synced: true / 3D scale: 100%\nModel: 72000 faces / 144000 edges\nTool: Select / welcome: false\nHistory: undo 0 / redo false / dirty false",
+      "highlight_batches": {
+        "count": 0,
+        "max_ms": 0,
+        "sum_ms": 0,
+        "first_to_last_ms": null
+      }
+    },
+    "select-before-paired": {
+      "sha256": "b9f0daf558ff956ae2976912776f95980f1c72c6fe94a9e7641e27594029869b",
+      "long_tasks_ms": [
+        81
+      ],
+      "pointer_handler_ms": [
+        0.1,
+        0,
+        0,
+        0.1,
+        0.1,
+        0
+      ],
+      "dropped_samples": 0,
+      "dropped_long_tasks": 0,
+      "final_editor": "Editor updates: 1.0 FPS\nEditor frame: 305 / revision 4\nRoot instances: 0 / mesh entities: 296\nCamera synced: true / 3D scale: 100%\nModel: 72000 faces / 144000 edges\nTool: Select / welcome: false\nHistory: undo 0 / redo false / dirty false",
+      "highlight_batches": {
+        "count": 0,
+        "max_ms": 0,
+        "sum_ms": 0,
+        "first_to_last_ms": null
+      }
+    },
+    "cold-after-paired": {
+      "sha256": "0e2294ae76665902de38618994ce8127dcf5b869a193a83827b3bc52c3f2d6f6",
+      "long_tasks_ms": [
+        121,
+        225,
+        389,
+        66,
+        84,
+        151
+      ],
+      "pointer_handler_ms": [
+        75.2,
+        1.3,
+        0.9,
+        3.4,
+        1.1,
+        0.9
+      ],
+      "dropped_samples": 0,
+      "dropped_long_tasks": 0,
+      "final_editor": "Editor updates: 1.0 FPS\nEditor frame: 375 / revision 2\nRoot instances: 0 / mesh entities: 295\nCamera synced: true / 3D scale: 100%\nModel: 72000 faces / 144000 edges\nTool: Select / welcome: false\nHistory: undo 0 / redo false / dirty false",
+      "highlight_batches": {
+        "count": 46,
+        "max_ms": 0.1,
+        "sum_ms": 0.1,
+        "first_to_last_ms": 18101.0
+      }
+    },
+    "select-after-paired": {
+      "sha256": "468c2bb1099c97bb10a187c8243d53ebb9b0ee3816fc4e094945615fcfc8b898",
+      "long_tasks_ms": [],
+      "pointer_handler_ms": [
+        0.2,
+        0.1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "dropped_samples": 0,
+      "dropped_long_tasks": 0,
+      "final_editor": "Editor updates: 1.8 FPS\nEditor frame: 462 / revision 4\nRoot instances: 0 / mesh entities: 331\nCamera synced: true / 3D scale: 100%\nModel: 72000 faces / 144000 edges\nTool: Select / welcome: false\nHistory: undo 0 / redo false / dirty false",
+      "highlight_batches": {
+        "count": 37,
+        "max_ms": 6.6,
+        "sum_ms": 42.3,
+        "first_to_last_ms": 991.5
+      }
+    }
+  },
+  "limitations": [
+    "Cold profiles include startup long tasks; use the first pointer_event duration for cold-picking comparison, not the maximum startup task.",
+    "Downloads and automation calls took variable wall time. The numbers are in-application handler spans and browser Long Tasks observations, not tool-call duration.",
+    "Single desktop host, fixed viewport and fixture; no universal worst-case guarantee.",
+    "Final before/after profiles were captured after compilation completed. Other desktop activity was not controlled.",
+    "The final build adds position-table preallocation and mesh/inference opt-level=3. Its profile download could not be retrieved through browser automation; 141.6 to 75.2 ms and the zero-long-task Select All result compare baseline with the intermediate structural fix, not a measured final-build speedup."
+  ],
+  "gui_checks": [
+    "72,000-face model rendered in both versions.",
+    "All 216,000 eligible elements selected. Intermediate skin completed as 36 extra meshes and editor returned to idle.",
+    "Replacing the whole selection with one element removed all 36 highlight meshes; no stale skin or console errors.",
+    "Exact timing of cancellation during a pending batch is covered by unit tests, not inferred from these cursor timings.",
+    "Final optimized build: 216,000 selected, 331 mesh entities after completion, then 1 selected and 295 entities after replacement; no console errors. Final profile download unavailable, but editor remained responsive."
+  ],
+  "final_build_sizes": {
+    "main_wasm_bytes": 29302859,
+    "main_wasm_gzip_bytes": 10449967,
+    "precommit_zip_bytes": 22234860
+  },
+  "validation": {
+    "rust_tests_passed": 1012,
+    "ignored_manual_benchmarks": 6,
+    "strict_workspace_all_target_clippy": "passed",
+    "final_mesh_infer_retest": 134,
+    "web_release_and_static_asset_check": "passed"
+  }
+}

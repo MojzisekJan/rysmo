@@ -358,7 +358,7 @@ mod tests {
         plugin(&mut app);
         app.update();
         assert!(app.world().resource::<DrawnCache>().busy());
-        assert!(app.world().resource::<Highlight>().entity.is_none());
+        assert!(app.world().resource::<Highlight>().entities.is_empty());
     }
     #[test]
     fn face_scan_resumes_across_id_gaps_without_missing_faces() {

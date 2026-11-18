@@ -30,7 +30,9 @@ use rysmo_model::sections::SectionPlane;
 use rysmo_model::{FaceStyle, Lighting, Occurrence};
 
 use crate::state::App3d;
+mod highlight;
 mod preparation;
+pub(crate) use highlight::Highlight;
 
 pub const FRONT: [f32; 3] = [0.96, 0.95, 0.92];
 pub const BACK: [f32; 3] = [0.64, 0.70, 0.80];
@@ -43,7 +45,7 @@ pub fn plugin(app: &mut App) {
         .init_resource::<Highlight>()
         .add_systems(
             PostUpdate,
-            (update_edge_cache, rebuild_faces, rebuild_highlight).chain().before(TransformSystems::Propagate),
+            (update_edge_cache, rebuild_faces, highlight::rebuild).chain().before(TransformSystems::Propagate),
         );
 }
 
@@ -268,11 +270,6 @@ impl DrawnFaces {
     fn chunk(&self, block: u64) -> Option<&Arc<FaceChunk>> {
         let index = self.chunks.binary_search_by_key(&block, |chunk| chunk.block).ok()?;
         Some(&self.chunks[index])
-    }
-
-    fn face(&self, id: FaceId) -> Option<&DrawnFace> {
-        let faces = &self.chunk(id.0 >> CHUNK_BITS)?.faces;
-        faces.binary_search_by_key(&id, |face| face.id).ok().map(|index| &faces[index])
     }
 }
 
@@ -1106,105 +1103,6 @@ fn rebuild_faces(
         crate::web::profile_mark("surfaces_uploaded", revision.0, revision.1);
         state.key = Some(key);
     }
-}
-
-/// The selected and hovered faces, as a see-through blue skin over the model. Kept apart
-/// from the model's meshes so that a click or a hover does not rebuild them.
-#[derive(Resource, Default)]
-struct Highlight {
-    key: Option<(u64, u64, Vec<FaceId>, Vec<InstanceId>)>,
-    entity: Option<Entity>,
-}
-
-const HIGHLIGHT_OPACITY: f32 = 0.45;
-
-// TODO: Incrementally rebuild large selection highlights and move previews.
-// Whole-model edits still produce long tasks; see docs/performance.md.
-fn rebuild_highlight(
-    mut commands: Commands,
-    app: Res<App3d>,
-    mut state: ResMut<Highlight>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    edges: Res<EdgeCache>,
-    mut drawn: ResMut<DrawnCache>,
-) {
-    let preview = app.tools.highlights(&app.editor);
-    let key = (app.document_generation, app.editor.revision(), preview.faces, preview.instances);
-    if state.key.as_ref() == Some(&key) {
-        return;
-    }
-    if let Some(entity) = state.entity.take() {
-        commands.entity(entity).despawn();
-    }
-    let editor = &app.editor;
-    let doc = editor.doc();
-    let mut faces: BTreeSet<FaceId> = key.2.iter().copied().collect();
-    let mut instances: BTreeSet<InstanceId> = key.3.iter().copied().collect();
-    for element in editor.selection() {
-        match element {
-            Element::Face(id) => {
-                faces.insert(*id);
-            }
-            Element::Instance(id) => {
-                instances.insert(*id);
-            }
-            _ => {}
-        }
-    }
-    let mut buffer = Buffers::default();
-    drawn.prepare(doc, (app.document_generation, editor.content_revision()));
-    if drawn.busy() {
-        return;
-    }
-    if doc.style.faces != FaceStyle::Wireframe && (!faces.is_empty() || !instances.is_empty()) {
-        let colour = [SELECTED[0], SELECTED[1], SELECTED[2], HIGHLIGHT_OPACITY];
-        for placed in &edges.placed {
-            let occ = &placed.occurrence;
-            let whole = occ.top.is_some_and(|i| instances.contains(&i));
-            if (!whole && !placed.active) || doc.def(occ.definition).is_none() {
-                continue;
-            }
-            let drawn = drawn.get(doc, occ.definition);
-            let mut add = |face: &DrawnFace| {
-                if drawn.mesh.face(face.id).is_none_or(|f| f.hidden && !doc.style.show_hidden_geometry) {
-                    return;
-                }
-                for triangle in &face.triangles {
-                    let points = triangle.map(|v| occ.transform.transform_point3(drawn.mesh.pos(v)));
-                    let polygon = rysmo_model::sections::clip_triangle(points, &placed.cuts);
-                    for i in 1..polygon.len().saturating_sub(1) {
-                        for point in [polygon[0].0, polygon[i].0, polygon[i + 1].0] {
-                            buffer.push(point, DVec3::Z, colour, [0., 0.]);
-                        }
-                    }
-                }
-            };
-            if whole {
-                drawn.chunks.iter().flat_map(|chunk| &chunk.faces).for_each(&mut add);
-            } else {
-                for id in &faces {
-                    if let Some(face) = drawn.face(*id) {
-                        add(face);
-                    }
-                }
-            }
-        }
-    }
-    if !buffer.idx.is_empty() {
-        let material = materials.add(StandardMaterial {
-            base_color: Color::WHITE,
-            unlit: true,
-            alpha_mode: AlphaMode::Blend,
-            cull_mode: None,
-            depth_bias: 1.0,
-            ..default()
-        });
-        let to_y_up = Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2));
-        let entity = commands.spawn((Mesh3d(meshes.add(buffer.into_mesh())), MeshMaterial3d(material), to_y_up)).id();
-        state.entity = Some(entity);
-    }
-    state.key = Some(key);
 }
 
 #[cfg(test)]
