@@ -11,14 +11,19 @@ then offers Save SKP. Choose **2017 compatibility** or the **2026 container**.
 Export never marks the Rysmo document saved or changes its native save path.
 Changing the model, camera or chosen version invalidates a prepared export. Desktop import
 and export preparation run on background threads. Browser parsing/encoding uses
-the same portable Rust implementation on the main thread.
+the same portable Rust implementation in a dedicated WASM worker. Closing the
+dialog terminates its worker; document transfer and applying results still happen
+on the main thread. Build the web editor with `scripts/build-web.sh`, which includes
+the worker assets.
 
 The implementation uses pinned Skpwright 0.6.1, not an external converter or an
 installed vendor application. Its documented coverage includes older stream
 containers and modern ZIP-based containers. Local interoperability fixtures cover
 2017 and 2026, with cross-container read/write tests. Other versions are upstream
 coverage, not independently verified application compatibility. Files authored by
-Rysmo still need testing in the target applications on Windows/macOS.
+Rysmo have not been verified in SketchUp on Windows/macOS or the web.
+The local validation was closed with this explicit limitation; internal round trips
+do not establish acceptance by SketchUp.
 
 | Data | Import | Export |
 |---|---|---|

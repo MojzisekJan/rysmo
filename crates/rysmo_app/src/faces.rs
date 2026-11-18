@@ -1129,7 +1129,7 @@ fn rebuild_highlight(
     edges: Res<EdgeCache>,
     mut drawn: ResMut<DrawnCache>,
 ) {
-    let preview = app.tools.preview(&app.editor);
+    let preview = app.tools.highlights(&app.editor);
     let key = (app.document_generation, app.editor.revision(), preview.faces, preview.instances);
     if state.key.as_ref() == Some(&key) {
         return;

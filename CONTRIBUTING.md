@@ -36,7 +36,7 @@ scripts/check-rust.sh --offline
 ```
 
 The script checks formatting, runs workspace Clippy with `-D warnings`, executes
-all eight core library suites, MCP stdio/TCP integration tests and application
+all eight core library suites, the browser conversion worker, MCP stdio/TCP integration tests and application
 unit tests, and checks the
 browser app with `web-release`. The application suite uses the `portable` profile
 to limit debug symbols and disk use. It links renderer dependencies but does not

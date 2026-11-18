@@ -10,9 +10,8 @@ You need the `wasm32-unknown-unknown` target and [trunk](https://trunkrs.dev) 0.
 ```sh
 rustup target add wasm32-unknown-unknown
 cargo install trunk
-cd crates/rysmo_app
-trunk build --release true      # into crates/rysmo_app/dist (about 11 minutes the first time)
-trunk serve --release true      # or build and serve on http://127.0.0.1:8080
+scripts/build-web.sh           # renderer, conversion worker, and deployable package
+python3 scripts/serve-web.py --port 8080
 ```
 
 Trunk fetches the `wasm-bindgen` command matching the `wasm-bindgen` crate in
@@ -31,8 +30,26 @@ build is the same `rysmo_app` crate with `target_arch = "wasm32"`:
 
 Add `?demo` to the address to open the demo model.
 
-For a ZIP with source and build metadata, use `scripts/build-web.sh` from the
-repository root.
+Use `scripts/build-web.sh` from the repository root for both local testing and
+publication. Running Trunk alone builds the viewport but omits the conversion
+worker and its versioned entry point. The script also needs the `wasm-bindgen`
+CLI matching Cargo.lock; it reuses the copy downloaded by Trunk.
+
+Model import and SKP export execute in a separate `rysmo_worker` WASM instance.
+No cross-origin isolation headers or shared memory are required. Closing the
+operation's dialog terminates its worker; late results cannot replace a newer
+request. Each deployed worker directory is fingerprinted with its JavaScript and
+WASM dependencies. Source files and results are transferred locally in the browser;
+no model is sent to a server. Snapshot serialization and result deserialization
+still take place on the editor thread; the worker does not eliminate their cost.
+
+Add `?diagnostics` for the local performance overlay. **Reset profile** clears the
+bounded timing samples, milestones and browser long-task observations. **Download
+profile** saves those observations as JSON for inspection without developer tools.
+The report includes the editor's visible status and allocated WASM capacity, not
+the model or WASM memory contents. A browser without the Long Tasks API reports
+that limitation rather than claiming zero long tasks. Timings remain local and
+are neither persisted automatically nor sent to a service.
 
 ## Loading screen
 

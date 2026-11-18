@@ -13,9 +13,9 @@ export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}"
 cargo fmt --all --check
 cargo clippy --workspace --all-targets "${cargo_options[@]}" -- -D warnings
 cargo test --lib -p rysmo_math -p rysmo_mesh -p rysmo_model -p rysmo_infer \
-    -p rysmo_tools -p rysmo_io -p rysmo_mcp -p rysmo_library "${cargo_options[@]}"
+    -p rysmo_tools -p rysmo_io -p rysmo_mcp -p rysmo_library -p rysmo_worker "${cargo_options[@]}"
 # Exercise the real stdio binary and token-protected TCP bridge as well.
 cargo test -p rysmo_mcp --test stdio --test live "${cargo_options[@]}"
 # The portable profile avoids multi-gigabyte debug symbols in the linked app suite.
 cargo test --lib -p rysmo_app --profile portable "${cargo_options[@]}"
-cargo check -p rysmo_app --target wasm32-unknown-unknown --profile web-release "${cargo_options[@]}"
+cargo check -p rysmo_app -p rysmo_worker --target wasm32-unknown-unknown --profile web-release "${cargo_options[@]}"

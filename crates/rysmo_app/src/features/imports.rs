@@ -13,6 +13,8 @@ pub struct Draft {
     needs_update: bool,
     #[cfg(not(target_arch = "wasm32"))]
     pending: Option<Pending>,
+    #[cfg(target_arch = "wasm32")]
+    pending: Option<(Options, crate::web_worker::Job)>,
 }
 #[cfg(not(target_arch = "wasm32"))]
 struct Pending {
@@ -30,22 +32,15 @@ impl Draft {
             error: None,
             preserve_origin: false,
             needs_update: false,
-            #[cfg(not(target_arch = "wasm32"))]
             pending: None,
         };
         result.parse();
         result
     }
     pub fn busy(&self) -> bool {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            self.pending.is_some()
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            false
-        }
+        self.pending.is_some()
     }
+
     fn accept(&mut self, result: Result<Imported, rysmo_io::import::ImportError>) {
         match result {
             Ok(imported) => {
@@ -82,12 +77,27 @@ impl Draft {
                 Err(error) => self.error = Some(format!("Cannot start import: {error}")),
             }
         }
-        // TODO: Move browser parsing to a worker or a cooperative parser so large
-        // model imports do not block input. Keep stale-option result guards.
         #[cfg(target_arch = "wasm32")]
-        self.accept(rysmo_io::import::read(&self.name, &self.bytes, self.options));
+        {
+            self.pending = Some((self.options, crate::web_worker::Job::import(&self.name, &self.bytes, self.options)));
+        }
     }
+
     fn poll(&mut self) {
+        #[cfg(target_arch = "wasm32")]
+        if let Some((options, job)) = &self.pending
+            && let Some(result) = job.poll_import()
+        {
+            let options = *options;
+            self.pending = None;
+            if self.options != options {
+                self.parse();
+            } else {
+                self.needs_update = false;
+                self.accept(result.map_err(rysmo_io::import::ImportError));
+            }
+        }
+
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(pending) = &self.pending {
             let options = pending.options;

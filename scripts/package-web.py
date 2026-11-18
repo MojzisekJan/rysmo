@@ -6,6 +6,7 @@ import hashlib
 import json
 import io
 import re
+import shutil
 import subprocess
 import tarfile
 import zipfile
@@ -59,6 +60,36 @@ def fingerprint_local_modules(dist):
     index.write_text(html)
 
 
+def fingerprint_worker(dist):
+    """Version the complete worker module graph, including its WASM dependency."""
+    worker = dist / "worker"
+    if worker.is_dir():
+        files = sorted(p for p in worker.rglob("*") if p.is_file())
+        required = {"worker.mjs", "rysmo_worker.js", "rysmo_worker_bg.wasm"}
+        if not required.issubset({p.name for p in files}):
+            raise SystemExit("Incomplete conversion worker build")
+        digest = hashlib.sha256()
+        for path in files:
+            digest.update(str(path.relative_to(worker)).encode())
+            digest.update(path.read_bytes())
+        target = dist / ("worker-" + digest.hexdigest()[:16])
+        if target.exists():
+            shutil.rmtree(target)
+        worker.rename(target)
+    else:
+        targets = list(dist.glob("worker-*"))
+        if len(targets) != 1:
+            raise SystemExit("Missing conversion worker; run scripts/build-web.sh")
+        target = targets[0]
+    for old in dist.glob("worker-*"):
+        if old != target and old.is_dir() and re.fullmatch(r"worker-[0-9a-f]{16}", old.name):
+            shutil.rmtree(old)
+    index = dist / "index.html"
+    html = re.sub(r'<meta name="rysmo-worker"[^>]*>\s*', '', index.read_text())
+    html = html.replace('</head>', f'<meta name="rysmo-worker" content="{target.name}/worker.mjs">\n</head>')
+    index.write_text(html)
+
+
 def include_source_file(name):
     """Keep build/test sources and assets; omit reference PDFs and QA media."""
     path = Path(name)
@@ -93,6 +124,7 @@ def main():
     index = DIST / "index.html"
     if not index.is_file():
         raise SystemExit("Missing dist/index.html; run scripts/build-web.sh first.")
+    fingerprint_worker(DIST)
     fingerprint_local_modules(DIST)
     html = index.read_text()
     for url in re.findall(r'(?:src|href)=["\']([^"\']+)', html):

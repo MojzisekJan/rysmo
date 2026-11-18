@@ -1023,8 +1023,9 @@ fn overlay(mut contexts: EguiContexts, mut app: ResMut<App3d>) -> Result {
     crate::features::component_data::markers(ctx, &app);
     let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Background, egui::Id::unique("overlay")));
     let annotations = app.editor.doc().annotation_occurrences(app.editor.context());
-    app.dimension_text_sizes = draw_dimensions(&painter, &app, &annotations);
-    app.text_sizes = draw_texts(&painter, &app, &annotations);
+    let mut preview = app.tools.preview(&app.editor);
+    app.dimension_text_sizes = draw_dimensions(&painter, &app, &annotations, &preview);
+    app.text_sizes = draw_texts(&painter, &app, &annotations, &preview);
     crate::text3d_tool::draw(&painter, &app);
     crate::component_panel::draw(&painter, &app);
     crate::object_clipboard::draw(&painter, &app);
@@ -1042,7 +1043,6 @@ fn overlay(mut contexts: EguiContexts, mut app: ResMut<App3d>) -> Result {
     crate::drape_tool::draw(&painter, &app);
     crate::stamp_tool::draw(&painter, &app);
     crate::detail_tool::draw(&painter, &app);
-    let mut preview = app.tools.preview(&app.editor);
     if let Some(draft) = &app.terrain
         && let Some(inference) = &mut preview.inference
     {
@@ -1189,6 +1189,7 @@ fn draw_dimensions(
     painter: &egui::Painter,
     app: &App3d,
     occurrences: &[rysmo_model::Occurrence],
+    preview: &rysmo_tools::Preview,
 ) -> std::collections::BTreeMap<rysmo_model::dimensions::DimensionTextKey, DVec2> {
     let mut sizes = std::collections::BTreeMap::new();
     let document = app.editor.doc();
@@ -1226,7 +1227,6 @@ fn draw_dimensions(
             }
         }
     }
-    let preview = app.tools.preview(&app.editor);
     let avoid = preview
         .markers
         .iter()
@@ -1235,10 +1235,10 @@ fn draw_dimensions(
     let context_transform = app.editor.context_transform();
     let previews = preview
         .dimension
-        .into_iter()
-        .chain(preview.moving_dimensions)
+        .iter()
+        .chain(&preview.moving_dimensions)
         .map(|dimension| (dimension, rysmo_math::DMat4::IDENTITY))
-        .chain(preview.instanced_dimensions);
+        .chain(preview.instanced_dimensions.iter().map(|(dimension, transform)| (dimension, *transform)));
     for (dimension, local_transform) in previews {
         let transform = context_transform * local_transform;
         if let Some(layout) = dimension.layout(
@@ -1252,7 +1252,7 @@ fn draw_dimensions(
             let _ = paint_dimension(
                 painter,
                 &view,
-                &dimension,
+                dimension,
                 &layout,
                 document,
                 egui::Color32::from_rgb(180, 0, 180),
@@ -1267,11 +1267,11 @@ fn draw_texts(
     painter: &egui::Painter,
     app: &App3d,
     occurrences: &[rysmo_model::Occurrence],
+    preview: &rysmo_tools::Preview,
 ) -> std::collections::BTreeMap<rysmo_model::text::TextKey, DVec2> {
     let mut sizes = std::collections::BTreeMap::new();
     let doc = app.editor.doc();
     let view = app.view();
-    let preview = app.tools.preview(&app.editor);
     for occurrence in occurrences {
         let Some(definition) = doc.def(occurrence.definition) else { continue };
         for (id, text) in &definition.texts {
@@ -1300,16 +1300,16 @@ fn draw_texts(
     {
         let _ = paint_text(painter, &draft.text, &layout, egui::Color32::from_rgb(180, 0, 180));
     }
-    for text in preview.moving_texts {
+    for text in &preview.moving_texts {
         if let Some(layout) = text.layout(doc, app.editor.active_definition(), app.editor.context_transform(), &view) {
-            let _ = paint_text(painter, &text, &layout, egui::Color32::from_rgb(180, 0, 180));
+            let _ = paint_text(painter, text, &layout, egui::Color32::from_rgb(180, 0, 180));
         }
     }
-    for (text, transform) in preview.instanced_texts {
+    for (text, transform) in &preview.instanced_texts {
         if let Some(layout) =
-            text.layout(doc, app.editor.active_definition(), app.editor.context_transform() * transform, &view)
+            text.layout(doc, app.editor.active_definition(), app.editor.context_transform() * *transform, &view)
         {
-            let _ = paint_text(painter, &text, &layout, egui::Color32::from_rgb(180, 0, 180));
+            let _ = paint_text(painter, text, &layout, egui::Color32::from_rgb(180, 0, 180));
         }
     }
     sizes
@@ -1447,8 +1447,12 @@ mod dimension_font_tests {
                 ..Default::default()
             },
             |ui| {
-                app.dimension_text_sizes =
-                    draw_dimensions(ui.painter(), &app, &app.editor.doc().annotation_occurrences(app.editor.context()));
+                app.dimension_text_sizes = draw_dimensions(
+                    ui.painter(),
+                    &app,
+                    &app.editor.doc().annotation_occurrences(app.editor.context()),
+                    &app.tools.preview(&app.editor),
+                );
             },
         );
         output.textures_delta.clear();
@@ -1472,8 +1476,13 @@ mod dimension_font_tests {
         assert!(app.dimension_box(DVec2::ZERO, app.viewport).is_empty());
         let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
             assert!(
-                draw_dimensions(ui.painter(), &app, &app.editor.doc().annotation_occurrences(app.editor.context()))
-                    .is_empty()
+                draw_dimensions(
+                    ui.painter(),
+                    &app,
+                    &app.editor.doc().annotation_occurrences(app.editor.context()),
+                    &app.tools.preview(&app.editor)
+                )
+                .is_empty()
             );
         });
         output.textures_delta.clear();
@@ -1559,8 +1568,12 @@ mod text_paint_tests {
                     ..Default::default()
                 },
                 |ui| {
-                    app.text_sizes =
-                        draw_texts(ui.painter(), &app, &app.editor.doc().annotation_occurrences(app.editor.context()));
+                    app.text_sizes = draw_texts(
+                        ui.painter(),
+                        &app,
+                        &app.editor.doc().annotation_occurrences(app.editor.context()),
+                        &app.tools.preview(&app.editor),
+                    );
                 },
             );
             output.textures_delta.clear();

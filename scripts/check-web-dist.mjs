@@ -17,9 +17,9 @@ for (const [name, expected] of Object.entries(info.assets)) {
 }
 const html = await readFile(path.join(root, "index.html"), "utf8");
 const entry = Object.keys(info.assets).filter(name => /^rysmo-[a-f0-9]+\.js$/.test(name));
-const wasmNames = Object.keys(info.assets).filter(name => name.endsWith(".wasm"));
+const wasmNames = Object.keys(info.assets).filter(name => name.endsWith(".wasm") && !name.includes("/"));
 assert.equal(entry.length, 1, "Expected one generated JavaScript entry point");
-assert.equal(wasmNames.length, 1, "Expected one WASM module");
+assert.equal(wasmNames.length, 1, "Expected one main WASM module");
 assert.ok(html.includes(entry[0]), "HTML does not reference the generated JavaScript");
 assert.ok(html.includes(`content="${info.assets[wasmNames[0]].bytes}"`), "Loader size does not match WASM");
 const modules = new Map();
@@ -51,11 +51,26 @@ for (const dependency of WebAssembly.Module.imports(binary)) {
   assert.ok(Reflect.ownKeys(linked.namespace).includes(dependency.name), `Missing WASM import: ${dependency.module}:${dependency.name}`);
   directImports++;
 }
+const workerPath = html.match(/<meta name="rysmo-worker" content="([^"]+)">/)?.[1];
+assert.ok(workerPath, "HTML does not reference the conversion worker");
+let workerWasmBytes = 0;
+if (workerPath) {
+  assert.ok(info.assets[workerPath], "Worker entry is absent from the package manifest");
+  const workerEntry = await moduleAt(pathToFileURL(path.join(root, workerPath)));
+  await workerEntry.link((specifier, referring) => moduleAt(new URL(specifier, referring.identifier)));
+  const workerWasm = path.posix.join(path.posix.dirname(workerPath), "rysmo_worker_bg.wasm");
+  assert.ok(info.assets[workerWasm], "Worker WASM is absent from the package manifest");
+  const workerBinary = await WebAssembly.compile(await readFile(path.join(root, workerWasm)));
+  const exports = WebAssembly.Module.exports(workerBinary).map(item => item.name);
+  assert.ok(exports.includes("import_model") && exports.includes("export_skp"), "Worker conversion exports are missing");
+  workerWasmBytes = info.assets[workerWasm].bytes;
+}
 console.log(JSON.stringify({
   revision: info.revision,
   tracked_changes: info.tracked_changes,
   assets: Object.keys(info.assets).length,
   linked_js_modules: modules.size,
+  worker_wasm_bytes: workerWasmBytes,
   wasm_bytes: info.assets[wasmNames[0]].bytes,
   wasm_imports: WebAssembly.Module.imports(binary).length,
   direct_wasm_js_imports: directImports,

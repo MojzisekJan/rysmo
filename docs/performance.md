@@ -495,20 +495,75 @@ The complete phase summaries, environment, fixture/build checksums and process
 memory observations are in the
 [verification record](verification/editor-background-performance-2026-11-18.json).
 
-## Remaining measurement targets
+## Browser conversion and large previews, 2026-11-18 follow-up
 
-The background/cooperative renderer, exact annotation dependency refresh and
-incremental structural validation are implemented above. Further profiling should
-focus first on whole-model selection/highlight and move-preview work, cold picking,
-and the remaining indivisible work: large individual polygons and openings,
-edge-cache preparation, image decoding and single render pieces. The 6 ms browser
-budget is checked between operations and is not a hard frame deadline.
+Model import and SKP export now execute in an isolated, cancellable WASM worker.
+Closing the dialog terminates the worker; option/version changes and document
+revision checks prevent stale results from being applied. The package fingerprints
+all worker assets together. Conversion no longer occupies the editor thread, but
+copying input bytes, serializing the document for transfer and applying the returned
+model still do. A worker is not a guarantee of a bounded frame time or memory use.
 
-Linked visible annotations and dense glued components still deserve larger
-interactive fixtures. Changed annotation owners also scan their annotation maps to
-identify modified records, although only affected references are resolved.
+The Move preview previously traversed the entire occurrence hierarchy once for
+**each selected instance**, and rebuilt that same preview for dimensions, text,
+overlays and highlighting. It now traverses the hierarchy once for the selected
+instance set, shares one preview across overlay consumers, and queries face/instance
+highlights without constructing preview lines or annotations. A regression covers
+nested transforms, active editing contexts and exclusion of unselected siblings.
 
-The parser still materializes owned input records before constructing the model.
-A streaming loader must preserve arbitrary section order, backwards compatibility,
-diagnostics and input budgets. The native memory probes establish process-level
-measurements, but do not attribute every parser allocation or GPU resource.
+Actual cursor checks on a public theater project selected 863 elements, with
+1,172 visible occurrences and 24,934 visible faces. Before the hierarchy fix,
+active editor updates were about 2.2 FPS; after that first fix they were about
+20 FPS. Median browser long tasks fell from 462 to 50 ms. Selection alone produced
+no long tasks in either run. These intermediate measurements precede the additional
+shared-preview/highlight-query optimization. They are not a controlled universal
+speedup: the old drag timed out and was cancelled, while the new drag completed
+and was undone, and the observed intervals have different durations. Idle browser
+RAF frequency is not presented as active editor performance.
+
+Native texture loading now borrows unescaped base64 directly from the input JSON.
+A 4 MiB binary payload consequently avoids a 5,592,408-byte temporary encoded string.
+Escaped JSON falls back to owned decoding; a regression verifies both paths through
+the full loader. This is an allocation reduction, not a new streaming parser or a
+claim about peak process RSS. Geometry records, validation, backwards compatibility
+and arbitrary record ordering remain unchanged.
+
+The cursor-check summaries and limitations are recorded in
+[the browser follow-up](verification/editor-browser-followup-2026-11-18.json).
+The conversion checks and successful native Edge Save As are recorded separately
+in [the interoperability verification](verification/skp-interoperability-2026-11-18.json).
+
+The final build, including shared preview consumers, showed 34.3 active editor
+updates per second during the same theater drag, with one 53 ms long task in the
+recording. The drag completed, and Undo restored the model with no undo entries
+and Redo available. This remains a short, single-machine cursor check rather than
+a sustained-rate guarantee.
+
+A further candidate-only stress check imported a 72,000-face / 144,000-edge root
+mesh through the worker into a new document. Rendering completed, Select All
+highlighted 216,000 elements, and an individual selection worked afterwards.
+There were no console errors or crashes. The first pointer handler took 123.2 ms;
+subsequent measured handlers took at most 5.8 ms. Select All produced one 93 ms long
+task. Cooperative surface batches peaked at 6.2 ms in this run. The earlier Linux
+770 ms cold-pick result used a different host and is not a paired comparison.
+
+### Established limits
+
+The changes above remove repeated hierarchy traversals, redundant previews and a
+texture-payload copy; they do not make all model operations incremental. Cold
+spatial-index construction and the large selection highlight remain synchronous,
+as demonstrated by the stress check. Individual polygons, glued openings,
+edge-cache preparation, image decoding, main-thread worker transfer and individual
+render pieces can still exceed a frame budget. The six-millisecond cooperative
+budget is checked between operations, not a hard deadline. Linked visible
+annotations and dense glued geometry are outside this cursor check's coverage.
+Geometry input records remain owned; this change does not replace the loader with
+a streaming parser. These are explicit performance/coverage limits, not claims of
+completed worst-case latency or peak-memory verification.
+
+Final verification passed 1,039 Rust library tests (six manual benchmarks ignored),
+33 JavaScript tests, five packaging tests, the local HTTP-server test, formatting,
+strict workspace all-target Clippy and WASM app/worker Clippy. The web release and
+its static module/asset validation passed. Four MCP integration tests passed earlier
+in this change. Independent SketchUp acceptance remains explicitly unverified at
+the user's request; internal round trips are not a substitute.

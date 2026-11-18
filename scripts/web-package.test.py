@@ -17,6 +17,28 @@ package_web = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(package_web)
 
 class ModuleCacheTest(unittest.TestCase):
+    def test_worker_graph_is_fingerprinted_and_missing_worker_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            dist = Path(directory)
+            index = dist / "index.html"
+            index.write_text("<head></head>")
+            with self.assertRaises(SystemExit):
+                package_web.fingerprint_worker(dist)
+            previous = None
+            for version in [b"first", b"second"]:
+                worker = dist / "worker"
+                worker.mkdir()
+                (worker / "worker.mjs").write_text("import './rysmo_worker.js';")
+                (worker / "rysmo_worker.js").write_text("// glue")
+                (worker / "rysmo_worker_bg.wasm").write_bytes(version)
+                package_web.fingerprint_worker(dist)
+                html = index.read_text()
+                self.assertNotEqual(previous, html)
+                previous = html
+                self.assertEqual(len(list(dist.glob("worker-*"))), 1)
+                package_web.fingerprint_worker(dist)
+                self.assertEqual(index.read_text(), html)
+
     def test_unpacked_source_can_be_packaged_without_git_and_detects_changes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

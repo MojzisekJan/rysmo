@@ -1,0 +1,199 @@
+{
+  "date": "2026-11-18",
+  "environment": "macOS, ChatGPT in-app Chromium browser, 1280 x 720 viewport; other desktop activity uncontrolled",
+  "model": {
+    "source": "theater-2026.skp; provenance in skp-interoperability-2026-11-18.json",
+    "visible_occurrences": 1172,
+    "visible_faces": 24934,
+    "root_instances": 962,
+    "selected_elements": 863
+  },
+  "method": "Actual cursor Select All and Move drag (535,239) to (580,265), opt-in diagnostic UI Reset profile / Download profile. Selection and Move measured separately. Baseline drag timed out at 30 seconds and was later cancelled with Escape; candidate drag completed and was undone. Different durations prevent interpreting total long-task counts as a controlled speedup.",
+  "runs": {
+    "selection-baseline": {
+      "profile_sha256": "8ff2576c6b30c9b5583f9e5e09291a956be429bfd1f902fa65cfde8fcc21ddc9",
+      "profile_bytes": 16787,
+      "elapsed_ms": 4087.899999999441,
+      "long_tasks_count": 0,
+      "long_tasks_median_ms": null,
+      "long_tasks_max_ms": 0,
+      "dropped_long_tasks": 0,
+      "dropped_samples": 0,
+      "final_editor": "Editor updates: 1.0 FPS\nEditor frame: 266 / revision 2\nRoot instances: 962 / mesh entities: 52\nCamera synced: true / 3D scale: 100%\nModel: 15 faces / 43 edges\nTool: Select / welcome: false\nHistory: undo 0 / redo false / dirty true",
+      "wasm_capacity_bytes": 337969152
+    },
+    "move-baseline": {
+      "profile_sha256": "9bb32a2bf11253f031897b11b959b621d0ca3b58e0c5b7f9ab89841afe20c45f",
+      "profile_bytes": 199795,
+      "elapsed_ms": 60728.40000000037,
+      "long_tasks_count": 123,
+      "long_tasks_median_ms": 462,
+      "long_tasks_max_ms": 539,
+      "dropped_long_tasks": 0,
+      "dropped_samples": 0,
+      "final_editor": "Editor updates: 60.0 FPS\nEditor frame: 572 / revision 2\nRoot instances: 962 / mesh entities: 52\nCamera synced: true / 3D scale: 100%\nModel: 15 faces / 43 edges\nTool: Move / welcome: false\nHistory: undo 0 / redo false / dirty true",
+      "wasm_capacity_bytes": 337969152,
+      "long_task_window": {
+        "elapsed_ms": 57208.89999999944,
+        "editor_updates": 123,
+        "editor_updates_per_second": 2.150015120025052,
+        "median_update_interval_ms": 462.6999999997206,
+        "p95_update_interval_ms": 476.29999999981374
+      }
+    },
+    "selection-fixed": {
+      "profile_sha256": "4287b993541cc05e883b818adeacf9c0eb4ad9f1940fc60804ba4ec9c1f7bf9a",
+      "profile_bytes": 18491,
+      "elapsed_ms": 5108.799999999814,
+      "long_tasks_count": 0,
+      "long_tasks_median_ms": null,
+      "long_tasks_max_ms": 0,
+      "dropped_long_tasks": 0,
+      "dropped_samples": 0,
+      "final_editor": "Editor updates: 1.2 FPS\nEditor frame: 227 / revision 2\nRoot instances: 962 / mesh entities: 52\nCamera synced: true / 3D scale: 100%\nModel: 15 faces / 43 edges\nTool: Select / welcome: false\nHistory: undo 0 / redo false / dirty true",
+      "wasm_capacity_bytes": 322961408
+    },
+    "move-fixed": {
+      "profile_sha256": "c2c68cff89b84fb75027da4598beca2149bfbf5e133023241c2db888e7318c9d",
+      "profile_bytes": 73081,
+      "elapsed_ms": 12232.299999999814,
+      "long_tasks_count": 59,
+      "long_tasks_median_ms": 50,
+      "long_tasks_max_ms": 63,
+      "dropped_long_tasks": 0,
+      "dropped_samples": 0,
+      "final_editor": "Editor updates: 1.0 FPS\nEditor frame: 563 / revision 7\nRoot instances: 962 / mesh entities: 52\nCamera synced: true / 3D scale: 100%\nModel: 15 faces / 43 edges\nTool: Move / welcome: false\nHistory: undo 1 / redo false / dirty true",
+      "wasm_capacity_bytes": 322961408,
+      "long_task_window": {
+        "elapsed_ms": 4958.4000000003725,
+        "editor_updates": 100,
+        "editor_updates_per_second": 20.167796063244694,
+        "median_update_interval_ms": 50.200000000186265,
+        "p95_update_interval_ms": 53.0
+      }
+    },
+    "selection-final": {
+      "profile_sha256": "b42ef1d85fe03ef728a3a49883d663fcc1deeadd0647ad5fcd8688d5429fea93",
+      "elapsed_ms": 4579.700000000186,
+      "long_tasks_count": 0,
+      "long_tasks_median_ms": null,
+      "long_tasks_max_ms": 0,
+      "dropped_samples": 0,
+      "dropped_long_tasks": 0,
+      "final_editor": "Editor updates: 1.0 FPS\nEditor frame: 204 / revision 2\nRoot instances: 962 / mesh entities: 52\nCamera synced: true / 3D scale: 100%\nModel: 15 faces / 43 edges\nTool: Select / welcome: false\nHistory: undo 0 / redo false / dirty true",
+      "wasm_capacity_bytes": 321257472
+    },
+    "move-final": {
+      "profile_sha256": "922225cccb4ee268fbbcfa6716069c35731e565e8bed7d82a5e4e9c55fe6f59e",
+      "elapsed_ms": 9342.599999999627,
+      "long_tasks_count": 1,
+      "long_tasks_median_ms": 53,
+      "long_tasks_max_ms": 53,
+      "dropped_samples": 0,
+      "dropped_long_tasks": 0,
+      "final_editor": "Editor updates: 1.0 FPS\nEditor frame: 345 / revision 4\nRoot instances: 962 / mesh entities: 52\nCamera synced: true / 3D scale: 100%\nModel: 15 faces / 43 edges\nTool: Move / welcome: false\nHistory: undo 1 / redo false / dirty true",
+      "wasm_capacity_bytes": 321257472
+    }
+  },
+  "stages": {
+    "baseline": "WASM worker already enabled, before hierarchy-preview fix",
+    "fixed": "One hierarchy traversal for all selected instances; before shared overlay preview and lightweight highlight lookup",
+    "final": "Shared overlay preview, lightweight highlight lookup and borrowed native base64. Cursor drag completed in about 3 seconds; visible active editor report 34.3 FPS. Undo observed with undo 0 and redo true."
+  },
+  "final_build": {
+    "rysmo-727c2b212dd6f67b_bg.wasm": "1cad60dd9c654ead29a4ec16fbd567e0307eb5de6b619087cbec0e29cf1e4411",
+    "worker-d8181ccb06127f45/rysmo_worker_bg.wasm": "04e637aa3c0a7234bb3dba0224ae8b3dd64c75cd34aa93b331064021c46ba47c"
+  },
+  "dense_mesh": {
+    "fixture_bytes": 15071084,
+    "fixture_sha256": "452264d84d46440054a24fe200b36d810dc18f6e44c4209c9254e719579dffad",
+    "recipe": "scripts/create-persistence-benchmark.py --raw; enlarge each cube by 7.5 around its 2 m grid origin, flat magenta material, edges off, camera target [100,120,0.75], distance 450, yaw -0.9, pitch 0.7, fov_y 0.7. Import as new document.",
+    "faces": 72000,
+    "edges": 144000,
+    "all_selected": 216000,
+    "result": "Import, rendering, Select All, deselection and individual element selection completed. No browser console errors.",
+    "limitations": "Startup recording also contains earlier theater actions; generation 45 identifies the dense model. First pointer handler includes cold scene preparation. This is a candidate-only run on a different machine from the older Linux results, not a paired cold-picking speedup.",
+    "raw-startup-final": {
+      "sha256": "c787d3fdbd69049a168aff8a4773d6c1ed542cf0fffdc4465bead4df44276cb0",
+      "long_tasks_ms": [
+        53,
+        50,
+        139,
+        245,
+        58,
+        50,
+        56,
+        59,
+        60,
+        264,
+        315,
+        132,
+        61
+      ],
+      "dropped_samples": 0,
+      "dropped_long_tasks": 0,
+      "final_editor": "Editor updates: 1.0 FPS\nEditor frame: 745 / revision 1\nRoot instances: 0 / mesh entities: 295\nCamera synced: true / 3D scale: 100%\nModel: 72000 faces / 144000 edges\nTool: Select / welcome: false\nHistory: undo 0 / redo false / dirty true",
+      "pointer_event": {
+        "samples": 1,
+        "max_ms": 123.2,
+        "median_ms": 123.2
+      },
+      "surface_batch": {
+        "samples": 22,
+        "max_ms": 6.2,
+        "median_ms": 6.1000000000000005
+      }
+    },
+    "raw-selection-final": {
+      "sha256": "cc99f214ec94db08f2fec9a679be19cad6e4dc2d7092ca87ec9cf5133883a8df",
+      "long_tasks_ms": [
+        93
+      ],
+      "dropped_samples": 0,
+      "dropped_long_tasks": 0,
+      "final_editor": "Editor updates: 1.0 FPS\nEditor frame: 758 / revision 2\nRoot instances: 0 / mesh entities: 296\nCamera synced: true / 3D scale: 100%\nModel: 72000 faces / 144000 edges\nTool: Select / welcome: false\nHistory: undo 0 / redo false / dirty true",
+      "pointer_event": {
+        "samples": 0,
+        "max_ms": 0,
+        "median_ms": null
+      },
+      "surface_batch": {
+        "samples": 0,
+        "max_ms": 0,
+        "median_ms": null
+      }
+    },
+    "raw-pick-final": {
+      "sha256": "4230a5f77ad2c9089d13f9f034afaf0262538720e1ab0b087de57ad6dae9167e",
+      "long_tasks_ms": [],
+      "dropped_samples": 0,
+      "dropped_long_tasks": 0,
+      "final_editor": "Editor updates: 1.0 FPS\nEditor frame: 800 / revision 3\nRoot instances: 0 / mesh entities: 295\nCamera synced: true / 3D scale: 100%\nModel: 72000 faces / 144000 edges\nTool: Select / welcome: false\nHistory: undo 0 / redo false / dirty true",
+      "pointer_event": {
+        "samples": 6,
+        "max_ms": 5.8,
+        "median_ms": 2.7
+      },
+      "surface_batch": {
+        "samples": 0,
+        "max_ms": 0,
+        "median_ms": null
+      }
+    }
+  },
+  "validation": {
+    "rust_workspace_library_tests": {
+      "passed": 1039,
+      "failed": 0,
+      "ignored_manual_benchmarks": 6
+    },
+    "javascript_tests_passed": 33,
+    "python_package_tests_passed": 5,
+    "python_server_tests_passed": 1,
+    "native_workspace_all_target_clippy": "passed with -D warnings",
+    "wasm_app_and_worker_clippy": "passed with -D warnings",
+    "formatting": "passed",
+    "web_static_package_check": "passed",
+    "mcp_integration_tests_passed_earlier_in_same_change": 4
+  }
+}

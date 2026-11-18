@@ -229,6 +229,12 @@ pub struct PreviewLine {
 
 /// What the viewport should draw on top of the model for the active tool, in the
 /// coordinates of the context being edited.
+#[derive(Debug, Default, PartialEq)]
+pub struct Highlights {
+    pub faces: Vec<FaceId>,
+    pub instances: Vec<InstanceId>,
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Preview {
     pub lines: Vec<PreviewLine>,
@@ -1032,8 +1038,14 @@ impl ToolBox {
 
     /// What to draw for the tool.
     pub fn preview(&self, editor: &Editor) -> Preview {
-        let mut pv =
-            Preview { inference: self.inference, dimension: self.dimension_draft.clone(), ..Default::default() };
+        let highlights = self.highlights(editor);
+        let mut pv = Preview {
+            inference: self.inference,
+            dimension: self.dimension_draft.clone(),
+            faces: highlights.faces,
+            instances: highlights.instances,
+            ..Default::default()
+        };
         self.preview_state(editor, &mut pv);
         self.centre_preview(editor, &mut pv);
         self.three_preview(editor, &mut pv);
@@ -2070,6 +2082,7 @@ impl ToolBox {
 pub(crate) fn element_lines(editor: &Editor, elements: &[Element]) -> Vec<(DVec3, DVec3)> {
     let mesh = editor.mesh();
     let mut edges: BTreeSet<EdgeId> = BTreeSet::new();
+    let mut instances = BTreeSet::new();
     let mut out = Vec::new();
     for e in elements {
         match e {
@@ -2093,25 +2106,29 @@ pub(crate) fn element_lines(editor: &Editor, elements: &[Element]) -> Vec<(DVec3
                     && let Some((lo, hi)) = editor.doc().definition_bounds(Some(inst.definition))
                 {
                     out.extend(box_lines(lo, hi, &inst.transform));
-                    let inverse = editor.context_transform().inverse();
-                    for occurrence in editor
-                        .doc()
-                        .occurrences(editor.context())
-                        .into_iter()
-                        .filter(|o| o.in_context && o.path.get(editor.context().len()) == Some(i))
-                    {
-                        let transform = inverse * occurrence.transform;
-                        if let Some(definition) = editor.doc().def(occurrence.definition) {
-                            for (edge, member) in definition.mesh.edges().filter(|(_, e)| e.visible()) {
-                                let _ = member;
-                                let (a, b) = definition.mesh.edge_points(edge);
-                                out.push((transform.transform_point3(a), transform.transform_point3(b)));
-                            }
-                        }
-                    }
+                    instances.insert(*i);
                 }
             }
             _ => {}
+        }
+    }
+    // Walk the hierarchy once for the entire selection. Traversing it for every
+    // selected instance made whole-model move/rotate/scale previews quadratic.
+    if !instances.is_empty() {
+        let inverse = editor.context_transform().inverse();
+        for occurrence in editor.doc().occurrences(editor.context()) {
+            if !occurrence.in_context
+                || occurrence.path.get(editor.context().len()).is_none_or(|id| !instances.contains(id))
+            {
+                continue;
+            }
+            let transform = inverse * occurrence.transform;
+            if let Some(definition) = editor.doc().def(occurrence.definition) {
+                for (edge, _) in definition.mesh.edges().filter(|(_, e)| e.visible()) {
+                    let (a, b) = definition.mesh.edge_points(edge);
+                    out.push((transform.transform_point3(a), transform.transform_point3(b)));
+                }
+            }
         }
     }
     for e in edges {
@@ -2211,6 +2228,47 @@ pub(crate) fn line_color(inf: Option<&Inference>) -> [f32; 3] {
 #[cfg(test)]
 mod scene_index_tests {
     use super::*;
+
+    #[test]
+    fn instance_preview_keeps_nested_transforms_and_excludes_unselected_siblings() {
+        use rysmo_model::{Definition, Document, Instance};
+        let mut leaf = Definition::default();
+        leaf.mesh.add_lines(&[(DVec3::ZERO, DVec3::X)], None).unwrap();
+        let leaf_id = DefinitionId(100);
+        let parent_id = DefinitionId(101);
+        let child = InstanceId(102);
+        let instance = |definition, translation| Instance {
+            definition,
+            transform: DMat4::from_translation(translation),
+            name: String::new(),
+            tag: None,
+            material: None,
+            hidden: false,
+            glued_to: None,
+            attributes: Default::default(),
+        };
+        let mut parent = Definition::default();
+        parent.instances.insert(child, instance(leaf_id, DVec3::Y * 3.));
+        let mut doc = Document::default();
+        doc.definitions.insert(leaf_id, Arc::new(leaf));
+        doc.definitions.insert(parent_id, Arc::new(parent));
+        for (id, x) in [(103, 10.), (104, 30.), (105, 50.)] {
+            Arc::make_mut(&mut doc.root).instances.insert(InstanceId(id), instance(parent_id, DVec3::X * x));
+        }
+        let mut editor = Editor::with_document(doc);
+        let lines = element_lines(&editor, &[Element::Instance(InstanceId(103)), Element::Instance(InstanceId(104))]);
+        // Two twelve-edge boxes and one actual nested edge per selected instance.
+        assert_eq!(lines.len(), 26);
+        for x in [10., 30.] {
+            assert!(lines.contains(&(DVec3::new(x, 3., 0.), DVec3::new(x + 1., 3., 0.))));
+        }
+        assert!(lines.iter().flat_map(|&(a, b)| [a, b]).all(|p| p.x <= 31.));
+        editor.enter(InstanceId(103)).unwrap();
+        let local = element_lines(&editor, &[Element::Instance(child)]);
+        assert_eq!(local.len(), 13);
+        assert!(local.contains(&(DVec3::new(0., 3., 0.), DVec3::new(1., 3., 0.))));
+        assert!(local.iter().flat_map(|&(a, b)| [a, b]).all(|p| p.x <= 1.));
+    }
 
     #[test]
     fn indices_follow_evaluated_geometry_and_reuse_unchanged_meshes() {

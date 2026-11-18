@@ -37,7 +37,7 @@
     "rust_workspace_library_passed": 1033,
     "javascript_tests": "28 passed; node --experimental-vm-modules scripts/web-files.test.mjs",
     "web_release": "two completed builds; exact runtime checks pending",
-    "target_application_validation": "Not performed: the macOS user confirmed they do not have SketchUp. Downloads and internal round trips do not establish vendor acceptance."
+    "target_application_validation": "Not performed. SketchUp desktop is unavailable, and SketchUp for Web requires a Trimble sign-in. User accepted closing this check with compatibility explicitly unverified. No model was uploaded to Trimble."
   },
   "local_interoperability_fixtures": [
     {
@@ -796,5 +796,292 @@
       "crates/rysmo_app/src/features/skp.rs": "da743fdbfbcd2bf3c669cee4d6e81cd589f033ae070d6f7e38c4faf594516ce4"
     }
   },
-  "verification_scope": "Original Linux handoff checks, except the updated target-application availability note. Checks performed during the macOS follow-up are listed separately."
+  "verification_scope": "Original Linux handoff checks, except the updated target-application availability note. Checks performed during the macOS follow-up are listed separately.",
+  "browser_worker_followup": {
+    "date": "2026-11-18",
+    "base_revision": "078e8093fdc92540e247d64cdfceb6b7dd5779af",
+    "tracked_changes": true,
+    "wasm": [
+      {
+        "name": "rysmo-52d047406a69317d_bg.wasm",
+        "bytes": 28948123,
+        "sha256": "d35dbff46dc1548ae3a87021f7b184bd5f60fd177c26e2267905ca2533ac5d21"
+      },
+      {
+        "name": "worker-b7b674030ca9d830/rysmo_worker_bg.wasm",
+        "bytes": 5761112,
+        "sha256": "e2a72d10a10624808339b190a871d8c0cdfb29c13fba80ce8977c93816b2470e"
+      }
+    ],
+    "browser": "Codex in-app browser",
+    "input_method": "Cursor clicks, file chooser and downloads through computer-use tools.",
+    "checks": [
+      "Imported theater-2026.skp through the worker; preview reported 1172 occurrences and 24934 faces.",
+      "Opened the imported model as a new document and visually confirmed rendering.",
+      "Started export and immediately closed the dialog; editor remained usable and a subsequent export completed. Exact worker completion timing is not asserted.",
+      "Downloaded both 2017 and 2026 exports and inspected each through the native conversion checker; all reported model metrics match between the files.",
+      "Changing export version invalidated the previous prepared file.",
+      "No browser console errors were recorded."
+    ],
+    "downloads": [
+      {
+        "bytes": 9657723,
+        "exports": [],
+        "import_ms": 96.971125,
+        "metrics": {
+          "bounds": [
+            [
+              -0.5396784867330342,
+              -1.9572588634138295,
+              -0.0063500000000044285
+            ],
+            [
+              7.842841327899179,
+              7.0866,
+              4.147329251584699
+            ]
+          ],
+          "camera": {
+            "eye": [
+              9.929777250931155,
+              1.130538753969034,
+              7.609134236784634
+            ],
+            "parallel": false,
+            "target": [
+              4.730986366935496,
+              3.603422944012816,
+              0.9874105592739246
+            ],
+            "up": [
+              -0.6814964701060138,
+              0.32416419204008384,
+              0.6561098519547185
+            ]
+          },
+          "definitions": 752,
+          "guides": 0,
+          "holes": 279,
+          "image_payloads": [
+            [
+              1218,
+              415501190
+            ],
+            [
+              1806,
+              3466948274
+            ],
+            [
+              2508,
+              2995048639
+            ],
+            [
+              6898,
+              4231369525
+            ],
+            [
+              9037,
+              61702451
+            ],
+            [
+              10294,
+              2806847979
+            ],
+            [
+              11009,
+              2990945675
+            ],
+            [
+              13915,
+              1591795279
+            ],
+            [
+              27420,
+              948471435
+            ],
+            [
+              46010,
+              1424017239
+            ],
+            [
+              194844,
+              600070037
+            ],
+            [
+              666235,
+              2877168182
+            ],
+            [
+              744572,
+              4124942969
+            ],
+            [
+              1374949,
+              585457265
+            ],
+            [
+              1820445,
+              1770850520
+            ]
+          ],
+          "materials": 78,
+          "scenes": 0,
+          "stored_edges": 33093,
+          "stored_faces": 13320,
+          "stored_instances": 1186,
+          "stored_vertices": 21211,
+          "tags": 93,
+          "units": "Architectural",
+          "visible_faces": 24934,
+          "visible_occurrences": 1172
+        },
+        "path": "worker-theater-2017.skp",
+        "warnings": [
+          "Custom attribute dictionaries and dynamic behaviours are not imported.",
+          "Existing glue attachments are not converted. Opening settings are retained for new placements."
+        ],
+        "sha256": "050da963dade675fe953e2841ef5a713ce9d36f7de77d2135033ecd913d11ced"
+      },
+      {
+        "bytes": 6538371,
+        "exports": [],
+        "import_ms": 109.925458,
+        "metrics": {
+          "bounds": [
+            [
+              -0.5396784867330342,
+              -1.9572588634138295,
+              -0.0063500000000044285
+            ],
+            [
+              7.842841327899179,
+              7.0866,
+              4.147329251584699
+            ]
+          ],
+          "camera": {
+            "eye": [
+              9.929777250931155,
+              1.130538753969034,
+              7.609134236784634
+            ],
+            "parallel": false,
+            "target": [
+              4.730986366935496,
+              3.603422944012816,
+              0.9874105592739246
+            ],
+            "up": [
+              -0.6814964701060138,
+              0.32416419204008384,
+              0.6561098519547185
+            ]
+          },
+          "definitions": 752,
+          "guides": 0,
+          "holes": 279,
+          "image_payloads": [
+            [
+              1218,
+              415501190
+            ],
+            [
+              1806,
+              3466948274
+            ],
+            [
+              2508,
+              2995048639
+            ],
+            [
+              6898,
+              4231369525
+            ],
+            [
+              9037,
+              61702451
+            ],
+            [
+              10294,
+              2806847979
+            ],
+            [
+              11009,
+              2990945675
+            ],
+            [
+              13915,
+              1591795279
+            ],
+            [
+              27420,
+              948471435
+            ],
+            [
+              46010,
+              1424017239
+            ],
+            [
+              194844,
+              600070037
+            ],
+            [
+              666235,
+              2877168182
+            ],
+            [
+              744572,
+              4124942969
+            ],
+            [
+              1374949,
+              585457265
+            ],
+            [
+              1820445,
+              1770850520
+            ]
+          ],
+          "materials": 78,
+          "scenes": 0,
+          "stored_edges": 33093,
+          "stored_faces": 13320,
+          "stored_instances": 1186,
+          "stored_vertices": 21211,
+          "tags": 93,
+          "units": "Architectural",
+          "visible_faces": 24934,
+          "visible_occurrences": 1172
+        },
+        "path": "worker-theater-2026.skp",
+        "warnings": [
+          "Custom attribute dictionaries and dynamic behaviours are not imported.",
+          "Existing glue attachments are not converted. Opening settings are retained for new placements."
+        ],
+        "sha256": "a5ef911a7215ca4068d34af3fe73a8ba49454d7697645090d51981a63a010c74"
+      }
+    ],
+    "limits": [
+      "Native re-read uses the same conversion dependency, not independent SketchUp acceptance.",
+      "Frame p95 display is not a long-task recording and does not establish worst-case responsiveness.",
+      "Main-thread document serialization/deserialization and editor application still require performance measurements.",
+      "Native Save-picker completion remains a separate outstanding check."
+    ]
+  },
+  "native_save_picker_followup": {
+    "date": "2026-11-18",
+    "browser": "Microsoft Edge on macOS",
+    "method": "Cursor-operated File > Save As and native macOS Save dialog, after explicit user permission to control Edge.",
+    "result": "File created; editor reported Saved rysmo-native-save-verification.rysmo and dirty false.",
+    "file": {
+      "name": "rysmo-native-save-verification.rysmo",
+      "bytes": 986,
+      "sha256": "f257236f72fab591f874c3b7791a2587c4c4db8f9e9ae843c12a0f8904aada11",
+      "format": "rysmo",
+      "version": 20,
+      "faces": 1,
+      "edges": 4
+    },
+    "scope": "Save As completed. This check does not establish keyboard-shortcut handling, reopening, or overwriting an existing destination."
+  }
 }

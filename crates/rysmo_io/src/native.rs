@@ -6,6 +6,7 @@
 //! which elements changed. See `docs/file-format.md`.
 
 use rysmo_mesh::blocks::BlockMap;
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashSet};
 
 use base64::Engine as _;
@@ -67,12 +68,13 @@ fn is_zero(v: &f32) -> bool {
 }
 
 #[derive(Serialize, Deserialize)]
-struct ImageLine {
+struct ImageLine<'a> {
     id: ImageId,
     name: String,
     mime: String,
     /// The encoded file, base64.
-    data: String,
+    #[serde(borrow)]
+    data: Cow<'a, str>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -207,7 +209,7 @@ struct DimensionLine {
 }
 
 #[derive(Deserialize)]
-struct FileIn {
+struct FileIn<'a> {
     format: String,
     version: u32,
     #[serde(default = "metres")]
@@ -234,8 +236,8 @@ struct FileIn {
     section_hatch: Option<rysmo_model::section_hatching::Hatch>,
     #[serde(default)]
     style: Option<Style>,
-    #[serde(default)]
-    images: Vec<ImageLine>,
+    #[serde(default, borrow)]
+    images: Vec<ImageLine<'a>>,
     #[serde(default)]
     materials: Vec<MaterialLine>,
     #[serde(default)]
@@ -364,7 +366,7 @@ pub fn save(doc: &Document) -> String {
             id: *id,
             name: i.name.clone(),
             mime: i.mime.clone(),
-            data: STANDARD.encode(i.bytes.as_slice()),
+            data: STANDARD.encode(i.bytes.as_slice()).into(),
         }),
         false,
     );
@@ -514,7 +516,7 @@ fn definition_mut(doc: &mut Document, owner: Option<DefinitionId>) -> Result<&mu
 /// message saying what is wrong.
 #[deny(clippy::unwrap_used, clippy::expect_used)]
 pub fn load(text: &str) -> Result<Document, IoError> {
-    let f: FileIn = serde_json::from_str(text)?;
+    let f: FileIn<'_> = serde_json::from_str(text)?;
     if f.format != FORMAT {
         return Err(IoError::Format(format!("\"format\" is \"{}\"", f.format)));
     }
@@ -885,6 +887,25 @@ mod tests {
     use rysmo_model::{Command, Editor};
 
     use super::*;
+
+    #[test]
+    fn image_payload_borrows_unescaped_input_and_accepts_escaped_json() {
+        let payload = STANDARD.encode(vec![42; 4 * 1024 * 1024]);
+        let input = format!(
+            r#"{{"format":"rysmo","version":20,"images":[{{"id":1,"name":"test","mime":"image/png","data":"{payload}"}}]}}"#
+        );
+        let parsed: FileIn<'_> = serde_json::from_str(&input).unwrap();
+        let Cow::Borrowed(encoded) = &parsed.images[0].data else { panic!("base64 should borrow the input") };
+        assert_eq!(*encoded, payload);
+        let input_range = input.as_bytes().as_ptr_range();
+        assert!(input_range.contains(&encoded.as_ptr()));
+        assert_eq!(load(&input).unwrap().images[&ImageId(1)].bytes.as_slice(), vec![42; 4 * 1024 * 1024]);
+
+        let escaped = r#"{"format":"rysmo","version":20,"images":[{"id":1,"name":"test","mime":"image/png","data":"\u0051Q=="}]}"#;
+        let parsed: FileIn<'_> = serde_json::from_str(escaped).unwrap();
+        assert!(matches!(parsed.images[0].data, Cow::Owned(_)));
+        assert_eq!(load(escaped).unwrap().images[&ImageId(1)].bytes.as_slice(), b"A");
+    }
 
     #[test]
     fn direct_section_writer_preserves_escaping_and_record_layout() {

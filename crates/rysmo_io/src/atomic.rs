@@ -41,7 +41,7 @@ fn replace_with(path: &Path, write: impl FnOnce(&mut File) -> io::Result<()>) ->
     if path.file_name().is_none() {
         return Err(io::Error::new(io::ErrorKind::InvalidInput, "missing file name"));
     }
-    let (temp, mut file) = loop {
+    let (temp, file) = loop {
         let name = format!(".rysmo-save-{}-{}.tmp", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed));
         let candidate = parent.join(name);
         match OpenOptions::new().write(true).create_new(true).open(&candidate) {
@@ -50,12 +50,15 @@ fn replace_with(path: &Path, write: impl FnOnce(&mut File) -> io::Result<()>) ->
             Err(error) => return Err(error),
         }
     };
-    if let Some(permissions) = permissions {
-        file.set_permissions(permissions)?;
+    {
+        // Close the temporary file before replacing the destination (required on Windows).
+        let mut file = file;
+        if let Some(permissions) = permissions {
+            file.set_permissions(permissions)?;
+        }
+        write(&mut file)?;
+        file.sync_all()?;
     }
-    write(&mut file)?;
-    file.sync_all()?;
-    drop(file);
     fs::rename(&temp.0, &path)?;
     #[cfg(unix)]
     File::open(parent)?.sync_all()?;

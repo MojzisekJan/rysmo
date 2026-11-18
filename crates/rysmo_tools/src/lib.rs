@@ -12,7 +12,9 @@ pub mod gesture;
 mod tools;
 pub mod vcb;
 
-pub use tools::{AnnotationBoxHits, Ctx, Key, Modifiers, Pointer, Preview, PreviewLine, ToolBox, ToolKind, box_lines};
+pub use tools::{
+    AnnotationBoxHits, Ctx, Highlights, Key, Modifiers, Pointer, Preview, PreviewLine, ToolBox, ToolKind, box_lines,
+};
 pub use vcb::{VcbInput, parse_vcb};
 
 #[cfg(test)]

@@ -9,7 +9,7 @@ use rysmo_mesh::{EdgeId, Element, FaceId, offset_polyline};
 use rysmo_model::{Command, Editor, parse_length};
 
 use super::{
-    BLACK, Ctx, GRIP, Grip, Last, MAGENTA, OffsetTarget, Preview, PreviewLine, State, ToolBox, ToolKind,
+    BLACK, Ctx, GRIP, Grip, Highlights, Last, MAGENTA, OffsetTarget, Preview, PreviewLine, State, ToolBox, ToolKind,
     element_bounds_in_axes, element_lines, hovered, line_color,
 };
 use crate::vcb::{VcbInput, parse_vcb};
@@ -1082,7 +1082,6 @@ impl ToolBox {
                             push(pv, a, a + off, BLACK, false);
                         }
                     }
-                    pv.faces.push(*face);
                 }
             }
             State::Move { elements, start, offset } => {
@@ -1179,11 +1178,10 @@ impl ToolBox {
                 pv.markers.push((*fixed, BLACK));
                 self.preview_hover(editor, pv);
             }
-            State::Following { face, path, revision, context, preview, .. } => {
+            State::Following { path, revision, context, preview, .. } => {
                 if *revision != editor.revision() || context != editor.context() {
                     return;
                 }
-                pv.faces.push(*face);
                 for (a, b) in preview {
                     push(pv, *a, *b, MAGENTA, false);
                 }
@@ -1196,11 +1194,9 @@ impl ToolBox {
             }
             State::Offsetting { target, edges, distance } => {
                 let pts = match target {
-                    OffsetTarget::Face(f) => {
-                        pv.faces.push(*f);
-                        mesh.offset_face_loops(*f, *distance)
-                            .map(|loops| loops.into_iter().map(|p| (p, true)).collect::<Vec<_>>())
-                    }
+                    OffsetTarget::Face(f) => mesh
+                        .offset_face_loops(*f, *distance)
+                        .map(|loops| loops.into_iter().map(|p| (p, true)).collect::<Vec<_>>()),
                     OffsetTarget::Chain(n) => mesh.edge_chain(edges).and_then(|(chain, closed)| {
                         offset_polyline(&mesh.loop_points(&chain), *n, *distance, closed).map(|p| vec![(p, closed)])
                     }),
@@ -1226,10 +1222,8 @@ impl ToolBox {
             }
             State::Erasing { marked } => {
                 for e in marked {
-                    match e {
-                        Element::Edge(x) => pv.edges.push(*x),
-                        Element::Instance(i) => pv.instances.push(*i),
-                        _ => {}
+                    if let Element::Edge(x) = e {
+                        pv.edges.push(*x);
                     }
                 }
             }
@@ -1238,23 +1232,54 @@ impl ToolBox {
         }
     }
 
+    /// Face and instance highlights without constructing preview lines or annotations.
+    pub fn highlights(&self, editor: &Editor) -> Highlights {
+        let mut result = Highlights::default();
+        match &self.state {
+            State::PushPull { face, .. } if editor.mesh().face(*face).is_some() => result.faces.push(*face),
+            State::Following { face, revision, context, .. }
+                if *revision == editor.revision() && context == editor.context() =>
+            {
+                result.faces.push(*face)
+            }
+            State::Offsetting { target: OffsetTarget::Face(face), .. } => result.faces.push(*face),
+            State::Erasing { marked } => result.instances.extend(
+                marked.iter().filter_map(|element| if let Element::Instance(id) = element { Some(*id) } else { None }),
+            ),
+            State::Idle => {
+                let inf = self.inference.as_ref();
+                match self.active() {
+                    ToolKind::PushPull | ToolKind::Offset | ToolKind::FollowMe => {
+                        result.faces.extend(inf.and_then(|i| i.face));
+                    }
+                    ToolKind::PaintBucket => {
+                        if let Some(inference) = inf {
+                            result.faces.extend(inference.face);
+                            result.instances.extend(inference.instance);
+                        }
+                    }
+                    ToolKind::Move | ToolKind::Rotate if editor.selection().is_empty() => match inf.and_then(hovered) {
+                        Some(Element::Face(id)) => result.faces.push(id),
+                        Some(Element::Instance(id)) => result.instances.push(id),
+                        _ => {}
+                    },
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+        result
+    }
+
     /// What a tool would act on, before the first click.
     fn preview_hover(&self, editor: &Editor, pv: &mut Preview) {
         let inf = self.inference.as_ref();
         match self.active() {
-            ToolKind::PushPull | ToolKind::Offset | ToolKind::FollowMe => pv.faces.extend(inf.and_then(|i| i.face)),
-            ToolKind::PaintBucket => {
-                if let Some(i) = inf {
-                    pv.faces.extend(i.face);
-                    pv.instances.extend(i.instance);
+            ToolKind::Move | ToolKind::Rotate if editor.selection().is_empty() => {
+                if let Some(Element::Edge(e)) = inf.and_then(hovered) {
+                    pv.edges.push(e);
                 }
             }
-            ToolKind::Move | ToolKind::Rotate if editor.selection().is_empty() => match inf.and_then(hovered) {
-                Some(Element::Edge(e)) => pv.edges.push(e),
-                Some(Element::Face(f)) => pv.faces.push(f),
-                Some(Element::Instance(i)) => pv.instances.push(i),
-                _ => {}
-            },
             ToolKind::Rotate if matches!(self.state, State::Idle) => {
                 for (axis, point) in rotation_handles(editor, self.axes.basis()) {
                     let color = if axis.dot(self.axes.x).abs() > 0.9 {

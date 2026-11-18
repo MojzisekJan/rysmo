@@ -1,7 +1,6 @@
 //! Preview interchange warnings before downloading or saving an SKP snapshot.
 // Browser import/download checks are recorded in docs/verification.
-// TODO: Move browser SKP encoding off the main thread or make it cooperative;
-// desktop worker support does not prevent browser stalls on large models.
+// Browser conversion uses an isolated, cancellable WASM worker.
 use crate::state::App3d;
 use bevy_egui::egui;
 use rysmo_io::skp::{Export, Version};
@@ -28,17 +27,12 @@ pub struct State {
     error: Option<String>,
     #[cfg(not(target_arch = "wasm32"))]
     pending: Option<std::sync::Mutex<std::sync::mpsc::Receiver<Completed>>>,
+    #[cfg(target_arch = "wasm32")]
+    pending: Option<(Stamp, Version, crate::web_worker::Job)>,
 }
 impl State {
     pub fn busy(&self) -> bool {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            self.pending.is_some()
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            false
-        }
+        self.pending.is_some()
     }
     fn prepare(&mut self, app: &App3d) {
         let stamp = stamp(app);
@@ -59,12 +53,24 @@ impl State {
             }
         }
         #[cfg(target_arch = "wasm32")]
-        match rysmo_io::skp::export(&doc, self.version) {
-            Ok(result) => self.prepared = Some(Prepared { stamp, version: self.version, result }),
+        match crate::web_worker::Job::export(&doc, self.version) {
+            Ok(job) => self.pending = Some((stamp, self.version, job)),
             Err(error) => self.error = Some(error),
         }
     }
     fn poll(&mut self) {
+        #[cfg(target_arch = "wasm32")]
+        if let Some((stamp, version, job)) = &self.pending
+            && let Some(result) = job.poll_export()
+        {
+            let (stamp, version) = (*stamp, *version);
+            self.pending = None;
+            match result {
+                Ok(result) => self.prepared = Some(Prepared { stamp, version, result }),
+                Err(error) => self.error = Some(error),
+            }
+        }
+
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(receiver) = &self.pending {
             let completion = receiver.lock().map_err(|_| "SKP export receiver failed.".to_owned()).and_then(

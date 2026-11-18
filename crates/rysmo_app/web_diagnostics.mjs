@@ -6,6 +6,46 @@ if (new URLSearchParams(location.search).has("diagnostics")) {
   panel.setAttribute("aria-label", "Browser performance");
   panel.style.cssText = "position:fixed;right:8px;bottom:44px;z-index:20;pointer-events:none;white-space:pre;font:12px monospace;color:#f1f4f8;background:#242a33e8;border:1px solid #66758a;border-radius:5px;padding:8px";
   document.body.append(panel);
+  // Export through an ordinary UI action so manual cursor checks can retain
+  // phase timings without reaching into the application's private state.
+  const controls = document.createElement("div");
+  controls.style.cssText = "position:fixed;right:8px;bottom:8px;z-index:21;display:flex;gap:6px";
+  const reset = document.createElement("button");
+  reset.textContent = "Reset profile";
+  const download = document.createElement("button");
+  download.textContent = "Download profile";
+  controls.append(reset, download);
+  document.body.append(controls);
+  let started = performance.now(), longTasks = [], droppedLongTasks = 0;
+  if (typeof PerformanceObserver !== "undefined" && PerformanceObserver.supportedEntryTypes?.includes("longtask")) {
+    new PerformanceObserver(list => {
+      for (const entry of list.getEntries()) {
+        if (entry.startTime < started) continue;
+        if (longTasks.length >= 4096) { longTasks.shift(); droppedLongTasks++; }
+        longTasks.push({ start: entry.startTime, duration: entry.duration });
+      }
+    }).observe({ type: "longtask" });
+  }
+  reset.addEventListener("click", () => {
+    started = performance.now(); longTasks = []; droppedLongTasks = 0;
+    const profile = window.rysmoPerformance;
+    if (profile) { profile.samples = []; profile.milestones = []; profile.dropped = 0; }
+    reset.textContent = "Profile reset";
+  });
+  download.addEventListener("click", () => {
+    const profile = window.rysmoPerformance;
+    const report = {
+      started, ended: performance.now(), longTasks, droppedLongTasks,
+      longTasksSupported: typeof PerformanceObserver !== "undefined" && PerformanceObserver.supportedEntryTypes?.includes("longtask"),
+      samples: profile?.samples ?? [], milestones: profile?.milestones ?? [], droppedSamples: profile?.dropped ?? 0,
+      wasmBytes: memory?.buffer.byteLength ?? null, editor: panel.dataset.editor ?? null,
+    };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }));
+    const link = document.createElement("a");
+    link.href = url; link.download = "rysmo-profile.json";
+    document.body.append(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
   let last = 0, since = 0, frames = [], memory = null;
   // Trunk's public startup event exposes the initialized module exports.
   addEventListener("TrunkApplicationStarted", event => {
