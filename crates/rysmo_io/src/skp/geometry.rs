@@ -1,4 +1,4 @@
-use rysmo_math::DVec3;
+use rysmo_math::{DVec3, EPS, Plane};
 use rysmo_mesh::{Curve, CurveId, CurveKind, Edge, EdgeId, Face, FaceId, MaterialId, Mesh, Vertex, VertexId};
 use rysmo_model::Document;
 use std::collections::{BTreeMap, BTreeSet};
@@ -80,36 +80,14 @@ pub(super) fn read(
             skpwright::Side::Front => front,
             skpwright::Side::Back => back,
         };
-        let uv = if let Some(texture) = texture_id.and_then(|id| doc.materials[&id].texture) {
-            let size = texture.size;
-            let placement = super::mapping::placement(
-                face,
-                vertices[&outer[0]].pos,
-                size,
-                (size[0] * skpwright::INCH / scale, size[1] * skpwright::INCH / scale),
-                scale,
-                side,
-            );
-            if placement.is_none() {
-                warnings
-                    .insert("A singular or folded face texture mapping was replaced by the default placement.".into());
-            }
-            if let Some(source_texture) = &face.texture
-                && source_texture.front != source_texture.back
-                && front.and_then(|id| doc.materials[&id].texture).is_some()
-                && back.and_then(|id| doc.materials[&id].texture).is_some()
-            {
-                // TODO: Represent independent front/back UVs in the native model
-                // before claiming lossless conversion of two-sided textures.
-                warnings.insert("Independent front/back texture placements use the front placement in Rysmo.".into());
-            }
-            placement
-        } else {
-            None
+        let imported = Face {
+            outer,
+            holes,
+            material: front,
+            back_material: back,
+            uv: None,
+            hidden: hidden(face.layer, face.hidden),
         };
-        let id = FaceId(doc.reserve_id());
-        let imported =
-            Face { outer, holes, material: front, back_material: back, uv, hidden: hidden(face.layer, face.hidden) };
         for (a, b) in imported.loop_edges() {
             let pair = (a.min(b), a.max(b));
             pairs.entry(pair).or_insert_with(|| {
@@ -118,7 +96,57 @@ pub(super) fn read(
                 edge
             });
         }
-        faces.insert(id, imported);
+        let parts = planar_parts(imported, &vertices)?;
+        let split = parts.len() > 1;
+        if split {
+            warnings.insert("Non-planar faces are triangulated without moving their vertices.".into());
+        }
+        for mut imported in parts {
+            let points: Vec<_> = imported.outer.iter().map(|v| vertices[v].pos).collect();
+            let plane = Plane::from_polygon(&points).ok_or("SKP contains a degenerate face.")?;
+            imported.uv = if let Some(texture) = texture_id.and_then(|id| doc.materials[&id].texture) {
+                let size = texture.size;
+                let placement = super::mapping::placement(
+                    face,
+                    vertices[&imported.outer[0]].pos,
+                    plane.normal,
+                    size,
+                    (size[0] * skpwright::INCH / scale, size[1] * skpwright::INCH / scale),
+                    scale,
+                    side,
+                );
+                if placement.is_none() {
+                    warnings.insert(
+                        "A singular or folded face texture mapping was replaced by the default placement.".into(),
+                    );
+                }
+                if let Some(source_texture) = &face.texture
+                    && source_texture.front != source_texture.back
+                    && front.and_then(|id| doc.materials[&id].texture).is_some()
+                    && back.and_then(|id| doc.materials[&id].texture).is_some()
+                {
+                    // TODO: Represent independent front/back UVs in the native model
+                    // before claiming lossless conversion of two-sided textures.
+                    warnings
+                        .insert("Independent front/back texture placements use the front placement in Rysmo.".into());
+                }
+                placement
+            } else {
+                None
+            };
+            for (a, b) in imported.loop_edges() {
+                let pair = (a.min(b), a.max(b));
+                pairs.entry(pair).or_insert_with(|| {
+                    let edge = EdgeId(doc.reserve_id());
+                    edges.insert(edge, Edge { soft: split, smooth: split, ..Edge::new(a, b) });
+                    edge
+                });
+            }
+            if faces.len() >= 100_000 || edges.len() > 300_000 {
+                return Err("SKP triangulation exceeds the import geometry limits.".into());
+            }
+            faces.insert(FaceId(doc.reserve_id()), imported);
+        }
         if face.layer != 0 {
             warnings.insert("Edge and face tags are baked into visibility; only instance tags remain editable.".into());
         }
@@ -161,4 +189,52 @@ pub(super) fn read(
     let mesh = Mesh::from_parts_with_curves(vertices, edges, faces, curves)
         .map_err(|e| format!("Invalid SKP geometry: {e}"))?;
     Ok(mesh)
+}
+
+/// Keep shared vertices fixed: flattening one face would distort its neighbours.
+fn planar_parts(face: Face, vertices: &BTreeMap<VertexId, Vertex>) -> Result<Vec<Face>, String> {
+    let outer: Vec<_> = face.outer.iter().map(|v| vertices[v].pos).collect();
+    let plane = Plane::from_polygon(&outer).ok_or("SKP contains a degenerate face.")?;
+    if face.loops().flatten().all(|v| plane.distance(vertices[v].pos).abs() <= EPS * 10.) {
+        return Ok(vec![face]);
+    }
+    let mut ids = Vec::new();
+    let mut holes = Vec::new();
+    for (index, ring) in face.loops().enumerate() {
+        if index > 0 {
+            holes.push(ids.len() as u32);
+        }
+        ids.extend(ring.iter().copied());
+    }
+    let points: Vec<_> = ids.iter().map(|v| plane.to_2d(vertices[v].pos)).collect();
+    let mut triangles = Vec::new();
+    earcut::Earcut::new().earcut(points.iter().map(|p| p.to_array()), &holes, &mut triangles);
+    if triangles.is_empty() {
+        return Err("A non-planar SKP face could not be triangulated.".into());
+    }
+    if triangles.len() / 3 > 100_000 {
+        return Err("SKP triangulation exceeds the import geometry limits.".into());
+    }
+    triangles
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .map(|triangle| {
+            let mut indices = triangle.map(|i| i as usize);
+            if (points[indices[1]] - points[indices[0]]).perp_dot(points[indices[2]] - points[indices[0]]) < 0. {
+                indices.swap(1, 2);
+            }
+            let outer = indices.map(|i| ids[i]).to_vec();
+            let positions: Vec<_> = outer.iter().map(|v| vertices[v].pos).collect();
+            Plane::from_polygon(&positions).ok_or("SKP triangulation produced a degenerate face.")?;
+            Ok(Face {
+                outer,
+                holes: Vec::new(),
+                material: face.material,
+                back_material: face.back_material,
+                uv: face.uv,
+                hidden: face.hidden,
+            })
+        })
+        .collect()
 }

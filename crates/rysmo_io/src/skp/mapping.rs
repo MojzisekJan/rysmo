@@ -33,14 +33,14 @@ pub(super) fn stored_transform(m: DMat4) -> Option<[f64; 13]> {
 pub(super) fn placement(
     source: &skpwright::MeshFace,
     point: DVec3,
+    normal: DVec3,
     size: [f64; 2],
     applied_inches: (f64, f64),
     scale: f64,
     side: skpwright::Side,
 ) -> Option<TexturePlacement> {
-    let normal = DVec3::from_array(source.normal);
     let (u, v) = rysmo_model::texture_axes(normal);
-    let (file_u, file_v) = frame(normal);
+    let (file_u, file_v) = frame(DVec3::from_array(source.normal));
     let origin = normal * normal.dot(point);
     let inches = skpwright::INCH / scale;
     let local = DMat3::from_cols(

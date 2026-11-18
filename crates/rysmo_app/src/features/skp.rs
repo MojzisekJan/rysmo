@@ -1,6 +1,5 @@
 //! Preview interchange warnings before downloading or saving an SKP snapshot.
-// TODO: Finish browser GUI checks for import into a new tab and downloads of both
-// export versions, including warped textures. Record results in docs/verification.
+// Browser import/download checks are recorded in docs/verification.
 // TODO: Move browser SKP encoding off the main thread or make it cooperative;
 // desktop worker support does not prevent browser stalls on large models.
 use crate::state::App3d;

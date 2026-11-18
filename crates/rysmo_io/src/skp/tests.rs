@@ -311,3 +311,86 @@ fn material_variants_share_embedded_image_storage_and_keep_their_tints() {
         assert!(after.materials.values().find(|m| m.name == "Tint variant").unwrap().pbr.tint_texture);
     }
 }
+
+fn encode_source(model: &skpwright::Model) -> Vec<u8> {
+    model.to_archive_with(skpwright::ArchiveTarget::ByContent, skpwright::WriteEnv { unix_time: 0, seed: 7 }).unwrap().0
+}
+
+#[test]
+fn nonplanar_textured_face_preserves_vertices_sides_and_projective_uvs() {
+    let mut source = skpwright::Model::parse(TEXTURE).unwrap();
+    let run = source.geometry.iter_mut().find(|run| run.def_index.is_none()).unwrap();
+    let index = run.mesh.faces[0].outer[0] as usize;
+    run.mesh.vertices[index][2] += 0.0001;
+    run.mesh.faces[0].hidden = true;
+    if run.mesh.faces[0].front_material.is_none() {
+        run.mesh.faces[0].front_material = run.mesh.faces[0].back_material;
+        if let Some(texture) = &mut run.mesh.faces[0].texture {
+            texture.front = texture.back;
+        }
+    }
+    run.mesh.faces[0].back_material = run.mesh.faces[0].front_material;
+    let expected_vertices = run.mesh.vertices.clone();
+    let original = run.mesh.faces[0].clone();
+    let applied = source.applied_size_of(original.front_material.unwrap()).unwrap();
+    let expected_uv = original.uv_xform(skpwright::Side::Front, applied).unwrap();
+    let imported = read(&encode_source(&source), Options::default()).unwrap();
+    assert!(imported.warnings.iter().any(|w| w.contains("Non-planar faces are triangulated")));
+    let doc = imported.document;
+    doc.root.mesh.validate().unwrap();
+    assert_eq!(doc.root.mesh.face_count(), 2);
+    assert_eq!(doc.root.mesh.vertex_count(), expected_vertices.len());
+    for (_, v) in doc.root.mesh.vertices() {
+        assert!(expected_vertices.iter().any(|p| v.pos.distance(DVec3::from_array(*p)) < 1e-12));
+    }
+    for (id, face) in doc.root.mesh.faces() {
+        assert!(face.hidden);
+        assert_eq!(face.material, face.back_material);
+        let texture = doc.materials[&face.material.unwrap()].texture.unwrap();
+        let normal = doc.root.mesh.face_normal(id).unwrap();
+        let mut rebase = None;
+        for &vertex in &face.outer {
+            let p = doc.root.mesh.pos(vertex);
+            let expected = expected_uv.apply(p.to_array());
+            let actual = rysmo_model::uv_at(p, normal, texture.size, &face.uv.unwrap());
+            let shift = rysmo_math::DVec2::new(actual[0] - expected[0], actual[1] - (1. - expected[1]));
+            assert!(shift.distance(shift.round()) < 1e-7);
+            if let Some(previous) = rebase {
+                assert!(shift.distance(previous) < 1e-7);
+            }
+            rebase = Some(shift);
+        }
+    }
+    let diagonals: Vec<_> = doc.root.mesh.edges().filter(|(_, edge)| edge.soft).collect();
+    assert_eq!(diagonals.len(), 1);
+    assert!(diagonals[0].1.smooth);
+    for version in [Version::V2017, Version::V2026] {
+        let again = read(&export(&doc, version).unwrap().bytes, Options::default()).unwrap();
+        assert_eq!(again.document.root.mesh.face_count(), 2);
+        assert!(!again.warnings.iter().any(|w| w.contains("Non-planar")));
+    }
+}
+
+#[test]
+fn triangulating_nonplanar_faces_keeps_holes_open() {
+    let mut source = skpwright::Model::parse(HOLE).unwrap();
+    let run = source.geometry.iter_mut().find(|run| run.def_index.is_none()).unwrap();
+    let index = run.mesh.faces.iter().find(|face| !face.holes.is_empty()).unwrap().outer[0] as usize;
+    run.mesh.vertices[index][2] += 0.0001;
+    let original = read(HOLE, Options::default()).unwrap().document;
+    let expected_area: f64 = original.root.mesh.faces().map(|(id, _)| original.root.mesh.face_area(id)).sum();
+    let imported = read(&encode_source(&source), Options::default()).unwrap();
+    assert!(imported.warnings.iter().any(|w| w.contains("Non-planar faces are triangulated")));
+    let mesh = &imported.document.root.mesh;
+    mesh.validate().unwrap();
+    assert!(mesh.face_count() > original.root.mesh.face_count());
+    let projected_area: f64 = mesh
+        .faces()
+        .flat_map(|(id, _)| rysmo_mesh::triangulate_face(mesh, id))
+        .map(|t| {
+            let p = t.map(|v| mesh.pos(v));
+            (p[1] - p[0]).cross(p[2] - p[0]).z.abs() / 2.
+        })
+        .sum();
+    assert!((projected_area - expected_area).abs() < 1e-8);
+}

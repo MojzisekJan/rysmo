@@ -1,7 +1,7 @@
 {
   "date": "2026-11-18",
   "base_revision": "41e2942882a8d48ed463aaafe969c54433a8f59e",
-  "implementation": "Local uncommitted SKP import/export; previous performance work is a separate batch.",
+  "implementation": "SKP support committed in 294fc9a; macOS follow-up triangulates non-planar imported faces and completes browser checks.",
   "dependency": {
     "name": "skpwright",
     "version": "0.6.1",
@@ -37,7 +37,7 @@
     "rust_workspace_library_passed": 1033,
     "javascript_tests": "28 passed; node --experimental-vm-modules scripts/web-files.test.mjs",
     "web_release": "two completed builds; exact runtime checks pending",
-    "target_application_validation": "not performed; Linux host has no vendor desktop application"
+    "target_application_validation": "Not performed: the macOS user confirmed they do not have SketchUp. Downloads and internal round trips do not establish vendor acceptance."
   },
   "local_interoperability_fixtures": [
     {
@@ -99,8 +99,702 @@
     }
   ],
   "browser_gui": {
-    "status": "in progress"
+    "status": "passed for the listed SKP import/export cases; independent vendor acceptance and native Save-picker completion remain unverified",
+    "date": "2026-11-18",
+    "host": "macOS arm64",
+    "browser": "Codex in-app browser",
+    "url": "http://127.0.0.1:8098/?diagnostics",
+    "input_method": "Cursor clicks/drags and file chooser through computer-use tools; no scripted calls into application state.",
+    "initial_build": {
+      "revision": "294fc9ae295b60f2d16dbbe4d867af271c440da5",
+      "tracked_changes": false,
+      "wasm": [
+        {
+          "name": "rysmo-15829606dcae43a1_bg.wasm",
+          "bytes": 29953349,
+          "sha256": "fe2ac45c5297ae4d50f5242ba4140e532eaad07a87d107a9b9f190ae15fe0621"
+        }
+      ]
+    },
+    "checks": [
+      {
+        "case": "shared-2017.skp import into a new document",
+        "result": "passed",
+        "observations": "Two shared-component boxes rendered in a new Untitled* tab; the original dirty one-face rectangle remained in its tab and rendered when switched back. Import status instructed saving as .rysmo."
+      },
+      {
+        "case": "shared components, GUI SKP 2017 and 2026 exports",
+        "result": "passed",
+        "observations": "Prepared both versions, downloaded each, reimported each through File > Import, and opened each in a new tab. Each preview reported 3 occurrences / 12 visible faces and both boxes rendered."
+      },
+      {
+        "case": "texture-2026.skp and both GUI exports",
+        "result": "passed",
+        "observations": "The projective wood texture rendered. Both versions were downloaded and reimported into new tabs with the same visible placement, one face and four edges."
+      },
+      {
+        "case": "prepared export invalidation",
+        "result": "passed",
+        "observations": "Changing version replaced the Save control with a request to prepare the export again."
+      },
+      {
+        "case": "house-2026.skp",
+        "result": "passed",
+        "observations": "Import preview reported 79 occurrences / 534 visible faces. New document rendered walls, windows and textures; orbit remained responsive."
+      },
+      {
+        "case": "theater-2026.skp before correction",
+        "result": "safe import failure",
+        "observations": "Displayed face 17162 is not planar; existing house remained present, editor continued rendering, no crash."
+      },
+      {
+        "case": "native .rysmo Save picker",
+        "result": "not completed in this run",
+        "observations": "Save was invoked on an imported Untitled document, but completion of the browser native save picker was not established. SKP downloads were verified separately."
+      },
+      {
+        "case": "theater-2026.skp after correction",
+        "result": "passed",
+        "observations": "Fresh fixed WASM loaded, verified by the server request for rysmo-1d787705deda7f28_bg.wasm. Preview showed 1172 occurrences / 24934 faces and the triangulation warning. Opened in a new unsaved document, completed surface preparation, rendered materials and geometry, and responded to orbit. Exported and downloaded both 2017 (9657723 bytes) and 2026 (6538334 bytes); reimported the actual 2026 download in the browser, with the same preview counts and rendered model. Both browser downloads parsed in the native checker and matched all recorded invariants excluding intentionally changed camera. No console errors."
+      }
+    ],
+    "downloads": [
+      {
+        "name": "shared-2017.skp",
+        "bytes": 57573,
+        "sha256": "96f263c8c13dad0597af529f6693bf51f7e24b6ac6bb4027040ff35cc5423230"
+      },
+      {
+        "name": "shared-2026.skp",
+        "bytes": 37441,
+        "sha256": "c06c92c506486603ad26e1d563ee674129614965bbf09e5abd8a28ce29a7d6ba"
+      },
+      {
+        "name": "texture-2017.skp",
+        "bytes": 25340,
+        "sha256": "6b818d6170d241bc2e913a317933baa9c8ca1d4c3a6fa1ff6fcf698176288e74"
+      },
+      {
+        "name": "texture-2026.skp",
+        "bytes": 25312,
+        "sha256": "673ef9771fee5cd61a406dc6725258af1b125d36af845ec3b160b2b4e65355a9"
+      },
+      {
+        "name": "theater-2017.skp",
+        "bytes": 9657723,
+        "sha256": "ae18654f524b305922db1e123f2d507cd90f14b33507d3930a0c544cf7fdc8a7"
+      },
+      {
+        "name": "theater-2026.skp",
+        "bytes": 6538334,
+        "sha256": "cdf8394b1e653e307b85133f0e3d974e4b3943a8665ac4c9459a03c4c754c267"
+      }
+    ],
+    "download_validation": "All six files parsed successfully. Stored vertex/edge/face/instance counts, definitions, holes, bounds, guides, tags, scenes, units, and sorted embedded image byte lengths/CRC32 checksums matched the corresponding source import. Camera changes made intentionally while viewing textures and the theater are excluded from this comparison. This is an invariant comparison, not a complete geometry equivalence proof.",
+    "console_errors": [],
+    "local_screenshots": [
+      "target/skp-browser-verification/texture-roundtrip.jpg",
+      "target/skp-browser-verification/theater-before.jpg",
+      "target/skp-browser-verification/theater-after.jpg"
+    ]
   },
   "manual_corpus_result": "8 models, 16 cross-container conversions passed; geometry counts, visible bounds, total texture payload size and tag counts remain stable. Includes houses, nested groups, layers, scenes, circles, soft/smooth edges and PNG textures.",
-  "limitations": "Conversion warnings identify omitted annotations, custom/procedural/advanced data and per-scene overrides. Existing glue is baked on export. This is not byte-preserving conversion or a guarantee for all versions."
+  "limitations": "Conversion warnings identify omitted annotations, custom/procedural/advanced data and per-scene overrides. Existing glue is baked on export. This is not byte-preserving conversion or a guarantee for all versions.",
+  "source_sha256_scope": "Historical handoff source snapshot before the macOS follow-up; current changed-source hashes are recorded separately.",
+  "public_samples": [
+    {
+      "name": "brick-home-front.skp",
+      "url": "https://raw.githubusercontent.com/shvmm/brick-home/d311f778ee3ae228fffc53d1b4b2c67528c4bfc7/front%20home%201.skp",
+      "bytes": 355518,
+      "sha256": "19c3b93723a375b99e4d6027667a23f067e6392e9342a0786ddf13c8f02c6f51"
+    },
+    {
+      "name": "house-2026.skp",
+      "url": "https://raw.githubusercontent.com/hew3d/skpwright/491e1fc7bb8ba135f7e3863d38abda29004c68bf/corpus/2026/house.skp",
+      "bytes": 2241895,
+      "sha256": "f32845d84f38769b275f295afc37abd814eaf0a1f6481b31c8d5035b3f8b3623"
+    },
+    {
+      "name": "theater-2026.skp",
+      "url": "https://raw.githubusercontent.com/hew3d/skpwright/491e1fc7bb8ba135f7e3863d38abda29004c68bf/corpus/third-party/theater-2026.skp",
+      "bytes": 7413673,
+      "sha256": "70a64b68b532d112e95160480c59f26a1b1e7233520b9ac343456e9762a10c30"
+    }
+  ],
+  "macos_followup": {
+    "base_revision": "294fc9ae295b60f2d16dbbe4d867af271c440da5",
+    "tests": {
+      "rysmo_io_library": "126 passed",
+      "javascript": "28 passed",
+      "rysmo_io_all_targets_clippy": "passed with -D warnings",
+      "format_and_diff": "passed"
+    },
+    "samples": [
+      {
+        "name": "shared-2017.skp",
+        "bytes": 139581,
+        "warnings": [
+          "Camera-facing components are imported as fixed geometry.",
+          "Custom attribute dictionaries and dynamic behaviours are not imported."
+        ],
+        "metrics": {
+          "bounds": [
+            [
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              2.2272624999999997,
+              2.19075,
+              0.7953374999999999
+            ]
+          ],
+          "camera": {
+            "eye": [
+              3.2159004736465393,
+              -9.509840548809363,
+              3.0148315021003507
+            ],
+            "parallel": false,
+            "target": [
+              1.5024744868818734,
+              3.723000370947523,
+              -0.9018985355100313
+            ],
+            "up": [
+              -0.0361671589360185,
+              0.27932006658985614,
+              0.9595166684402805
+            ]
+          },
+          "definitions": 2,
+          "guides": 0,
+          "holes": 1,
+          "image_payloads": [],
+          "materials": 3,
+          "scenes": 0,
+          "stored_edges": 696,
+          "stored_faces": 38,
+          "stored_instances": 2,
+          "stored_vertices": 660,
+          "tags": 0,
+          "units": "Architectural",
+          "visible_faces": 12,
+          "visible_occurrences": 3
+        },
+        "exports": [
+          {
+            "version": "2017",
+            "bytes": 57573,
+            "invariants_match": true,
+            "warnings": []
+          },
+          {
+            "version": "2026",
+            "bytes": 37443,
+            "invariants_match": true,
+            "warnings": []
+          }
+        ]
+      },
+      {
+        "name": "texture-2026.skp",
+        "bytes": 156763,
+        "warnings": [
+          "Custom attribute dictionaries and dynamic behaviours are not imported.",
+          "Watermarks are not imported."
+        ],
+        "metrics": {
+          "bounds": [
+            [
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              1.0,
+              1.0,
+              0.0
+            ]
+          ],
+          "camera": {
+            "eye": [
+              0.5000000000000007,
+              0.5,
+              11.559817538564648
+            ],
+            "parallel": false,
+            "target": [
+              0.5,
+              0.5,
+              0.0
+            ],
+            "up": [
+              -6.123233995736766e-17,
+              1.0,
+              3.749399456654644e-33
+            ]
+          },
+          "definitions": 0,
+          "guides": 0,
+          "holes": 0,
+          "image_payloads": [
+            [
+              17984,
+              3223488925
+            ]
+          ],
+          "materials": 1,
+          "scenes": 0,
+          "stored_edges": 4,
+          "stored_faces": 1,
+          "stored_instances": 0,
+          "stored_vertices": 4,
+          "tags": 0,
+          "units": "Architectural",
+          "visible_faces": 1,
+          "visible_occurrences": 1
+        },
+        "exports": [
+          {
+            "version": "2017",
+            "bytes": 25340,
+            "invariants_match": true,
+            "warnings": []
+          },
+          {
+            "version": "2026",
+            "bytes": 25299,
+            "invariants_match": true,
+            "warnings": []
+          }
+        ]
+      },
+      {
+        "name": "hole-2026.skp",
+        "bytes": 181924,
+        "warnings": [
+          "Camera-facing components are imported as fixed geometry.",
+          "Custom attribute dictionaries and dynamic behaviours are not imported.",
+          "Watermarks are not imported."
+        ],
+        "metrics": {
+          "bounds": [
+            [
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              1.0,
+              1.0,
+              0.0
+            ]
+          ],
+          "camera": {
+            "eye": [
+              4.2698124354904845,
+              -3.375855268255931,
+              1.6933775553338573
+            ],
+            "parallel": false,
+            "target": [
+              -3.272185784211874,
+              7.797806544940986,
+              -1.7201581696213537
+            ],
+            "up": [
+              -0.13732942314234511,
+              0.20345702643967736,
+              0.9694049040167453
+            ]
+          },
+          "definitions": 1,
+          "guides": 0,
+          "holes": 2,
+          "image_payloads": [],
+          "materials": 1,
+          "scenes": 0,
+          "stored_edges": 692,
+          "stored_faces": 33,
+          "stored_instances": 0,
+          "stored_vertices": 660,
+          "tags": 0,
+          "units": "Architectural",
+          "visible_faces": 1,
+          "visible_occurrences": 1
+        },
+        "exports": [
+          {
+            "version": "2017",
+            "bytes": 56251,
+            "invariants_match": true,
+            "warnings": []
+          },
+          {
+            "version": "2026",
+            "bytes": 35926,
+            "invariants_match": true,
+            "warnings": []
+          }
+        ]
+      },
+      {
+        "name": "brick-home-front.skp",
+        "bytes": 355518,
+        "warnings": [
+          "Custom attribute dictionaries and dynamic behaviours are not imported.",
+          "Watermarks are not imported."
+        ],
+        "metrics": {
+          "bounds": [
+            [
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              10.058399999999999,
+              9.3726,
+              7.608887500000001
+            ]
+          ],
+          "camera": {
+            "eye": [
+              36.160441987850945,
+              -1.3544642328047458,
+              14.1434228464021
+            ],
+            "parallel": false,
+            "target": [
+              18.98568724504866,
+              2.876276190641248,
+              7.361698005353621
+            ],
+            "up": [
+              -0.3476028782374848,
+              0.08562669862181405,
+              0.9337238925529031
+            ]
+          },
+          "definitions": 0,
+          "guides": 55,
+          "holes": 15,
+          "image_payloads": [
+            [
+              1218,
+              415501190
+            ],
+            [
+              1806,
+              3466948274
+            ],
+            [
+              10806,
+              875150970
+            ],
+            [
+              11393,
+              2670769061
+            ],
+            [
+              12641,
+              3783531001
+            ],
+            [
+              12964,
+              743453634
+            ],
+            [
+              14904,
+              3156523517
+            ],
+            [
+              42485,
+              3570218723
+            ]
+          ],
+          "materials": 8,
+          "scenes": 0,
+          "stored_edges": 1492,
+          "stored_faces": 667,
+          "stored_instances": 0,
+          "stored_vertices": 860,
+          "tags": 0,
+          "units": "Architectural",
+          "visible_faces": 667,
+          "visible_occurrences": 1
+        },
+        "exports": [
+          {
+            "version": "2017",
+            "bytes": 280238,
+            "invariants_match": true,
+            "warnings": [
+              "guide dash patterns are not stored by release 17; 11 guides are written solid"
+            ]
+          },
+          {
+            "version": "2026",
+            "bytes": 171038,
+            "invariants_match": true,
+            "warnings": []
+          }
+        ]
+      },
+      {
+        "name": "house-2026.skp",
+        "bytes": 2241895,
+        "warnings": [
+          "Custom attribute dictionaries and dynamic behaviours are not imported.",
+          "Watermarks are not imported."
+        ],
+        "metrics": {
+          "bounds": [
+            [
+              -1.2262652304001476e-06,
+              -2.256469324696142e-07,
+              0.0
+            ],
+            [
+              9.14400122626523,
+              9.182099999999998,
+              2.54
+            ]
+          ],
+          "camera": {
+            "eye": [
+              4.572000000000002,
+              4.591049887176534,
+              23.222383424435467
+            ],
+            "parallel": false,
+            "target": [
+              4.572,
+              4.591049887176534,
+              1.27
+            ],
+            "up": [
+              -6.123233995736766e-17,
+              1.0,
+              3.749399456654644e-33
+            ]
+          },
+          "definitions": 47,
+          "guides": 0,
+          "holes": 20,
+          "image_payloads": [
+            [
+              3287,
+              3170371947
+            ],
+            [
+              16975,
+              2135129125
+            ],
+            [
+              17984,
+              3223488925
+            ],
+            [
+              50990,
+              79289759
+            ],
+            [
+              1820445,
+              1770850520
+            ]
+          ],
+          "materials": 9,
+          "scenes": 0,
+          "stored_edges": 726,
+          "stored_faces": 318,
+          "stored_instances": 65,
+          "stored_vertices": 477,
+          "tags": 2,
+          "units": "Architectural",
+          "visible_faces": 534,
+          "visible_occurrences": 79
+        },
+        "exports": [
+          {
+            "version": "2017",
+            "bytes": 2022678,
+            "invariants_match": true,
+            "warnings": []
+          },
+          {
+            "version": "2026",
+            "bytes": 1958758,
+            "invariants_match": true,
+            "warnings": []
+          }
+        ]
+      },
+      {
+        "name": "theater-2026.skp",
+        "bytes": 7413673,
+        "warnings": [
+          "Camera-facing components are imported as fixed geometry.",
+          "Custom attribute dictionaries and dynamic behaviours are not imported.",
+          "Edge and face tags are baked into visibility; only instance tags remain editable.",
+          "Existing glue attachments are not converted. Opening settings are retained for new placements.",
+          "Non-planar faces are triangulated without moving their vertices.",
+          "Watermarks are not imported."
+        ],
+        "metrics": {
+          "bounds": [
+            [
+              -0.5396784867330342,
+              -1.9572588634138295,
+              -0.0063500000000044285
+            ],
+            [
+              7.842841327899179,
+              7.0866,
+              4.147329251584699
+            ]
+          ],
+          "camera": {
+            "eye": [
+              9.929777250931155,
+              1.130538753969034,
+              7.609134236784634
+            ],
+            "parallel": false,
+            "target": [
+              4.730986366935496,
+              3.603422944012816,
+              0.9874105592739246
+            ],
+            "up": [
+              -0.6814964701060138,
+              0.32416419204008384,
+              0.6561098519547185
+            ]
+          },
+          "definitions": 752,
+          "guides": 0,
+          "holes": 279,
+          "image_payloads": [
+            [
+              1218,
+              415501190
+            ],
+            [
+              1806,
+              3466948274
+            ],
+            [
+              2508,
+              2995048639
+            ],
+            [
+              6898,
+              4231369525
+            ],
+            [
+              9037,
+              61702451
+            ],
+            [
+              10294,
+              2806847979
+            ],
+            [
+              11009,
+              2990945675
+            ],
+            [
+              13915,
+              1591795279
+            ],
+            [
+              27420,
+              948471435
+            ],
+            [
+              46010,
+              1424017239
+            ],
+            [
+              194844,
+              600070037
+            ],
+            [
+              666235,
+              2877168182
+            ],
+            [
+              744572,
+              4124942969
+            ],
+            [
+              1374949,
+              585457265
+            ],
+            [
+              1820445,
+              1770850520
+            ]
+          ],
+          "materials": 78,
+          "scenes": 0,
+          "stored_edges": 33093,
+          "stored_faces": 13320,
+          "stored_instances": 1186,
+          "stored_vertices": 21211,
+          "tags": 93,
+          "units": "Architectural",
+          "visible_faces": 24934,
+          "visible_occurrences": 1172
+        },
+        "exports": [
+          {
+            "version": "2017",
+            "bytes": 9657723,
+            "invariants_match": true,
+            "warnings": []
+          },
+          {
+            "version": "2026",
+            "bytes": 6538393,
+            "invariants_match": true,
+            "warnings": []
+          }
+        ]
+      }
+    ],
+    "real_project_fix": {
+      "before": "Theater import failed: face 17162 is not planar.",
+      "source_nonplanar_faces": 25,
+      "maximum_plane_deviation_metres": 2.459253101122494e-05,
+      "after": "Triangulate non-planar faces with a warning; preserve shared vertex positions, holes, materials, hidden flags and projective texture mapping. Keep new diagonals soft/smooth; validate post-conversion geometry budgets. Both native cross-container round trips preserve the recorded invariants."
+    },
+    "target_application": "Not tested; SketchUp is unavailable.",
+    "build": {
+      "revision": "294fc9ae295b60f2d16dbbe4d867af271c440da5",
+      "tracked_changes": true,
+      "assets": {
+        "rysmo-1d787705deda7f28_bg.wasm": {
+          "bytes": 29958135,
+          "sha256": "b695b110167e711e57e0fb492535edfc524ae997e04ccb63d243c3075323acf3"
+        },
+        "rysmo-d57187f25f76fe4c.js": {
+          "bytes": 120380,
+          "sha256": "d57187f25f76fe4cfe754744b424693e3f6bcfeaa620deebbcb14a5764dd4250"
+        }
+      },
+      "gui_checked": true
+    },
+    "source_sha256": {
+      "crates/rysmo_io/src/skp/geometry.rs": "4ed945dfe94c25743c332779105be71d55bc637542c4a610d756adf8e8c45a63",
+      "crates/rysmo_io/src/skp/mapping.rs": "dc05c7589d6ed916f02131e400f1e98e3cc156ea93177c1ac35724f957d59dda",
+      "crates/rysmo_io/src/skp/mod.rs": "bd9b4836b3d204d090fdb4ebb44e6f69c63462a2240aa727e73020b96472f5e2",
+      "crates/rysmo_io/src/skp/tests.rs": "35a6bf1523f5b139e8d97a7553a1dc239d714509d69e74618dfe00cd756f268a",
+      "crates/rysmo_app/src/features/skp.rs": "da743fdbfbcd2bf3c669cee4d6e81cd589f033ae070d6f7e38c4faf594516ce4"
+    }
+  },
+  "verification_scope": "Original Linux handoff checks, except the updated target-application availability note. Checks performed during the macOS follow-up are listed separately."
 }

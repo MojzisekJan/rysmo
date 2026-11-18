@@ -155,6 +155,8 @@ pub fn read(bytes: &[u8], options: Options) -> crate::import::Result<Imported> {
     }
     let mut root = None;
     let mut owners = BTreeSet::new();
+    let mut converted_faces = 0usize;
+    let mut converted_edges = 0usize;
     for run in &source.geometry {
         let owner = match run.def_index {
             Some(reference) => {
@@ -172,6 +174,11 @@ pub fn read(bytes: &[u8], options: Options) -> crate::import::Result<Imported> {
         }
         let mesh =
             geometry::read(&mut document, &hidden_layers, run, &materials, scale, &mut warnings).map_err(failure)?;
+        converted_faces += mesh.face_count();
+        converted_edges += mesh.edge_count();
+        if converted_faces > 100_000 || converted_edges > 300_000 {
+            return Err(failure("SKP triangulation exceeds the import geometry limits."));
+        }
         let mut definition = owner
             .and_then(|id| definitions.remove(&id))
             .unwrap_or_else(|| Definition { name: "Model".into(), ..Default::default() });

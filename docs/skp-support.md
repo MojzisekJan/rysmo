@@ -23,6 +23,7 @@ Rysmo still need testing in the target applications on Windows/macOS.
 | Data | Import | Export |
 |---|---|---|
 | Editable polygon meshes, holes and loose edges | Yes | Yes |
+| Non-planar source faces | Triangulated with a warning; vertices, holes and texture placement retained | Planar triangles |
 | Shared nested components and groups | Yes | Yes |
 | Translation, rotation, nonuniform scale and mirroring | Yes | Yes |
 | Solid colours, opacity and embedded PNG/JPEG textures | Yes | Yes |

@@ -2,11 +2,10 @@
 
 ## Transfer status
 
-The working checkout is `/home/jan/src/rysmo`, branch `main`, based on
-`41e2942882a8d48ed463aaafe969c54433a8f59e`. The performance and SKP changes
-described below are included in the handoff commit. On another computer, update
-from `origin/main` and start with the remaining tasks below. Build outputs under
-`target/` are reproducible and should not be committed.
+The macOS checkout is `main`, updated from `origin/main` at
+`294fc9ae295b60f2d16dbbe4d867af271c440da5`. The follow-up below completes the
+browser SKP checks and fixes a real-project import failure. Build outputs and
+public sample downloads under `target/` are reproducible and are not committed.
 
 The configured commit identity matches earlier commits:
 `Jan Mojzisek <mojzisekjan@gmail.com>`. The user wants this as the sole author,
@@ -35,22 +34,40 @@ upstream sample models passed 16 cross-container conversions, checking geometry
 counts, visible bounds, texture payload size and tag counts. These are internal
 read/write checks, not proof that an external application accepts every export.
 
+## macOS follow-up
+
+- Browser cursor checks completed for shared components and projective textures:
+  import into a new unsaved tab, preservation of the prior edited tab, both SKP
+  export versions, downloads, and reimport of all four downloads. Geometry counts,
+  bounds and texture payload checks match. A downloaded house also rendered with
+  textures and editable components. See the verification record for build hashes
+  and the post-fix check of the larger theater project: 1,172 visible occurrences,
+  24,934 visible faces, both GUI exports, and the downloaded 2026 file reimported
+  and rendered without a crash.
+- Public samples were downloaded from pinned GitHub commits; provenance and hashes
+  are in `verification/skp-interoperability-2026-11-18.json`. These are internal
+  conversions, not independent SketchUp acceptance tests.
+- The theater project initially failed safely on 25 non-planar faces (maximum
+  deviation about 0.025 mm). Such faces now triangulate without moving shared
+  vertices. Holes, hidden flags, front/back materials and projective texture
+  placement are retained; added diagonals are soft/smooth. Import warns about the
+  conversion and checks the resulting geometry budget. Regression tests cover
+  holes and textured bent faces. All 126 I/O library tests and strict I/O
+  all-target Clippy passed; 28 JavaScript tests passed and the web release rebuilt.
+- The user does not have SketchUp installed. No vendor application check was
+  performed. Browser native Save-picker completion was not established by this
+  run; the SKP download/reimport checks are recorded separately.
+
 ## Resume here
 
-1. Complete actual browser GUI verification of the current SKP build. Import
-   `crates/rysmo_io/tests/fixtures/skp/shared-2017.skp` via File > Import > Model,
-   choose Open as new document, and verify the previous tab survives and the new
-   document has no native save path. Export and download both SKP versions through
-   File > Export > SKP. Reimport downloads and check geometry. Repeat with
-   `texture-2026.skp` to inspect warped texture placement. Record the results in
-   `verification/skp-interoperability-2026-11-18.json`, whose browser status is
-   currently unfinished.
-2. On Windows/macOS, open exported files in the target application and compare
-   hierarchy, geometry/holes, textures, tags and cameras. This has not been done.
-   Inspect representative real user projects and report omitted data honestly.
-3. Review remaining conversion gaps in `skp-support.md` and the English TODO
-   comments in the SKP modules. Prioritize real-project failures found above.
-4. Further performance targets are large selection/highlight/move operations,
+1. When SketchUp is available, open the downloaded 2017/2026 exports there and
+   compare hierarchy, geometry/holes, textures, tags and cameras. This remains
+   unverified; successful reads by Rysmo's own dependency are not independent
+   compatibility evidence.
+2. Review remaining conversion gaps in `skp-support.md` and the English TODO
+   comments in the SKP modules. Continue prioritizing representative real-project
+   failures and reporting omitted data honestly.
+3. Further performance targets are large selection/highlight/move operations,
    cold picking, remaining indivisible browser work and parser allocations.
    Existing profiling shows significant long tasks for whole-model edits;
    background preparation does not eliminate these.
