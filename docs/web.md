@@ -56,6 +56,14 @@ the model or WASM memory contents. A browser without the Long Tasks API reports
 that limitation rather than claiming zero long tasks. Timings remain local and
 are neither persisted automatically nor sent to a service.
 
+## Keyboard shortcuts
+
+Letter shortcuts follow the active keyboard layout, including Czech QWERTZ.
+Ctrl+Z (or Cmd+Z on macOS) undoes the last edit; Ctrl+Y or Ctrl+Shift+Z
+(Cmd equivalents also work) redoes it. A Windows keyboard connected to a Mac
+can use Control; its Windows key normally acts as Command. Text inputs retain
+their own editing shortcuts while focused.
+
 ## Loading screen
 
 Before downloading anything the page checks that the browser has WebGL2 and says so if

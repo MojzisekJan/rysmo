@@ -606,6 +606,34 @@ fn enter(app: &mut App3d) {
     }
 }
 
+/// Letter shortcuts follow the active layout (e.g. Czech QWERTZ), not the
+/// physical US key position. Preserve the key-code fallback for layouts without
+/// Latin letters and for synthetic inputs without text.
+fn shortcut_letter(event: &KeyboardInput) -> Option<char> {
+    if let LogicalKey::Character(text) = &event.logical_key {
+        let mut chars = text.chars();
+        if let Some(letter) = chars.next().filter(char::is_ascii_alphabetic) {
+            if chars.next().is_none() {
+                return Some(letter.to_ascii_lowercase());
+            }
+        }
+    }
+    match event.key_code {
+        KeyCode::KeyA => Some('a'),
+        KeyCode::KeyC => Some('c'),
+        KeyCode::KeyD => Some('d'),
+        KeyCode::KeyN => Some('n'),
+        KeyCode::KeyO => Some('o'),
+        KeyCode::KeyS => Some('s'),
+        KeyCode::KeyV => Some('v'),
+        KeyCode::KeyW => Some('w'),
+        KeyCode::KeyX => Some('x'),
+        KeyCode::KeyY => Some('y'),
+        KeyCode::KeyZ => Some('z'),
+        _ => None,
+    }
+}
+
 /// Replay keyboard modifiers from the state before this frame. Reversing the
 /// received transitions from ButtonInput's final state avoids stale modifiers
 /// after focus loss and supports left/right Control and Command independently.
@@ -665,7 +693,8 @@ fn queued_shortcuts(app: &mut App3d, keys: &ButtonInput<KeyCode>, events: &[Keyb
         if alt {
             continue;
         }
-        if !ctrl && shift && app.vcb.is_empty() && event.key_code == KeyCode::KeyS {
+        let letter = shortcut_letter(event);
+        if !ctrl && shift && app.vcb.is_empty() && letter == Some('s') {
             crate::command_search::open(app);
             handled = true;
             continue;
@@ -673,24 +702,24 @@ fn queued_shortcuts(app: &mut App3d, keys: &ButtonInput<KeyCode>, events: &[Keyb
         if !ctrl {
             continue;
         }
-        match event.key_code {
-            KeyCode::KeyC => crate::object_clipboard::copy(app, false),
-            KeyCode::KeyX => crate::object_clipboard::copy(app, true),
-            KeyCode::KeyV => crate::object_clipboard::paste(app, shift),
-            KeyCode::KeyD => crate::object_clipboard::duplicate(app),
-            KeyCode::KeyW if shift => app.set_tool(ToolKind::ZoomWindow),
-            KeyCode::KeyZ => {
+        match letter {
+            Some('c') => crate::object_clipboard::copy(app, false),
+            Some('x') => crate::object_clipboard::copy(app, true),
+            Some('v') => crate::object_clipboard::paste(app, shift),
+            Some('d') => crate::object_clipboard::duplicate(app),
+            Some('w') if shift => app.set_tool(ToolKind::ZoomWindow),
+            Some('z') => {
                 if shift {
                     redo(app)
                 } else {
                     undo(app)
                 }
             }
-            KeyCode::KeyY => redo(app),
-            KeyCode::KeyA => select_all(app),
-            KeyCode::KeyS => files::save(app, shift),
-            KeyCode::KeyO => crate::unsaved::request(app, crate::unsaved::Action::Open),
-            KeyCode::KeyN => crate::unsaved::request(app, crate::unsaved::Action::New),
+            Some('y') => redo(app),
+            Some('a') => select_all(app),
+            Some('s') => files::save(app, shift),
+            Some('o') => crate::unsaved::request(app, crate::unsaved::Action::Open),
+            Some('n') => crate::unsaved::request(app, crate::unsaved::Action::New),
             _ => continue,
         }
         handled = true;
@@ -1060,8 +1089,11 @@ mod queued_keyboard_tests {
         app
     }
     fn events(app: &mut App, sequence: &[(KeyCode, bool)]) {
+        layout_events(app, sequence, &[]);
+    }
+    fn layout_events(app: &mut App, sequence: &[(KeyCode, bool)], layout: &[(KeyCode, &str)]) {
         for &(code, pressed) in sequence {
-            let logical_key = match code {
+            let mut logical_key = match code {
                 KeyCode::ControlLeft | KeyCode::ControlRight => LogicalKey::Control,
                 KeyCode::ShiftLeft | KeyCode::ShiftRight => LogicalKey::Shift,
                 KeyCode::SuperLeft | KeyCode::SuperRight => LogicalKey::Super,
@@ -1077,11 +1109,15 @@ mod queued_keyboard_tests {
                         KeyCode::KeyD => "d",
                         KeyCode::KeyS => "s",
                         KeyCode::KeyZ => "z",
+                        KeyCode::KeyY => "y",
                         _ => "r",
                     }
                     .into(),
                 ),
             };
+            if let Some((_, text)) = layout.iter().find(|(physical, _)| *physical == code) {
+                logical_key = LogicalKey::Character((*text).into());
+            }
             if pressed {
                 app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(code);
             } else {
@@ -1102,6 +1138,64 @@ mod queued_keyboard_tests {
     fn chord(app: &mut App, modifier: KeyCode, key: KeyCode) {
         events(app, &[(modifier, true), (key, true), (key, false), (modifier, false)]);
     }
+    #[test]
+    fn shortcut_letters_preserve_non_latin_and_synthetic_fallbacks() {
+        let mut event = KeyboardInput {
+            key_code: KeyCode::KeyZ,
+            logical_key: LogicalKey::Character("y".into()),
+            state: ButtonState::Pressed,
+            text: None,
+            repeat: false,
+            window: Entity::PLACEHOLDER,
+        };
+        assert_eq!(shortcut_letter(&event), Some('y'));
+        event.logical_key = LogicalKey::Character("a".into());
+        assert_eq!(shortcut_letter(&event), Some('a'));
+        for text in ["", "я"] {
+            event.logical_key = LogicalKey::Character(text.into());
+            assert_eq!(shortcut_letter(&event), Some('z'));
+        }
+    }
+
+    #[test]
+    fn undo_redo_follow_qwertz_letters_for_control_and_command() {
+        for modifier in [KeyCode::ControlLeft, KeyCode::ControlRight, KeyCode::SuperLeft, KeyCode::SuperRight] {
+            let mut app = rig();
+            let before = app.world().resource::<App3d>().editor.doc().clone();
+            let layout = [(KeyCode::KeyY, "z"), (KeyCode::KeyZ, "y")];
+            layout_events(
+                &mut app,
+                &[(modifier, true), (KeyCode::KeyY, true), (KeyCode::KeyY, false), (modifier, false)],
+                &layout,
+            );
+            assert_ne!(app.world().resource::<App3d>().editor.doc(), &before);
+            layout_events(
+                &mut app,
+                &[(modifier, true), (KeyCode::KeyZ, true), (KeyCode::KeyZ, false), (modifier, false)],
+                &layout,
+            );
+            assert_eq!(app.world().resource::<App3d>().editor.doc(), &before);
+            layout_events(
+                &mut app,
+                &[(modifier, true), (KeyCode::KeyY, true), (KeyCode::KeyY, false), (modifier, false)],
+                &layout,
+            );
+            layout_events(
+                &mut app,
+                &[
+                    (modifier, true),
+                    (KeyCode::ShiftLeft, true),
+                    (KeyCode::KeyY, true),
+                    (KeyCode::KeyY, false),
+                    (KeyCode::ShiftLeft, false),
+                    (modifier, false),
+                ],
+                &[(KeyCode::KeyY, "Z")],
+            );
+            assert_eq!(app.world().resource::<App3d>().editor.doc(), &before);
+        }
+    }
+
     #[test]
     fn every_backspace_in_one_frame_deletes_in_typing_order() {
         let mut app = rig();
