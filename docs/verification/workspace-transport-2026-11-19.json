@@ -1,0 +1,85 @@
+{
+  "date": "2026-11-19",
+  "baseline": "3b2b2229470946a741f56742937393e988dcd65f",
+  "change": "Transport native document strings separately from workspace metadata JSON; reconstruct the same IndexedDB record before the existing serialized write queue.",
+  "reviewed": [
+    "Recovery snapshot serialization",
+    "Rust-to-JavaScript workspace bridge",
+    "Ordered IndexedDB writes and handle capture",
+    "Restore compatibility with existing workspace records",
+    "Failure and DataCloneError retry paths"
+  ],
+  "fixture": {
+    "path": "target/skp-browser-verification/raw-72000.rysmo",
+    "sha256": "452264d84d46440054a24fe200b36d810dc18f6e44c4209c9254e719579dffad"
+  },
+  "native_cpu": {
+    "profile": "portable aarch64-apple-darwin",
+    "warmups": 3,
+    "results": [
+      {
+        "median_ms": 33.057292000000004,
+        "p95_ms": 33.756834,
+        "reuse_camera": false,
+        "samples": 21
+      },
+      {
+        "median_ms": 0.422,
+        "p95_ms": 0.6815420000000001,
+        "reuse_camera": true,
+        "samples": 21
+      }
+    ],
+    "previous_camera_reuse_median_ms": 23.172125,
+    "previous_evidence": "camera-recovery-2026-11-19.json",
+    "scope": "Snapshot preparation only; no WASM-to-JS string copying, IndexedDB or rendering. Previous figure is from the preceding recorded pass, not a simultaneous A/B run."
+  },
+  "javascript_cpu": {
+    "runtime": "Node vm running actual web_files.js",
+    "warmups": 3,
+    "results": {
+      "native_bytes": 15071084,
+      "metadata_bytes": 69,
+      "results": [
+        {
+          "split": false,
+          "median_ms": 15.885958999999986,
+          "p95_ms": 16.24208299999998,
+          "samples": 21
+        },
+        {
+          "split": true,
+          "median_ms": 0.008333999999990738,
+          "p95_ms": 0.06179199999996854,
+          "samples": 21
+        }
+      ]
+    },
+    "scope": "Existing JSON bridge versus split bridge, sequential 21-sample runs; inputs prepared before timing; storage mock deliberately omits structured cloning. Not browser or IndexedDB timing."
+  },
+  "checks": {
+    "app_library_tests_passed": 239,
+    "app_manual_tests_ignored": 5,
+    "javascript_tests_passed": 36,
+    "javascript_manual_test_skipped": 1,
+    "manual_benchmarks_passed": 2,
+    "native_all_target_clippy": "passed",
+    "wasm_check": "passed",
+    "wasm_clippy": "passed",
+    "format_and_diff_check": "passed"
+  },
+  "invariants": [
+    "Persisted workspace schema and restore path unchanged",
+    "Exact strings, Unicode, quotes, null characters and dirty flags preserved",
+    "Legacy and split entrypoints share the same write queue and handle fallback",
+    "Invalid/mismatched payload returns false without overwriting recovery",
+    "Texts captured before queuing; mutation of caller array cannot alter old snapshot",
+    "No additional geometry cache; existing 64 MiB native text retention budget unchanged"
+  ],
+  "limitations": [
+    "Actual browser interop copies and IndexedDB still cost time.",
+    "Collection/library JSON remains in metadata and may be large.",
+    "Cold snapshots and edited geometry still require native serialization.",
+    "No full web build, GUI test or deployment performed."
+  ]
+}

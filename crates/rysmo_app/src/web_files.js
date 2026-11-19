@@ -403,6 +403,24 @@ let workspaceWrites = Promise.resolve();
 export function save_workspace(json) {
   let data;
   try { data = JSON.parse(json); } catch { return Promise.resolve(false); }
+  return queue_workspace(data);
+}
+
+// Texts are already immutable JS strings. Do not embed and parse them as JSON.
+export function save_workspace_parts(metadata, texts) {
+  let data;
+  try { data = JSON.parse(metadata); } catch { return Promise.resolve(false); }
+  if (!data || !Array.isArray(data.documents) || data.documents.length > 16 ||
+      !Array.isArray(texts) || texts.length !== data.documents.length) return Promise.resolve(false);
+  for (let i = 0; i < texts.length; i++) {
+    const doc = data.documents[i];
+    if (!doc || typeof doc !== "object" || Array.isArray(doc) || typeof texts[i] !== "string") return Promise.resolve(false);
+    doc.text = texts[i];
+  }
+  return queue_workspace(data);
+}
+
+function queue_workspace(data) {
   for (const doc of data.documents) {
     doc.handle = (doc.id === activeDocument ? current : documentFiles.get(doc.id))?.handle || null;
   }

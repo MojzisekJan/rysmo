@@ -116,7 +116,7 @@ test("workspace preferences survive reload and report unavailable storage", asyn
 });
 
 
-function recoveryDatabase({ aborts = 0, openFailures = 0 } = {}) {
+function recoveryDatabase({ aborts = 0, openFailures = 0, cloneValues = true, rejectWorkspaceHandles = false } = {}) {
   const stores = new Map(["state", "files", "handles"].map(name => [name, new Map()]));
   return { stores, open() {
     const request = {};
@@ -136,9 +136,12 @@ function recoveryDatabase({ aborts = 0, openFailures = 0 } = {}) {
           },
           put(value, key) {
             assert.equal(mode, "readwrite");
+            if (rejectWorkspaceHandles && key === "workspace" && value.documents.some(doc => doc.handle)) {
+              throw Object.assign(Error("file handles cannot be cloned"), {name: "DataCloneError"});
+            }
             queueMicrotask(() => {
               if (aborts-- > 0) { transaction.onabort(); return; }
-              stores.get(name).set(key, JSON.parse(JSON.stringify(value)));
+              stores.get(name).set(key, cloneValues ? JSON.parse(JSON.stringify(value)) : value);
               transaction.oncomplete();
             });
           },
@@ -456,4 +459,92 @@ test("cold-load milestones survive the bounded frame sample ring", async () => {
   assert.equal(window.rysmoPerformance.samples.length,4096);
   assert.equal(window.rysmoPerformance.milestones[0].stage,"model_installed");
   assert.equal(window.rysmoPerformance.milestones[0].generation,"7");
+});
+
+test("split workspace transport preserves exact text, handles and queued snapshots", async () => {
+  const db = recoveryDatabase();
+  const { api, window } = await fixture({ indexedDB: db });
+  api.activate_document(1);
+  window.showSaveFilePicker = async () => fileHandle("one.rysmo", []);
+  await api.save("one.rysmo", "initial", false);
+  const metadata = { active: 1, documents: [
+    { id: 1, name: "Žluťoučký.rysmo", dirty: true },
+    { id: 2, name: "two.rysmo", dirty: false },
+  ], library: { collection: { name: "Parts", assets: [] }, modified: true } };
+  const texts = ['{"text":"quotes \\" and Unicode 🦀"}\n\u0000', "second\nmodel"];
+  const expected = texts.slice();
+  const first = api.save_workspace_parts(JSON.stringify(metadata), texts);
+  texts[0] = "mutated caller array";
+  assert.equal(await first, true);
+  const stored = db.stores.get("state").get("workspace");
+  assert.equal(stored.documents[0].handle.name, "one.rysmo");
+  assert.deepEqual(Array.from(stored.documents, doc => doc.text), expected);
+  const reloaded = await fixture({ indexedDB: db });
+  const recovered = await reloaded.api.restore_workspace();
+  assert.deepEqual(Array.from(recovered.documents, doc => [doc.name, doc.text, doc.dirty]),
+    [["Žluťoučký.rysmo", expected[0], true], ["two.rysmo", expected[1], false]]);
+  assert.deepEqual(JSON.parse(JSON.stringify(recovered.library)), metadata.library);
+  const earlier = api.save_workspace_parts(JSON.stringify(metadata), ["earlier", "second"]);
+  metadata.documents.splice(1, 1);
+  const later = api.save_workspace_parts(JSON.stringify(metadata), ["latest"]);
+  assert.deepEqual(await Promise.all([earlier, later]), [true, true]);
+  assert.deepEqual(Array.from((await api.restore_workspace()).documents, doc => doc.text), ["latest"]);
+});
+
+test("invalid split workspace payload cannot overwrite recovery", async () => {
+  const db = recoveryDatabase();
+  const { api } = await fixture({ indexedDB: db });
+  const metadata = JSON.stringify({ active: 1, documents: [{id: 1, name: "saved.rysmo", dirty: true}] });
+  assert.equal(await api.save_workspace_parts(metadata, ["keep"]), true);
+  for (const [json, texts] of [
+    ["{", []], ["null", []], ["{}", []], [metadata, []], [metadata, [null]],
+    [metadata, [1]], [metadata, "text"], [metadata, Array(1)],
+    [JSON.stringify({documents:[null]}), ["text"]],
+    [JSON.stringify({documents:[[]]}), ["text"]],
+    [JSON.stringify({documents:Array(17).fill({id:1})}), Array(17).fill("text")],
+  ]) assert.equal(await api.save_workspace_parts(json, texts), false);
+  assert.equal((await api.restore_workspace()).documents[0].text, "keep");
+});
+
+
+test("manual workspace bridge benchmark", {skip: !process.env.RYSMO_RECOVERY_BENCH_MODEL}, async () => {
+  const text = await readFile(process.env.RYSMO_RECOVERY_BENCH_MODEL, "utf8");
+  // Keep storage outside this CPU proxy: no IndexedDB structured-clone claim.
+  const {api} = await fixture({indexedDB: recoveryDatabase({cloneValues: false})});
+  const metadata = {active: 1, documents: [{id: 1, name: "large.rysmo", dirty: true}]};
+  const small = JSON.stringify(metadata);
+  const joined = JSON.stringify({...metadata, documents: [{...metadata.documents[0], text}]});
+  const results = [];
+  for (const split of [false, true]) {
+    const samples = [];
+    for (let i = 0; i < 24; i++) {
+      const start = performance.now();
+      const success = await (split ? api.save_workspace_parts(small, [text]) : api.save_workspace(joined));
+      const elapsed = performance.now() - start;
+      assert.equal(success, true);
+      if (i >= 3) samples.push(elapsed);
+    }
+    assert.equal((await api.restore_workspace()).documents[0].text, text);
+    samples.sort((a,b) => a-b);
+    results.push({split, median_ms:samples[10], p95_ms:samples[19], samples:21});
+  }
+  console.log("workspace-bridge-benchmark:", JSON.stringify({native_bytes:Buffer.byteLength(text), metadata_bytes:Buffer.byteLength(small), results}));
+});
+
+
+test("split workspace retries refused handles and reports failed transactions", async () => {
+  const metadata = JSON.stringify({active: 1, documents: [{id: 1, name: "model.rysmo", dirty: true}]});
+  const db = recoveryDatabase({rejectWorkspaceHandles: true});
+  const {api, window} = await fixture({indexedDB: db});
+  api.activate_document(1);
+  window.showSaveFilePicker = async () => fileHandle("model.rysmo", []);
+  await api.save("model.rysmo", "initial", false);
+  assert.equal(await api.save_workspace_parts(metadata, ["recover me"]), true);
+  const stored = db.stores.get("state").get("workspace");
+  assert.equal(stored.documents[0].handle, null);
+  assert.equal(stored.documents[0].text, "recover me");
+  const failing = await fixture({indexedDB: recoveryDatabase({aborts: 1})});
+  assert.equal(await failing.api.save_workspace_parts(metadata, ["failed"]), false);
+  assert.equal(await failing.api.save_workspace_parts(metadata, ["retried"]), true);
+  assert.equal((await failing.api.restore_workspace()).documents[0].text, "retried");
 });

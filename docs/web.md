@@ -341,3 +341,13 @@ have main-thread work. Startup workspace recovery currently retains its existing
 synchronous loading path. The `model_open_result` diagnostic span includes polling,
 recipient reconstruction and successful installation/persistence; it is not a
 measurement of worker parsing time.
+
+## Workspace snapshot transport
+
+Recovery sends document texts as separate JS strings alongside JSON metadata.
+`save_workspace_parts` reconstructs the existing workspace object before the
+serialized IndexedDB write queue; stored workspaces and restoration are unchanged.
+The bridge checks document/text alignment before any write. Texts and file handles
+are captured before queuing, and a browser that cannot clone handles still retries
+without handles. This removes nested JSON encoding of document strings; it does
+not eliminate WASM string copying or IndexedDB storage work.

@@ -30,13 +30,16 @@ impl Default for Cache {
 
 pub(crate) struct Snapshot {
     pub active_text: Arc<String>,
-    pub workspace: String,
+    // Geometry text travels as strings, not escaped inside this metadata JSON.
+    pub metadata: String,
+    pub texts: Vec<Arc<String>>,
 }
 
 #[derive(Serialize)]
 struct Record {
     id: u64,
     name: String,
+    #[serde(skip_serializing)]
     text: Arc<String>,
     dirty: bool,
 }
@@ -103,19 +106,20 @@ impl Cache {
         // The session iterator always yields the active document first. Keep the same
         // text alive for the legacy single-document recovery write, even if evicted.
         let active_text = documents[0].text.clone();
+        let texts = documents.iter().map(|document| document.text.clone()).collect();
         #[derive(Serialize)]
         struct Workspace {
             active: u64,
             documents: Vec<Record>,
             library: serde_json::Value,
         }
-        let workspace = serde_json::to_string(&Workspace {
+        let metadata = serde_json::to_string(&Workspace {
             active: app.documents.active,
             documents,
             library: app.features.library.recovery(),
         })
         .expect("recovery data serialises");
-        Snapshot { active_text, workspace }
+        Snapshot { active_text, metadata, texts }
     }
 }
 
@@ -134,7 +138,11 @@ mod tests {
         app.editor.apply(Command::DrawLines { lines: vec![[DVec3::ZERO, DVec3::X]], facing: None }).unwrap();
     }
     fn decoded(snapshot: &Snapshot) -> serde_json::Value {
-        serde_json::from_str(&snapshot.workspace).unwrap()
+        let mut workspace: serde_json::Value = serde_json::from_str(&snapshot.metadata).unwrap();
+        for (document, text) in workspace["documents"].as_array_mut().unwrap().iter_mut().zip(&snapshot.texts) {
+            document["text"] = serde_json::Value::String(text.as_str().into());
+        }
+        workspace
     }
     fn assert_legacy_equivalent(app: &App3d, snapshot: &Snapshot) {
         let documents: Vec<_> = app
@@ -154,6 +162,28 @@ mod tests {
             "documents": documents, "library": app.features.library.recovery()})
         );
         assert_eq!(decoded(snapshot)["documents"][0]["text"].as_str().unwrap(), snapshot.active_text.as_str());
+    }
+
+    #[test]
+    fn transport_keeps_document_text_out_of_metadata_and_reuses_immutable_strings() {
+        let mut app = app();
+        draw(&mut app);
+        app.path = Some("Žluťoučký\n\"🦀.rysmo".into());
+        let mut cache = Cache::default();
+        let first = cache.snapshot(&app);
+        let metadata: serde_json::Value = serde_json::from_str(&first.metadata).unwrap();
+        assert!(metadata["documents"][0].get("text").is_none());
+        assert_eq!(first.texts.len(), 1);
+        assert!(Arc::ptr_eq(&first.active_text, &first.texts[0]));
+        let second = cache.snapshot(&app);
+        assert!(Arc::ptr_eq(&first.texts[0], &second.texts[0]));
+        assert_legacy_equivalent(&app, &first);
+        assert!(crate::documents::create(&mut app));
+        draw(&mut app);
+        let two = cache.snapshot(&app);
+        assert_eq!(two.texts.len(), 2);
+        assert!(Arc::ptr_eq(&two.texts[1], &first.texts[0]));
+        assert_legacy_equivalent(&app, &two);
     }
 
     #[test]
@@ -352,7 +382,7 @@ mod tests {
             let workspace = serde_json::json!({"active": app.documents.active,
                 "documents": documents, "library": app.features.library.recovery()})
             .to_string();
-            Snapshot { active_text, workspace }
+            Snapshot { active_text, metadata: workspace, texts: Vec::new() }
         }
         let expected = legacy(&app);
         let actual = cache.snapshot(&app);

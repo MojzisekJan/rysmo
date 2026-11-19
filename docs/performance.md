@@ -874,3 +874,39 @@ First opening and content edits still pay full serialization. The optimized path
 still copies native text and escapes it into workspace JSON; browser transfer and
 IndexedDB costs are not included. No web rebuild or deployment was done here.
 [Measurements and reviewed areas](verification/camera-recovery-2026-11-19.json).
+
+## Workspace transport without nested document JSON, 2026-11-19
+
+Reviewed snapshot preparation, the Rust/JavaScript bridge, serialized storage writes,
+file-handle capture and restore compatibility. Document strings no longer travel
+escaped inside the workspace JSON. `Snapshot` holds a small metadata JSON string
+and references to immutable native texts. The WASM bridge converts those texts to
+JS strings directly; JavaScript attaches them to the parsed metadata before using
+the existing write queue. The persisted IndexedDB schema and restore path are
+unchanged. Collection/library recovery data still travels inside metadata.
+
+This removes repeated JSON escaping in Rust and unescaping in JavaScript without
+adding another geometry cache. The text cache retains its 64 MiB capacity limit.
+The split bridge validates the document/text counts, string types and 16-document
+limit before scheduling a write, captures texts and file handles before queuing,
+and retains the DataCloneError retry without handles.
+
+For 72,000 faces, native camera-update snapshot preparation measured 0.422 ms
+(median, 3 warmups and 21 samples); the preceding pass measured 23.17 ms with
+nested JSON. Cold preparation still measured 33.06 ms because native serialization
+remains. These are native CPU observations, not complete browser-save timings.
+A separate Node VM comparison of the actual JS bridge measured 15.89 ms for parsing
+the old joined JSON versus 0.0083 ms for the split input. Inputs were prebuilt and
+the storage mock deliberately omitted structured cloning; do not add these figures
+together or interpret them as IndexedDB or WASM-transfer measurements.
+
+Tests cover multi-document ordering, unchanged old snapshots, path/dirty/library
+metadata, exact strings including Unicode and control characters, invalid payloads,
+failed transactions and browsers that refuse file-handle cloning. No public web
+build or deployment was performed. Browser interop still copies strings, and large
+component collections can still make metadata expensive.
+[Full evidence and reviewed areas](verification/workspace-transport-2026-11-19.json).
+
+Validation: 239 application tests and 36 JavaScript tests passed; two manual
+benchmarks passed separately. Native all-target Clippy, WASM compilation and
+WASM Clippy passed, as did formatting and diff checks.

@@ -28,7 +28,7 @@ extern "C" {
     fn profile_gpu_end();
     async fn restore() -> JsValue;
     async fn restore_workspace() -> JsValue;
-    async fn save_workspace(json: &str) -> JsValue;
+    async fn save_workspace_parts(metadata: &str, texts: &js_sys::Array) -> JsValue;
     async fn recent_names() -> JsValue;
     async fn autosave(name: &str, text: &str, dirty: bool) -> JsValue;
     fn get_autosave_settings() -> JsValue;
@@ -571,13 +571,12 @@ fn autosave_now(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>, time: Res<Ti
         let camera = app.camera;
         app.editor.set_camera(camera);
         let snapshot = recovery_snapshot(&app);
-        let text = snapshot.active_text;
+        let text = snapshot.active_text.clone();
         let dirty = app.editor.is_dirty();
         let library_version = app.features.library.recovery_version();
-        let workspace = snapshot.workspace;
         auto.in_flight = true;
         wasm_bindgen_futures::spawn_local(async move {
-            let workspace_saved = save_workspace(&workspace).await.as_bool().unwrap_or(false);
+            let workspace_saved = write_workspace(&snapshot).await;
             let single = autosave(&name, &text, dirty).await.as_bool().unwrap_or(false);
             let success = workspace_saved && single;
             arrive(Arrived::Autosaved { version, camera, dirty, library_version, success });
@@ -684,13 +683,21 @@ fn recovery_snapshot(app: &App3d) -> crate::recovery_cache::Snapshot {
     }
     TEXTS.with_borrow_mut(|cache| cache.snapshot(app))
 }
+async fn write_workspace(snapshot: &crate::recovery_cache::Snapshot) -> bool {
+    let texts = js_sys::Array::new();
+    for text in &snapshot.texts {
+        texts.push(&JsValue::from_str(text));
+    }
+    save_workspace_parts(&snapshot.metadata, &texts).await.as_bool().unwrap_or(false)
+}
+
 pub fn persist_tabs(app: &App3d) {
     if !app.autosave_settings.enabled {
         return;
     }
-    let json = recovery_snapshot(app).workspace;
+    let snapshot = recovery_snapshot(app);
     wasm_bindgen_futures::spawn_local(async move {
-        save_workspace(&json).await;
+        write_workspace(&snapshot).await;
     });
 }
 
