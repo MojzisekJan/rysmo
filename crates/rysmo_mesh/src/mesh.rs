@@ -386,12 +386,17 @@ impl Mesh {
 
     pub(crate) fn reindex(&mut self) {
         self.edge_index = self.edges.iter().map(|(id, e)| (key(e.v[0], e.v[1]), *id)).collect();
-        let mut at_vertex: BTreeMap<VertexId, Vec<EdgeId>> = BTreeMap::new();
+        let mut at_vertex: std::collections::HashMap<VertexId, Vec<EdgeId>> =
+            std::collections::HashMap::with_capacity(self.vertices.len().min(self.edges.len().saturating_mul(2)));
         for (id, edge) in &self.edges {
             for v in edge.v {
                 at_vertex.entry(v).or_default().push(*id);
             }
         }
+        // BlockMap insertion is cheapest in key order; never expose hash iteration
+        // order to editing operations or serialized model state.
+        let mut at_vertex: Vec<_> = at_vertex.into_iter().collect();
+        at_vertex.sort_unstable_by_key(|(vertex, _)| *vertex);
         self.vertex_edges = at_vertex.into_iter().collect();
     }
 

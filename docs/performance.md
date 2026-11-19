@@ -684,3 +684,40 @@ ignored), as did strict workspace all-target Clippy and formatting.
 [Measurement details](verification/native-load-2026-11-19.json) retain the fixture
 hashes, p95 values and scope limitations. No browser speedup is inferred from these
 native CPU measurements.
+
+
+## Record ordering and adjacency construction, 2026-11-19
+
+Follow-up review covered browser Open (`web::take_arrived`), worker transfer
+(`web_worker`), `Mesh` deserialization, `BlockMap` insertion and `Mesh::reindex`.
+The existing worker result deserializes and assembles meshes again on the main
+thread. Merely sending native Open through that protocol would retain substantial
+synchronous work and add copying. No asynchronous native-Open claim is made here;
+a bounded transfer/assembly design still needs a separate implementation and test.
+
+Two smaller changes were retained after measurement:
+
+- Vertex-to-edge adjacency accumulates in a randomized standard `HashMap`, then
+  sorts vertices once before populating block storage. Edge lists retain ascending
+  IDs, so editing behaviour is deterministic. Capacity is bounded by the smaller
+  of vertex count and twice edge count; isolated-vertex models allocate no large
+  empty table. This is a temporary construction structure, not a persistent cache.
+- Native vertices, edges, faces, curves and instances are sorted in place by ID
+  before insertion. Arbitrary record order remains supported, and duplicate IDs
+  remain errors. Descending sparse IDs previously shifted the block vector for
+  every inserted record, causing quadratic work. Sorting does not renumber IDs or
+  copy geometry payloads. Other derived-index worst cases are not eliminated.
+
+Paired CPU measurements against `e806014`, after compilation, show the 72,000-face
+fixture improving from 139.56 to 132.96 ms and from 138.01 to 133.29 ms (3.4–4.7%).
+A valid 914,590-byte fixture with 30,000 isolated vertices and descending sparse
+IDs improved from 104.48 to 5.21 ms (about 20×). The small dimension fixture remained
+approximately 0.026 ms. These observations supersede noisier preliminary runs;
+there is no inferred browser-frame or peak-memory guarantee.
+
+Regression tests compare adjacency with a direct edge scan, including sparse IDs,
+isolated and missing vertices, repeated rebuilding, and editing a shared snapshot.
+Native loading tests check canonical round trips for reversed/rotated sparse
+records and rejection of duplicate IDs. All 752 mesh/model/I/O/tool tests passed
+(two manual benchmarks ignored), along with strict workspace all-target Clippy.
+[Full measurements and fixture provenance](verification/native-load-order-2026-11-19.json).

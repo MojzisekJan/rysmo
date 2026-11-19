@@ -571,3 +571,32 @@ fn push_pull_a_patch_back_flush_merges_its_surrounding_plane() {
     assert!(mesh.face_normal(mesh.faces().next().unwrap().0).unwrap().dot(normal) > 0.99);
     mesh.validate().unwrap();
 }
+
+#[test]
+fn rebuilt_adjacency_matches_edge_scan_and_preserves_snapshot() {
+    let vertices = [1, 256, 1025, 8192, 65536]
+        .into_iter()
+        .map(|id| (VertexId(id), Vertex { pos: DVec3::new(id as f64, 0., 0.) }))
+        .collect();
+    let edges = [(90000, [1, 256]), (70000, [1025, 1]), (80000, [8192, 1])]
+        .into_iter()
+        .map(|(id, v)| (EdgeId(id), Edge::new(VertexId(v[0]), VertexId(v[1]))))
+        .collect();
+    let mut mesh = Mesh::from_parts(vertices, edges, Default::default()).unwrap();
+    let original = mesh.clone();
+    for _ in 0..3 {
+        mesh.reindex();
+        mesh.validate().unwrap();
+        for (vertex, _) in mesh.vertices() {
+            let expected: Vec<_> =
+                mesh.edges().filter(|(_, edge)| edge.v.contains(&vertex)).map(|(id, _)| id).collect();
+            assert_eq!(mesh.edges_of_vertex(vertex), expected);
+        }
+        assert_eq!(mesh, original);
+    }
+    assert!(mesh.edges_of_vertex(VertexId(65536)).is_empty());
+    assert!(mesh.edges_of_vertex(VertexId(99999)).is_empty());
+    mesh.add_lines(&[(DVec3::new(65536., 0., 0.), DVec3::new(8192., 0., 0.))], None).unwrap();
+    assert_eq!(mesh.edges_of_vertex(VertexId(65536)).len(), 1);
+    assert!(original.edges_of_vertex(VertexId(65536)).is_empty());
+}

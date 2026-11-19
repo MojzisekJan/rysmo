@@ -1,0 +1,88 @@
+{
+  "date": "2026-11-19",
+  "baseline_revision": "e806014",
+  "platform": "macOS aarch64; portable profile; native CPU-only",
+  "protocol": "Retained baseline executable versus rebuilt candidate; sequential runs after test compilation; 3 warmups and 21 samples per file. Load, validation and disposal of a resident string. Save/load equivalence outside timing.",
+  "runs": {
+    "before-final": [
+      {
+        "bytes": 15071084,
+        "file": "target/skp-browser-verification/raw-72000.rysmo",
+        "median_ms": 139.55629199999998,
+        "p95_ms": 158.39208299999999,
+        "samples": 21
+      },
+      {
+        "bytes": 914590,
+        "file": "target/selection-verification/sparse-descending.rysmo",
+        "median_ms": 104.482,
+        "p95_ms": 105.08841600000001,
+        "samples": 21
+      },
+      {
+        "bytes": 3573,
+        "file": "testdata/dimensions-preview.rysmo",
+        "median_ms": 0.026458,
+        "p95_ms": 0.028917,
+        "samples": 21
+      }
+    ],
+    "after-final": [
+      {
+        "bytes": 15071084,
+        "file": "target/skp-browser-verification/raw-72000.rysmo",
+        "median_ms": 132.956583,
+        "p95_ms": 134.05249999999998,
+        "samples": 21
+      },
+      {
+        "bytes": 914590,
+        "file": "target/selection-verification/sparse-descending.rysmo",
+        "median_ms": 5.207833,
+        "p95_ms": 5.286708,
+        "samples": 21
+      },
+      {
+        "bytes": 3573,
+        "file": "testdata/dimensions-preview.rysmo",
+        "median_ms": 0.026125000000000002,
+        "p95_ms": 0.027667,
+        "samples": 21
+      }
+    ],
+    "before-repeat": [
+      {
+        "bytes": 15071084,
+        "file": "target/skp-browser-verification/raw-72000.rysmo",
+        "median_ms": 138.011834,
+        "p95_ms": 140.718542,
+        "samples": 21
+      }
+    ],
+    "after-repeat": [
+      {
+        "bytes": 15071084,
+        "file": "target/skp-browser-verification/raw-72000.rysmo",
+        "median_ms": 133.286833,
+        "p95_ms": 133.59141699999998,
+        "samples": 21
+      }
+    ]
+  },
+  "fixtures": {
+    "target/skp-browser-verification/raw-72000.rysmo": "452264d84d46440054a24fe200b36d810dc18f6e44c4209c9254e719579dffad",
+    "target/selection-verification/sparse-descending.rysmo": "98a332f107d8cc87433298868f0035ca2d7f297ccac3daab08ef996f38aaf562",
+    "testdata/dimensions-preview.rysmo": "c7f7374d2b644c8069116388420c4a8068aa38390a51e09f1ca7c2f2b042bc77"
+  },
+  "sparse_fixture_recipe": "30,000 isolated vertices in descending i order; id=i*256+1, p=[i,0,0]; native version 20; compact JSON. Valid but adversarial record order.",
+  "validation": {
+    "rust_tests_passed": 752,
+    "ignored_manual_benchmarks": 2,
+    "strict_workspace_all_target_clippy": "passed"
+  },
+  "limitations": [
+    "Single desktop host; unrelated desktop activity uncontrolled.",
+    "No browser-frame or peak-memory measurements.",
+    "Record sorting removes quadratic insertion for native input records, not every possible derived-index construction cost."
+  ]
+}

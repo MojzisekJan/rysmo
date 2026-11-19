@@ -516,7 +516,7 @@ fn definition_mut(doc: &mut Document, owner: Option<DefinitionId>) -> Result<&mu
 /// message saying what is wrong.
 #[deny(clippy::unwrap_used, clippy::expect_used)]
 pub fn load(text: &str) -> Result<Document, IoError> {
-    let f: FileIn<'_> = serde_json::from_str(text)?;
+    let mut f: FileIn<'_> = serde_json::from_str(text)?;
     if f.format != FORMAT {
         return Err(IoError::Format(format!("\"format\" is \"{}\"", f.format)));
     }
@@ -528,6 +528,14 @@ pub fn load(text: &str) -> Result<Document, IoError> {
         "mm" => 0.001,
         other => return Err(IoError::Format(format!("unknown length_unit \"{other}\""))),
     };
+    // Files may list records in any order. Inserting descending sparse IDs into
+    // BlockMap would repeatedly shift its block vector (quadratic work).
+    // Sorting by ID keeps each context's insertions ascending without copying data.
+    f.vertices.sort_unstable_by_key(|entry| entry.id);
+    f.edges.sort_unstable_by_key(|entry| entry.id);
+    f.faces.sort_unstable_by_key(|entry| entry.id);
+    f.curves.sort_unstable_by_key(|entry| entry.id);
+    f.instances.sort_unstable_by_key(|entry| entry.id);
     let mut ids = HashSet::new();
     let mut unique = |id: u64| {
         if ids.insert(id) { Ok(()) } else { Err(IoError::Format(format!("id {id} is used twice"))) }

@@ -150,3 +150,17 @@ fn native_edges_reject_duplicates_and_cross_context_references() {
     invalid["vertices"][0]["in"] = serde_json::json!(5);
     assert!(crate::load(&invalid.to_string()).is_err());
 }
+
+#[test]
+fn sparse_unordered_records_preserve_ids_and_reject_duplicates() {
+    let vertices: Vec<_> = (0..1024u64).map(|i| serde_json::json!({"id":i*256+1,"p":[i,0,0]})).collect();
+    let mut source = serde_json::json!({"format":"rysmo","version":20,"vertices":vertices});
+    let expected = crate::save(&crate::load(&source.to_string()).unwrap());
+    source["vertices"].as_array_mut().unwrap().reverse();
+    assert_eq!(crate::save(&crate::load(&source.to_string()).unwrap()), expected);
+    source["vertices"].as_array_mut().unwrap().rotate_left(317);
+    assert_eq!(crate::save(&crate::load(&source.to_string()).unwrap()), expected);
+    let duplicate = source["vertices"][456].clone();
+    source["vertices"].as_array_mut().unwrap().push(duplicate);
+    assert!(crate::load(&source.to_string()).unwrap_err().to_string().contains("used twice"));
+}
