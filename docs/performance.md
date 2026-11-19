@@ -721,3 +721,51 @@ Native loading tests check canonical round trips for reversed/rotated sparse
 records and rejection of duplicate IDs. All 752 mesh/model/I/O/tool tests passed
 (two manual benchmarks ignored), along with strict workspace all-target Clippy.
 [Full measurements and fixture provenance](verification/native-load-order-2026-11-19.json).
+
+## Edge-pair indexing and worker snapshot reconstruction, 2026-11-19
+
+Reviewed the derived endpoint-to-edge index and the `BlockMap` serde path used by
+worker snapshots and stored procedural inputs. Sorting native records by their own
+IDs did not bound derived-index insertion: ascending edge IDs can reference sparse
+endpoint pairs in descending order. `Mesh::reindex` now sorts canonical endpoint
+pairs before constructing the block map. Equal pairs still retain the highest edge
+ID during construction, and validation continues to reject duplicate geometry.
+The temporary vector costs one pair-plus-ID record per edge; this pass does not
+claim lower peak memory. Lookup tests exercise reversed endpoints, sparse IDs,
+missing edges and repeated reindexing against the original snapshot.
+
+`BlockMap` deserialization no longer always allocates an intermediate tree. The
+normal ordered snapshot path accumulates records directly and replaces adjacent
+duplicate values immediately. At the first out-of-order key it falls back to the
+previous tree-based construction, consuming subsequent entries into that tree.
+This preserves arbitrary map order and last-value-wins semantics without retaining
+all duplicate payloads or introducing quadratic unordered block insertion. Native
+`.rysmo` record IDs still have their separate duplicate-rejection check. Mesh
+reconstruction still validates geometry; no trusted-input bypass was introduced.
+
+The new `benchmark_transfer` example measures native loading, document snapshot
+serialization and recipient deserialization separately, verifies canonical native
+round-trip equality, and uses 3 warmups plus 21 samples. It is a native CPU proxy,
+not a browser measurement: it excludes worker startup, JS/WASM transfers, file I/O
+and rendering. It demonstrates why merely putting native parsing into the existing
+worker protocol does not eliminate a large synchronous step. A bounded recipient
+assembly design is still required before claiming responsive asynchronous Open.
+
+Final sequential CPU comparisons after compilation:
+
+| Operation / fixture | Before | After |
+| --- | ---: | ---: |
+| Native load, 72,000 faces | 127.86 ms | 129.42 ms |
+| Native load, 20,000 reversed sparse endpoint pairs | 56.29 ms | 15.56 ms |
+| Native load, small dimension fixture | 0.02571 ms | 0.02571 ms |
+| Recipient snapshot reconstruction, 72,000 faces | 111.32 ms | 91.31 ms |
+| Snapshot serialization, same model | 28.02 ms | 28.05 ms |
+
+The roughly 1.2% normal-load cost is an explicit tradeoff for bounding hostile
+endpoint ordering, not a general native-loading speedup. Snapshot reconstruction
+improved about 18%; its baseline already includes edge sorting, isolating the
+ordered-map deserialization change. The 15,409,280-byte transfer still has a
+substantial synchronous reconstruction cost. These results do not establish browser
+latency, peak memory or completely asynchronous Open. All 756 mesh/model/I/O/tools/
+worker tests passed (two manual benchmarks ignored), as did strict workspace
+all-target Clippy and formatting. [Full evidence](verification/edge-index-transfer-2026-11-19.json).

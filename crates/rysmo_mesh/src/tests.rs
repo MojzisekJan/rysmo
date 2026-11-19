@@ -600,3 +600,31 @@ fn rebuilt_adjacency_matches_edge_scan_and_preserves_snapshot() {
     assert_eq!(mesh.edges_of_vertex(VertexId(65536)).len(), 1);
     assert!(original.edges_of_vertex(VertexId(65536)).is_empty());
 }
+
+#[test]
+fn rebuilt_edge_index_matches_endpoint_scan_in_both_directions() {
+    let vertices = (0..300u64)
+        .flat_map(|i| [i * 512 + 1, i * 512 + 2])
+        .map(|id| (VertexId(id), Vertex { pos: DVec3::new(id as f64, 0., 0.) }))
+        .collect();
+    let edges = (0..300u64)
+        .map(|i| {
+            let a = VertexId((299 - i) * 512 + 1);
+            let b = VertexId((299 - i) * 512 + 2);
+            (EdgeId(200000 + i), if i % 2 == 0 { Edge::new(a, b) } else { Edge::new(b, a) })
+        })
+        .collect();
+    let mut mesh = Mesh::from_parts(vertices, edges, Default::default()).unwrap();
+    let original = mesh.clone();
+    for _ in 0..3 {
+        mesh.reindex();
+        mesh.validate().unwrap();
+        for (id, edge) in mesh.edges() {
+            assert_eq!(mesh.edge_between(edge.v[0], edge.v[1]), Some(id));
+            assert_eq!(mesh.edge_between(edge.v[1], edge.v[0]), Some(id));
+        }
+        assert_eq!(mesh.edge_between(VertexId(1), VertexId(513)), None);
+        assert_eq!(mesh.edge_between(VertexId(999999), VertexId(1000000)), None);
+        assert_eq!(mesh, original);
+    }
+}

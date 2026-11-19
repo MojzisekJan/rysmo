@@ -294,7 +294,38 @@ impl<K: BlockKey + Serialize, V: Serialize> Serialize for BlockMap<K, V> {
 
 impl<'de, K: BlockKey + Deserialize<'de>, V: Clone + Deserialize<'de>> Deserialize<'de> for BlockMap<K, V> {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        Ok(BTreeMap::<K, V>::deserialize(deserializer)?.into_iter().collect())
+        struct MapVisitor<K, V>(std::marker::PhantomData<(K, V)>);
+        impl<'de, K: BlockKey + Deserialize<'de>, V: Clone + Deserialize<'de>> serde::de::Visitor<'de> for MapVisitor<K, V> {
+            type Value = BlockMap<K, V>;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("a map of element identifiers to values")
+            }
+
+            fn visit_map<A: serde::de::MapAccess<'de>>(self, mut source: A) -> Result<Self::Value, A::Error> {
+                // Our snapshots have ordered keys. Avoid tree nodes on that path,
+                // without trusting size hints or retaining duplicate payloads.
+                let mut entries: Vec<(K, V)> = Vec::new();
+                while let Some((key, value)) = source.next_entry()? {
+                    match entries.last_mut() {
+                        Some((previous, old)) if key == *previous => *old = value,
+                        Some((previous, _)) if key < *previous => {
+                            // Arbitrary maps remain supported without quadratic
+                            // block insertion or accumulating repeated large values.
+                            let mut unordered: BTreeMap<K, V> = entries.into_iter().collect();
+                            unordered.insert(key, value);
+                            while let Some((key, value)) = source.next_entry()? {
+                                unordered.insert(key, value);
+                            }
+                            return Ok(unordered.into_iter().collect());
+                        }
+                        _ => entries.push((key, value)),
+                    }
+                }
+                Ok(entries.into_iter().collect())
+            }
+        }
+        deserializer.deserialize_map(MapVisitor(std::marker::PhantomData))
     }
 }
 
@@ -368,5 +399,30 @@ mod tests {
         let text = serde_json::to_string(&original).unwrap();
         assert_eq!(text, serde_json::to_string(&plain).unwrap());
         assert_eq!(serde_json::from_str::<BlockMap<VertexId, u64>>(&text).unwrap(), original);
+    }
+}
+
+#[cfg(test)]
+mod deserialization_tests {
+    use super::*;
+
+    #[test]
+    fn unordered_duplicate_and_invalid_maps_match_tree_semantics() {
+        for source in [
+            "{}",
+            r#"{"8193":1,"1":2,"513":3,"1":4,"8193":5}"#,
+            r#"{"1":0,"256":1,"65536":2}"#,
+            r#"{"1":1,"1":2,"2":3,"2":4}"#,
+        ] {
+            let expected: BTreeMap<VertexId, u64> = serde_json::from_str(source).unwrap();
+            let mut actual: BlockMap<VertexId, u64> = serde_json::from_str(source).unwrap();
+            assert_eq!(serde_json::to_string(&actual).unwrap(), serde_json::to_string(&expected).unwrap());
+            let snapshot = actual.clone();
+            actual.insert(VertexId(1), 999);
+            assert_eq!(snapshot.get(&VertexId(1)), expected.get(&VertexId(1)));
+        }
+        for source in ["[]", "null", r#"{"bad":1}"#, r#"{"1":"bad"}"#, r#"{"1":1"#] {
+            assert!(serde_json::from_str::<BlockMap<VertexId, u64>>(source).is_err());
+        }
     }
 }

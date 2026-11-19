@@ -385,7 +385,13 @@ impl Mesh {
     }
 
     pub(crate) fn reindex(&mut self) {
-        self.edge_index = self.edges.iter().map(|(id, e)| (key(e.v[0], e.v[1]), *id)).collect();
+        // Edge IDs need not follow endpoint order. Descending sparse endpoints
+        // otherwise shift BlockMap's block vector once per edge (quadratic work).
+        let mut pairs: Vec<_> = self.edges.iter().map(|(id, edge)| (key(edge.v[0], edge.v[1]), *id)).collect();
+        pairs.sort_unstable();
+        // Equal pairs keep the highest edge ID, as in ascending edge iteration;
+        // validate() still rejects duplicates rather than silently merging them.
+        self.edge_index = pairs.into_iter().collect();
         let mut at_vertex: std::collections::HashMap<VertexId, Vec<EdgeId>> =
             std::collections::HashMap::with_capacity(self.vertices.len().min(self.edges.len().saturating_mul(2)));
         for (id, edge) in &self.edges {
