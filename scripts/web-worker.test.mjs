@@ -68,3 +68,44 @@ test('worker construction, runtime, transfer and timeout failures complete with 
         assert.equal(timers.size, 0);
     }
 });
+
+test('native Open isolates errors and cancellation from a newer request', async () => {
+    const { api, workers, timers } = await fixture();
+    const first = api.start_open('old native file');
+    assert.equal(workers[0].data.kind, 'open');
+    assert.equal(workers[0].data.document, 'old native file');
+    api.cancel_job(first);
+    const current = api.start_open('new native file');
+    workers[0].onmessage({ data: { document: 'stale result' } });
+    assert.equal(api.poll_job(current), null);
+    workers[1].onmessage({ data: { error: 'invalid native geometry' } });
+    assert.match(api.poll_job(current).error, /invalid native/);
+    const valid = api.start_open('valid native file');
+    workers[2].onmessage({ data: { document: '[{},{}]' } });
+    assert.equal(api.poll_job(valid).document, '[{},{}]');
+    assert.equal(timers.size, 0);
+    assert.equal(workers[0].stopped, 1);
+});
+
+test('worker dispatches native Open after initialization and reports parse failures', async () => {
+    const messages = [], calls = [];
+    const self = { postMessage: message => messages.push(message) };
+    const context = vm.createContext({ self });
+    const bridge = new vm.SyntheticModule(['default', 'open_native', 'import_model', 'export_skp'], function () {
+        this.setExport('default', async () => { calls.push('init'); });
+        this.setExport('open_native', text => {
+            calls.push(text);
+            if (text === 'invalid') throw Error('invalid geometry');
+            return '["document","camera"]';
+        });
+        this.setExport('import_model', () => { throw Error('wrong operation'); });
+        this.setExport('export_skp', () => { throw Error('wrong operation'); });
+    }, { context });
+    const worker = new vm.SourceTextModule(await readFile(new URL('../crates/rysmo_worker/worker.mjs', import.meta.url), 'utf8'), { context });
+    await worker.link(() => bridge); await worker.evaluate();
+    await self.onmessage({ data: { kind: 'open', document: 'valid' } });
+    assert.deepEqual(calls, ['init', 'valid']);
+    assert.equal(messages[0].document, '["document","camera"]');
+    await self.onmessage({ data: { kind: 'open', document: 'invalid' } });
+    assert.match(messages[1].error, /invalid geometry/);
+});

@@ -1,0 +1,63 @@
+{
+  "date": "2026-11-19",
+  "baseline": "d4488f7b1839a4aca30100446542d99493338303",
+  "tested_tracked_changes": true,
+  "wasm_assets": {
+    "rysmo-b69d7e72ed5cc50_bg.wasm": {
+      "bytes": 29358054,
+      "sha256": "29521411ea2fea525b803f951605b5da4c917f98ab4d09fd432cd54c7ca45d69"
+    },
+    "worker-066292f56093a3b0/rysmo_worker_bg.wasm": {
+      "bytes": 5862456,
+      "sha256": "82d7deacbd0c03f183413c8ee274a20b8136a0e8b7dcd8ae65f2c9a39f1ca452"
+    }
+  },
+  "fixtures": {
+    "testdata/dimensions-preview.rysmo": {
+      "bytes": 3573,
+      "sha256": "c7f7374d2b644c8069116388420c4a8068aa38390a51e09f1ca7c2f2b042bc77"
+    },
+    "target/skp-browser-verification/raw-72000.rysmo": {
+      "bytes": 15071084,
+      "sha256": "452264d84d46440054a24fe200b36d810dc18f6e44c4209c9254e719579dffad"
+    },
+    "target/open-worker-verification/invalid.rysmo": {
+      "bytes": 60,
+      "sha256": "f864d43359e89f71080cffea13264d98c15c2030a7b53c75601e41af7a97e7be"
+    }
+  },
+  "checks": {
+    "rust_worker_tests": 3,
+    "javascript_worker_and_file_tests": 33,
+    "native_workspace_all_targets_clippy": "passed",
+    "wasm_app_worker_clippy": "passed",
+    "format_and_diff_check": "passed",
+    "static_package_validation": "passed"
+  },
+  "browser": {
+    "engine": "ChatGPT in-app browser",
+    "url": "http://127.0.0.1:8113/test-frame",
+    "harness": "Unmodified packaged editor in iframe to exercise HTML input fallback; worker.mjs HTTP response delayed 15 seconds to make cancellation deterministic. Not a latency benchmark.",
+    "final_build_observed": [
+      "dimensions fixture opens with 2 faces and 28 edges",
+      "pending Open cancelled on tab switch; returning to original tab does not install stale result",
+      "72,000-face / 144,000-edge fixture opens and renders; previous tabs retained",
+      "Invalid file reports missing vertex 2 on edge 1; active 72,000-face model and all three tabs preserved; final error console empty."
+    ],
+    "earlier_candidate_observed": [
+      "Cancel preserves dirty demo with 11 undo entries",
+      "invalid missing-vertex file reports error and preserves dirty demo",
+      "tab switch originally parked pending result; reproduced and fixed before final build"
+    ],
+    "limitations": [
+      "Native File System Access picker could not be automated; fallback input and Open Recent exercised instead. File handle protocol covered by JavaScript tests.",
+      "Earlier iframe candidate logged a MutationObserver TypeError of unestablished origin; final tab error log was empty during testing."
+    ]
+  },
+  "remaining_work": [
+    "Source copying, recipient reconstruction, workspace persistence and rendering preparation still have synchronous main-thread work.",
+    "Startup workspace recovery remains synchronous.",
+    "No browser latency or peak-memory speedup established."
+  ],
+  "deployment": "Local build only; no public-site deployment in this pass."
+}

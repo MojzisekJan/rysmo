@@ -769,3 +769,36 @@ substantial synchronous reconstruction cost. These results do not establish brow
 latency, peak memory or completely asynchronous Open. All 756 mesh/model/I/O/tools/
 worker tests passed (two manual benchmarks ignored), as did strict workspace
 all-target Clippy and formatting. [Full evidence](verification/edge-index-transfer-2026-11-19.json).
+
+## Cancellable native Open worker, 2026-11-19
+
+File > Open and Open Recent now run native parsing/validation and initial camera
+framing in the existing isolated WASM worker. The recipient reconstructs the
+validated snapshot and only then installs it. No geometry checks were disabled.
+The old document, history and Save destination remain active until success. Cancel
+terminates the worker; staged file handles are rejected on every unsuccessful
+exit. Request sequence numbers reject an older picker/recent-file response after
+a newer request, while document generation/revision checks reject stale results.
+
+Cursor testing caught a new ownership bug before release: keeping the worker state
+inside an inactive tab parked its result until the user returned. The state is now
+shared across tab changes along with application preferences, so the active poll
+sees the changed generation and cancels the request. This is why switching away
+and back is part of the regression protocol, not just inspecting the other tab.
+
+This change moves work off the UI thread but does not claim a bounded complete
+Open. Source-string copying, snapshot reconstruction, workspace persistence and
+render preparation still contribute main-thread work; startup recovery is not
+converted here. Existing CPU snapshot measurements do not establish browser frame
+latency or peak memory for this new path.
+
+Validation: 3 worker Rust tests and 33 JavaScript worker/file tests passed, along
+with strict native workspace and WASM app/worker Clippy, formatting and static
+package validation. Cursor testing of the final build verified small and
+72,000-face files, switching away and back during a pending Open, and rejection
+of a missing-vertex file without changing the active large model. The earlier
+candidate also verified explicit Cancel preserving a dirty document and history.
+A local iframe exercised the standard file-input fallback; a 15-second worker
+HTTP delay made cancellation deterministic. This is functional verification, not
+a browser performance benchmark. The native File System Access picker itself was
+not automated. [Full evidence](verification/native-open-worker-2026-11-19.json).

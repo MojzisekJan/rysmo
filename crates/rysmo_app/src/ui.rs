@@ -456,6 +456,8 @@ fn panels(
                             }
                             #[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
                             crate::native_files::indicator(ui, &mut app);
+                            #[cfg(target_arch = "wasm32")]
+                            crate::web::open_indicator(ui, &mut app);
                             if preparing.as_ref().is_some_and(|preparing| preparing.busy()) {
                                 ui.spinner();
                                 ui.label("Preparing surfaces…");

@@ -55,3 +55,7 @@ export function cancel_job(id) {
     clearTimeout(job.timer);
     job.worker?.terminate();
 }
+
+export function start_open(document) {
+    return start({ kind: 'open', document });
+}

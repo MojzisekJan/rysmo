@@ -65,6 +65,7 @@ enum Arrived {
         text: String,
         token: f64,
         version: DocumentVersion,
+        request: u64,
     },
     Saved {
         name: String,
@@ -279,24 +280,24 @@ fn refresh_recent() {
 }
 
 /// File > Open: the browser's picker. The file arrives a few frames later.
-pub fn pick_file(version: DocumentVersion) {
+pub fn pick_file(version: DocumentVersion, request: u64) {
     wasm_bindgen_futures::spawn_local(async move {
         let result = pick_open().await;
         if let Some((name, text)) = pair(&result) {
             let token = js_sys::Array::from(&result).get(2).as_f64().unwrap_or(0.);
-            arrive(Arrived::Opened { name, text, token, version });
+            arrive(Arrived::Opened { name, text, token, version, request });
         }
         refresh_recent();
     });
 }
 
 /// File > Open Recent.
-pub fn open_recent_file(name: String, version: DocumentVersion) {
+pub fn open_recent_file(name: String, version: DocumentVersion, request: u64) {
     wasm_bindgen_futures::spawn_local(async move {
         let result = open_recent(&name).await;
         if let Some((name, text)) = pair(&result) {
             let token = js_sys::Array::from(&result).get(2).as_f64().unwrap_or(0.);
-            arrive(Arrived::Opened { name, text, token, version });
+            arrive(Arrived::Opened { name, text, token, version, request });
         }
         refresh_recent();
     });
@@ -317,7 +318,70 @@ pub fn new_document() {
     forget_file();
 }
 
+/// One cancellable native-file parse. The old document stays installed throughout.
+/// Carried across tab switches by `documents::shared`, so its generation guard runs.
+#[derive(Default)]
+pub struct OpenState {
+    pending: Option<PendingOpen>,
+    request: u64,
+}
+struct PendingOpen {
+    job: crate::web_worker::Job,
+    name: String,
+    token: f64,
+    version: DocumentVersion,
+}
+impl Drop for PendingOpen {
+    fn drop(&mut self) {
+        // Accepted tokens have already been consumed; all other exits release them.
+        reject_open_file(self.token);
+    }
+}
+impl OpenState {
+    pub fn restart(&mut self) -> u64 {
+        self.pending = None;
+        self.request = self.request.wrapping_add(1);
+        self.request
+    }
+
+    pub fn busy(&self) -> bool {
+        self.pending.is_some()
+    }
+}
+
+pub fn open_indicator(ui: &mut bevy_egui::egui::Ui, app: &mut App3d) {
+    if app.web_open.busy() {
+        ui.spinner();
+        ui.label("Opening model…");
+        if ui.button("Cancel").clicked() {
+            app.web_open.restart();
+            app.message = Some("Opening cancelled.".into());
+        }
+    }
+}
+
+fn poll_open(app: &mut App3d) {
+    let Some(pending) = app.web_open.pending.take() else { return };
+    let current = DocumentVersion { generation: app.document_generation, revision: app.editor.revision() };
+    if current != pending.version {
+        app.message = Some("Opening cancelled because the active document changed.".into());
+        return;
+    }
+    let _profile = ProfileSpan::new("model_open_result", app.document_generation, app.editor.content_revision());
+    let Some(result) = pending.job.poll_open() else {
+        app.web_open.pending = Some(pending);
+        return;
+    };
+    let result = result.and_then(|(doc, camera)| files::install_loaded(app, doc, camera, &pending.name));
+    if result.is_ok() {
+        accept_open_file(pending.token);
+        persist_tabs(app);
+    }
+    app.message = Some(result.unwrap_or_else(|error| format!("Cannot open {}: {error}", pending.name)));
+}
+
 fn take_arrived(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>, time: Res<Time<Real>>) {
+    poll_open(&mut app);
     let arrived: Vec<Arrived> = ARRIVED.with(|q| q.borrow_mut().drain(..).collect());
     for a in arrived {
         match a {
@@ -332,7 +396,7 @@ fn take_arrived(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>, time: Res<Ti
                         app.message = Some(format!("Cannot recover component collection: {error}"));
                     }
                 }
-                if !app.accepts_recovery(auto.startup_generation) {
+                if app.web_open.request != 0 || !app.accepts_recovery(auto.startup_generation) {
                     for (_, _, _, _, token) in documents {
                         reject_open_file(token);
                     }
@@ -364,7 +428,9 @@ fn take_arrived(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>, time: Res<Ti
                     app.message = Some("Restored document workspace from the last visit.".into());
                 }
             }
-            Arrived::Restored { name, text, dirty, token } if app.accepts_recovery(auto.startup_generation) => {
+            Arrived::Restored { name, text, dirty, token }
+                if app.web_open.request == 0 && app.accepts_recovery(auto.startup_generation) =>
+            {
                 match files::open_text(&mut app, &text, &name) {
                     Ok(_) => {
                         accept_open_file(token);
@@ -383,7 +449,11 @@ fn take_arrived(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>, time: Res<Ti
                 }
             }
             Arrived::Restored { token, .. } => reject_open_file(token),
-            Arrived::Opened { name, text, token, version } => {
+            Arrived::Opened { name, text, token, version, request } => {
+                if request != app.web_open.request {
+                    reject_open_file(token);
+                    continue;
+                }
                 let current = DocumentVersion { generation: app.document_generation, revision: app.editor.revision() };
                 if current != version {
                     reject_open_file(token);
@@ -392,14 +462,15 @@ fn take_arrived(mut app: ResMut<App3d>, mut auto: ResMut<Autosave>, time: Res<Ti
                     );
                     continue;
                 }
-                let r = files::open_text(&mut app, &text, &name);
-                if r.is_ok() {
-                    accept_open_file(token);
-                    persist_tabs(&app);
-                } else {
+                if app.documents.full() {
                     reject_open_file(token);
+                    app.message = Some("Close a document before opening more than 16 models.".into());
+                    continue;
                 }
-                app.message = Some(r.unwrap_or_else(|e| e));
+                // Replacing a pending request drops its worker and staged file token.
+                app.web_open.pending =
+                    Some(PendingOpen { job: crate::web_worker::Job::open(&text), name, token, version });
+                app.message = Some("Opening model in background.".into());
             }
             Arrived::Saved { name, how, version } => {
                 let current = DocumentVersion { generation: app.document_generation, revision: app.editor.revision() };

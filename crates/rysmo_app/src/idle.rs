@@ -28,7 +28,12 @@ fn update(
     *frames = frames.saturating_add(1);
     // Pipeline compilation, uploads and egui need several startup frames.
     let preview = cfg!(not(target_arch = "wasm32")) && std::env::var_os("RYSMO_SCREENSHOT").is_some();
-    let active = *frames < 180
+    #[cfg(target_arch = "wasm32")]
+    let opening = app.web_open.busy();
+    #[cfg(not(target_arch = "wasm32"))]
+    let opening = false;
+    let active = opening
+        || *frames < 180
         || *tail > 0
         || preview
         || !app.preferences.sleep_renderer

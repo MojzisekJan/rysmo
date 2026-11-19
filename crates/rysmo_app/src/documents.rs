@@ -92,6 +92,10 @@ fn shared(from: &mut App3d, to: &mut App3d) {
     to.inspector_tab = from.inspector_tab;
     #[cfg(target_arch = "wasm32")]
     {
+        // Open belongs to the active application, not an inactive document.
+        // Its generation guard cancels it after a tab switch; do not park a
+        // completed worker result in the old tab and install it on return.
+        std::mem::swap(&mut from.web_open, &mut to.web_open);
         to.autosave_settings = from.autosave_settings;
     }
 }

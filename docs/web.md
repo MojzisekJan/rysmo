@@ -319,3 +319,25 @@ editor's memory footprint. Full results including the 95th percentile are in
 [core-performance-2026-10-22.json](verification/core-performance-2026-10-22.json).
 The comparison identifies geometry storage and snapshot copying as useful next
 profiling targets. It does not measure a speedup from a production code change.
+
+## Native Open in a worker
+
+File > Open and Open Recent parse and validate `.rysmo` files and prepare their
+initial camera in the packaged worker. The current model remains available while
+this runs; the status bar offers Cancel. Cancelling, starting a newer Open, or
+changing the active document prevents the old result from installing and releases
+its staged file handle. The worker state travels with the active application when
+switching tabs, rather than being stored in an inactive document. A manually
+started Open also prevents a late startup recovery from replacing that choice.
+
+Only a successfully reconstructed and installed document accepts the selected
+Save destination. Worker startup failures, parser errors and timeouts leave the
+current document in place. Geometry validation remains enabled when reconstructing
+the worker snapshot. No file data is uploaded to a server.
+
+This is not fully incremental Open: reading/copying the source string, recipient
+snapshot reconstruction, workspace persistence and rendering preparation still
+have main-thread work. Startup workspace recovery currently retains its existing
+synchronous loading path. The `model_open_result` diagnostic span includes polling,
+recipient reconstruction and successful installation/persistence; it is not a
+measurement of worker parsing time.

@@ -320,17 +320,20 @@ mod imp {
     use crate::web;
 
     pub fn open(app: &mut App3d) {
-        web::pick_file(crate::autosave::DocumentVersion {
-            generation: app.document_generation,
-            revision: app.editor.revision(),
-        });
+        let request = app.web_open.restart();
+        web::pick_file(
+            crate::autosave::DocumentVersion { generation: app.document_generation, revision: app.editor.revision() },
+            request,
+        );
         app.message = Some("Choose a .rysmo file.".into());
     }
 
     pub fn open_recent(app: &mut App3d, name: &str) {
+        let request = app.web_open.restart();
         web::open_recent_file(
             name.to_string(),
             crate::autosave::DocumentVersion { generation: app.document_generation, revision: app.editor.revision() },
+            request,
         );
         app.message = Some(format!("Opening {name}..."));
     }

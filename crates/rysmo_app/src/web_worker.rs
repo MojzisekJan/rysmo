@@ -5,12 +5,24 @@ use wasm_bindgen::{JsCast, JsValue, prelude::wasm_bindgen};
 extern "C" {
     fn start_import(name: &str, bytes: &[u8], scale: Option<f64>, z_up: bool, segments: u32) -> f64;
     fn start_export(document: &str, version: u32) -> f64;
+    fn start_open(document: &str) -> f64;
     fn poll_job(id: f64) -> JsValue;
     fn cancel_job(id: f64);
 }
 
 pub struct Job(f64);
 impl Job {
+    pub fn open(text: &str) -> Self {
+        Self(start_open(text))
+    }
+
+    pub fn poll_open(&self) -> Option<Result<(rysmo_model::Document, rysmo_math::OrbitCamera), String>> {
+        self.poll().map(|result| {
+            let value = result?;
+            serde_json::from_str(&string_field(&value, "document")?).map_err(|error| error.to_string())
+        })
+    }
+
     pub fn import(name: &str, bytes: &[u8], options: rysmo_io::import::Options) -> Self {
         Self(start_import(
             name,

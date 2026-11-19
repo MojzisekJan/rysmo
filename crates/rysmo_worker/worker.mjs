@@ -1,10 +1,12 @@
-import init, { import_model, export_skp } from './rysmo_worker.js';
+import init, { import_model, export_skp, open_native } from './rysmo_worker.js';
 
 // One worker owns one conversion. Terminating it cancels parsing/encoding too.
 self.onmessage = async ({ data }) => {
     try {
         await init();
-        if (data.kind === 'import') {
+        if (data.kind === 'open') {
+            self.postMessage({ document: open_native(data.document) });
+        } else if (data.kind === 'import') {
             const document = import_model(data.name, data.bytes, data.scale, data.zUp, data.segments);
             self.postMessage({ document });
         } else if (data.kind === 'export') {
