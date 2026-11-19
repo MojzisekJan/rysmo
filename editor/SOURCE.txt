@@ -1,0 +1,3 @@
+Rysmo source code and build instructions are in source.tar.gz.
+License: GPL-3.0-or-later; see LICENSE.
+Reference PDFs and QA screenshots are omitted; build assets and test models are included.

@@ -1,0 +1,94 @@
+{
+  "revision": "82c005746723fd27f6fc776e1fb994a5f9b9691a",
+  "tracked_changes": false,
+  "assets": {
+    "LICENSE": {
+      "bytes": 35147,
+      "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+    },
+    "SOURCE.txt": {
+      "bytes": 193,
+      "sha256": "fc40c89896ab12f394cb0b5b2bc841050ca92fae252be0fdf3ea1c852fcfc89f"
+    },
+    "b99cc1f056c3f5f1-loader.mjs": {
+      "bytes": 1751,
+      "sha256": "8047af76fb0ae2d185d1f6748a05dd6304bde1033c4efee6ab116356af184330"
+    },
+    "brand/apple-touch-icon.png": {
+      "bytes": 13178,
+      "sha256": "e33310f819e794621e39ab714798b4c2e15b72edb3d7b55ce8ad66e8c0bf2ec6"
+    },
+    "brand/favicon.ico": {
+      "bytes": 33424,
+      "sha256": "fb4f280743220ed8a14d91cb220fb54b9443fcd0220a042573288a8065ffcab7"
+    },
+    "brand/favicon.svg": {
+      "bytes": 1054,
+      "sha256": "eee05956dd4ca13ea3b20586843156b25faf40f103dfaa819a808499c1343b11"
+    },
+    "brand/icon-192.png": {
+      "bytes": 16065,
+      "sha256": "d50aea8ee951aea6e2b477ce045796cd7b0c4e96d27eed2d1f75b5cf8cfb0302"
+    },
+    "brand/icon-32.png": {
+      "bytes": 1983,
+      "sha256": "4341db96fb52ce7d2611991b3801fbf519db437bf1c378ddc41cbbd2d2770724"
+    },
+    "brand/icon-512.png": {
+      "bytes": 51433,
+      "sha256": "993a60b1aee20f363a332483e54a274c30fc294eb3c315140577ddb73d2c29a4"
+    },
+    "brand/icon-64.png": {
+      "bytes": 4613,
+      "sha256": "bb0a1ce62d65d33eeaa8d04607f8da5fda25f944038335972099049121f9bda1"
+    },
+    "brand/logo.png": {
+      "bytes": 47005,
+      "sha256": "c906402124b899a867190327509c41c27151b9cf31afc80aa7df6fb037a115dd"
+    },
+    "brand/logo.svg": {
+      "bytes": 999,
+      "sha256": "ac618f2e5eb9d3f16b08918d8b47184c494c219e55fe413006e0e58856a8d366"
+    },
+    "index.html": {
+      "bytes": 5988,
+      "sha256": "065f571302333b39593bf1f9b6f5799a9eb4468169ea8b388725399301b79821"
+    },
+    "rysmo-16f64a0c3bf50a79.js": {
+      "bytes": 121865,
+      "sha256": "16f64a0c3bf50a79c967df4f085106b05c8c8a74ef78ab0b374c93295cc189d7"
+    },
+    "rysmo-c59da50cfd16fb49_bg.wasm": {
+      "bytes": 30302716,
+      "sha256": "1fd096f5a4e589540d5676fbe38533528d6307790953b5080ad212e9bff63365"
+    },
+    "snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js": {
+      "bytes": 19914,
+      "sha256": "672f07efd17839a2f72de31646134ecc37d2466a3e64e46b92d3d5608b5bde5b"
+    },
+    "snippets/rysmo_app-0350a70e4d910bc5/src/web_worker.js": {
+      "bytes": 2109,
+      "sha256": "1fe6ac0f62c8473ce0af79913d06790a55ee4ecd5f8a53bfcf935fdd69309f0e"
+    },
+    "source.tar.gz": {
+      "bytes": 10511804,
+      "sha256": "a25d66b62dce54140e980feb1d25514e7bcc677cf40ae6a1f9a1d80c283c56bc"
+    },
+    "web_diagnostics.mjs": {
+      "bytes": 5447,
+      "sha256": "463a14cc23addeab1072068daa63e918b4c04b72d8dab51859a9243af8e922a6"
+    },
+    "worker-6ab87a9d977a7612/rysmo_worker.js": {
+      "bytes": 10903,
+      "sha256": "2243b006cd0870e900639248bf075be294bcae435ba499b061e28b336ec20636"
+    },
+    "worker-6ab87a9d977a7612/rysmo_worker_bg.wasm": {
+      "bytes": 6055554,
+      "sha256": "2daa04b963eb2a487e4d584940ecc8f5e938025b529ee8f58b55460ac8b2ec3c"
+    },
+    "worker-6ab87a9d977a7612/worker.mjs": {
+      "bytes": 1073,
+      "sha256": "b2cba4322766ec62665c68249b066ee6a672fcc3c60f655caae8acc12a92b2ff"
+    }
+  }
+}
