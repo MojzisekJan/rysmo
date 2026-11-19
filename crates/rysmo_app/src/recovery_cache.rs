@@ -13,7 +13,7 @@ const MAX_BYTES: usize = 64 * 1024 * 1024;
 struct Entry {
     version: DocumentVersion,
     camera: OrbitCamera,
-    text: Arc<String>,
+    text: rysmo_io::native::SavedText,
 }
 
 pub(crate) struct Cache {
@@ -48,24 +48,30 @@ impl Cache {
             && entry.version == version
             && entry.camera == session.camera
         {
-            return entry.text.clone();
+            return entry.text.text().clone();
         }
-        if let Some(old) = self.entries.remove(&id) {
-            self.bytes -= old.text.capacity();
+        let previous = self.entries.remove(&id);
+        if let Some(old) = &previous {
+            self.bytes -= old.text.text().capacity();
         }
-        let mut document = session.editor.doc().clone();
-        document.camera = Some(session.camera);
-        let text = Arc::new(rysmo_io::save(&document));
+        let saved = if let Some(old) = previous.filter(|entry| entry.version == version) {
+            old.text.with_camera(session.camera)
+        } else {
+            let mut document = session.editor.doc().clone();
+            document.camera = Some(session.camera);
+            rysmo_io::native::SavedText::new(&document)
+        };
+        let text = saved.text().clone();
         if text.capacity() <= self.limit {
             // Admit the active text preferentially. An oversized workspace otherwise
             // keeps its cached inactive texts instead of evicting them in a cycle.
             while active && self.bytes + text.capacity() > self.limit {
                 let Some((_, old)) = self.entries.pop_first() else { break };
-                self.bytes -= old.text.capacity();
+                self.bytes -= old.text.text().capacity();
             }
             if self.bytes + text.capacity() <= self.limit {
                 self.bytes += text.capacity();
-                self.entries.insert(id, Entry { version, camera: session.camera, text: text.clone() });
+                self.entries.insert(id, Entry { version, camera: session.camera, text: saved });
             }
         }
         text
@@ -76,7 +82,7 @@ impl Cache {
         self.entries.retain(|id, entry| {
             let keep = ids.contains(id);
             if !keep {
-                self.bytes -= entry.text.capacity();
+                self.bytes -= entry.text.text().capacity();
             }
             keep
         });
@@ -194,7 +200,7 @@ mod tests {
         app.editor.apply(Command::DrawLines { lines: vec![[DVec3::Y, DVec3::X + DVec3::Y]], facing: None }).unwrap();
         let edited = cache.snapshot(&app);
         assert!(!Arc::ptr_eq(&switched.active_text, &edited.active_text));
-        assert!(Arc::ptr_eq(&second.active_text, &cache.entries[&second_id].text));
+        assert!(Arc::ptr_eq(&second.active_text, cache.entries[&second_id].text.text()));
         // An outstanding asynchronous write owns its old immutable text, not a
         // mutable reference into the cache that a later edit could overwrite.
         assert_eq!(rysmo_io::load(&switched.active_text).unwrap().root.mesh.edge_count(), 1);
@@ -203,7 +209,7 @@ mod tests {
         crate::documents::close(&mut app);
         let closed = cache.snapshot(&app);
         assert_eq!(cache.entries.len(), 1);
-        assert_eq!(cache.bytes, cache.entries.values().map(|entry| entry.text.capacity()).sum::<usize>());
+        assert_eq!(cache.bytes, cache.entries.values().map(|entry| entry.text.text().capacity()).sum::<usize>());
         assert_legacy_equivalent(&app, &closed);
     }
 
@@ -252,6 +258,69 @@ mod tests {
         assert_eq!(uncached.bytes, 0);
         assert!(uncached.entries.is_empty());
         assert_legacy_equivalent(&app, &snapshot);
+    }
+
+    #[test]
+    fn repeated_camera_updates_keep_snapshots_immutable_and_budget_exact() {
+        let mut app = app();
+        draw(&mut app);
+        let mut cache = Cache::default();
+        let first = cache.snapshot(&app);
+        let old_text = first.active_text.to_string();
+        for i in 0..24 {
+            app.camera.yaw = i as f64 * 0.123456789123;
+            app.camera.parallel = i % 2 == 0;
+            app.editor.set_camera(app.camera);
+            let snapshot = cache.snapshot(&app);
+            assert_legacy_equivalent(&app, &snapshot);
+            assert_eq!(cache.bytes, cache.entries.values().map(|entry| entry.text.text().capacity()).sum::<usize>());
+            assert!(cache.bytes <= cache.limit);
+            assert_eq!(first.active_text.as_str(), old_text);
+        }
+        cache.limit = 1;
+        app.camera.yaw += 0.25;
+        assert_legacy_equivalent(&app, &cache.snapshot(&app));
+        assert_eq!(cache.bytes, 0);
+        assert!(cache.entries.is_empty());
+        cache.limit = MAX_BYTES;
+        cache.snapshot(&app);
+        // A content edit after camera-only updates must never reuse the old body.
+        app.editor.apply(Command::DrawLines { lines: vec![[DVec3::Y, DVec3::X + DVec3::Y]], facing: None }).unwrap();
+        assert_legacy_equivalent(&app, &cache.snapshot(&app));
+        assert_eq!(rysmo_io::load(&cache.snapshot(&app).active_text).unwrap().root.mesh.edge_count(), 2);
+    }
+
+    #[test]
+    #[ignore = "manual CPU benchmark; set RYSMO_RECOVERY_BENCH_MODEL to a native model path"]
+    fn benchmark_camera_workspace_recovery() {
+        use std::{hint::black_box, time::Instant};
+        let source = std::fs::read_to_string(std::env::var("RYSMO_RECOVERY_BENCH_MODEL").unwrap()).unwrap();
+        let mut app = app();
+        app.editor = Editor::with_document(rysmo_io::load(&source).unwrap());
+        let mut results = Vec::new();
+        for reuse_camera in [false, true] {
+            let mut cache = Cache::default();
+            cache.snapshot(&app);
+            let mut samples = Vec::new();
+            for i in 0..24 {
+                app.camera.yaw = i as f64 * 0.125;
+                if !reuse_camera {
+                    // Previous camera invalidation serialized the complete model.
+                    cache = Cache::default();
+                }
+                let start = Instant::now();
+                let snapshot = black_box(cache.snapshot(&app));
+                let elapsed = start.elapsed().as_secs_f64() * 1000.;
+                assert_legacy_equivalent(&app, &snapshot);
+                if i >= 3 {
+                    samples.push(elapsed);
+                }
+            }
+            samples.sort_by(f64::total_cmp);
+            results.push(serde_json::json!({"reuse_camera": reuse_camera,
+                "median_ms": samples[10], "p95_ms": samples[19], "samples": 21}));
+        }
+        println!("camera-recovery-benchmark: {}", serde_json::json!(results));
     }
 
     #[test]

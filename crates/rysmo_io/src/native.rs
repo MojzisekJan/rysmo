@@ -322,6 +322,53 @@ fn tidy_guide(g: &Guide) -> Guide {
 
 /// Writes a document as `.rysmo` text.
 pub fn save(doc: &Document) -> String {
+    save_document(doc).0
+}
+
+/// Immutable canonical native text with the camera record located by the writer.
+/// Updating the view copies text but does not serialize unchanged geometry again.
+pub struct SavedText {
+    text: std::sync::Arc<String>,
+    camera: std::ops::Range<usize>,
+}
+impl SavedText {
+    pub fn new(doc: &Document) -> Self {
+        let (text, camera) = save_document(doc);
+        Self { text: std::sync::Arc::new(text), camera }
+    }
+
+    pub fn text(&self) -> &std::sync::Arc<String> {
+        &self.text
+    }
+
+    pub fn with_camera(&self, camera: OrbitCamera) -> Self {
+        let record = camera_record(Some(&camera));
+        let mut text = String::with_capacity(self.text.len() - self.camera.len() + record.len());
+        text.push_str(&self.text[..self.camera.start]);
+        text.push_str(&record);
+        text.push_str(&self.text[self.camera.end..]);
+        Self { text: std::sync::Arc::new(text), camera: self.camera.start..self.camera.start + record.len() }
+    }
+}
+
+fn camera_record(camera: Option<&OrbitCamera>) -> String {
+    if let Some(c) = camera {
+        let c = OrbitCamera {
+            target: DVec3::from_array(tidy3(c.target)),
+            distance: tidy(c.distance),
+            yaw: tidy(c.yaw),
+            pitch: tidy(c.pitch),
+            fov_y: tidy(c.fov_y),
+            parallel: c.parallel,
+            eye_base_z: tidy(c.eye_base_z),
+            roll: tidy(c.roll),
+        };
+        return format!("\"camera\": {},\n", serde_json::to_string(&c).expect("camera serialises"));
+    }
+    String::new()
+}
+
+fn save_document(doc: &Document) -> (String, std::ops::Range<usize>) {
     let mut out = JsonOutput(b"{\n".to_vec());
     out.push_str(&format!("\"format\": \"{FORMAT}\",\n\"version\": {VERSION},\n"));
     out.push_str("\"length_unit\": \"m\",\n");
@@ -334,19 +381,9 @@ pub fn save(doc: &Document) -> String {
         "\"length_precision\": {},\n",
         serde_json::to_string(&doc.length_precision).expect("precision")
     ));
-    if let Some(c) = &doc.camera {
-        let c = OrbitCamera {
-            target: DVec3::from_array(tidy3(c.target)),
-            distance: tidy(c.distance),
-            yaw: tidy(c.yaw),
-            pitch: tidy(c.pitch),
-            fov_y: tidy(c.fov_y),
-            parallel: c.parallel,
-            eye_base_z: tidy(c.eye_base_z),
-            roll: tidy(c.roll),
-        };
-        out.push_str(&format!("\"camera\": {},\n", serde_json::to_string(&c).expect("camera serialises")));
-    }
+    let camera_start = out.0.len();
+    out.push_str(&camera_record(doc.camera.as_ref()));
+    let camera_range = camera_start..out.0.len();
     if let Some(photo) = &doc.photo_match {
         out.push_str(&format!("\"photo_match\": {},\n", serde_json::to_string(photo).expect("photo setup")));
     }
@@ -498,7 +535,7 @@ pub fn save(doc: &Document) -> String {
         true,
     );
     out.push_str("}\n");
-    String::from_utf8(out.0).expect("JSON is UTF-8")
+    (String::from_utf8(out.0).expect("JSON is UTF-8"), camera_range)
 }
 
 /// Resolve an input record's owner without relying on an earlier validation pass.
@@ -2714,5 +2751,37 @@ mod editable_workflow_tests {
         doc.root_mut().section_hatch = Some(Hatch::default());
         let text = save(&doc).replace("\"length_unit\": \"m\"", "\"length_unit\": \"mm\"");
         assert!((load(&text).unwrap().root.section_hatch.unwrap().spacing - 0.0001).abs() < 1e-12);
+    }
+}
+
+#[cfg(test)]
+mod saved_text_tests {
+    use super::*;
+
+    #[test]
+    fn camera_replacement_matches_full_save_and_preserves_old_snapshots() {
+        for initial_camera in [None, Some(OrbitCamera::default())] {
+            let mut doc = load(include_str!("../../../testdata/dimensions-preview.rysmo")).unwrap();
+            doc.camera = initial_camera;
+            doc.tags.insert(TagId(999999), Tag { name: "Žluťoučký\n\"camera\": 🦀".into(), visible: true });
+            let mut saved = SavedText::new(&doc);
+            let original = saved.text().clone();
+            assert_eq!(original.as_str(), save(&doc));
+            for i in 0..24 {
+                let camera = OrbitCamera {
+                    target: DVec3::new(-0.0, 0.30000000000000004, i as f64),
+                    distance: 0.123456789123 + i as f64,
+                    yaw: i as f64 * 0.25,
+                    parallel: i % 2 == 0,
+                    ..Default::default()
+                };
+                saved = saved.with_camera(camera);
+                doc.camera = Some(camera);
+                assert_eq!(saved.text().as_str(), save(&doc));
+                load(saved.text()).unwrap();
+            }
+            doc.camera = initial_camera;
+            assert_eq!(original.as_str(), save(&doc));
+        }
     }
 }

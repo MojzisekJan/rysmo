@@ -1,0 +1,122 @@
+{
+  "date": "2026-11-19",
+  "baseline": "9464fcb4d735b375937210fbe324bf752ae414b9",
+  "reviewed": [
+    "Recovery cache invalidation by content revision and camera",
+    "Native camera serialization and canonical rounding",
+    "Snapshot ownership across asynchronous writes",
+    "Memory-budget admission/eviction",
+    "Workspace serialization after camera-only changes"
+  ],
+  "change": "Keep the writer-recorded camera byte range in immutable canonical text; replace only that record when content generation/revision is unchanged. No parser or validation bypass.",
+  "cpu_measurement": {
+    "profile": "portable, aarch64-apple-darwin",
+    "warmups": 3,
+    "samples": 21,
+    "scope": "Native CPU only, excludes browser JS/WASM copies, IndexedDB and rendering",
+    "text_operations": [
+      {
+        "file": "target/skp-browser-verification/raw-72000.rysmo",
+        "load": {
+          "median_ms": 128.871458,
+          "p95_ms": 129.911417,
+          "samples": 21
+        },
+        "native_bytes": 15071084,
+        "reconstruct_on_recipient": {
+          "median_ms": 89.560833,
+          "p95_ms": 90.909042,
+          "samples": 21
+        },
+        "save_native": {
+          "median_ms": 31.929416000000003,
+          "p95_ms": 32.434625000000004,
+          "samples": 21
+        },
+        "serialize_for_worker_transfer": {
+          "median_ms": 28.066333,
+          "p95_ms": 29.018334,
+          "samples": 21
+        },
+        "transfer_bytes": 15409280,
+        "update_saved_camera": {
+          "median_ms": 0.315792,
+          "p95_ms": 0.34375,
+          "samples": 21
+        },
+        "validate_geometry": {
+          "median_ms": 26.174375,
+          "p95_ms": 26.847541,
+          "samples": 21
+        },
+        "sha256": "452264d84d46440054a24fe200b36d810dc18f6e44c4209c9254e719579dffad"
+      },
+      {
+        "file": "testdata/dimensions-preview.rysmo",
+        "load": {
+          "median_ms": 0.025834,
+          "p95_ms": 0.030750000000000003,
+          "samples": 21
+        },
+        "native_bytes": 3573,
+        "reconstruct_on_recipient": {
+          "median_ms": 0.02075,
+          "p95_ms": 0.021083,
+          "samples": 21
+        },
+        "save_native": {
+          "median_ms": 0.012459000000000001,
+          "p95_ms": 0.012583,
+          "samples": 21
+        },
+        "serialize_for_worker_transfer": {
+          "median_ms": 0.013166,
+          "p95_ms": 0.013375,
+          "samples": 21
+        },
+        "transfer_bytes": 6288,
+        "update_saved_camera": {
+          "median_ms": 0.000542,
+          "p95_ms": 0.000584,
+          "samples": 21
+        },
+        "validate_geometry": {
+          "median_ms": 0.001,
+          "p95_ms": 0.001042,
+          "samples": 21
+        },
+        "sha256": "c7f7374d2b644c8069116388420c4a8068aa38390a51e09f1ca7c2f2b042bc77"
+      }
+    ],
+    "workspace_camera_updates": [
+      {
+        "median_ms": 55.42825,
+        "p95_ms": 57.086791,
+        "reuse_camera": false,
+        "samples": 21
+      },
+      {
+        "median_ms": 23.172124999999998,
+        "p95_ms": 23.774166,
+        "reuse_camera": true,
+        "samples": 21
+      }
+    ],
+    "baseline_note": "Full-serialization workspace proxy resets cache before each camera change, outside timing. Optimized case retains one-document cache. Both include workspace JSON serialization; byte/content equivalence checked after each timed operation."
+  },
+  "checks": {
+    "io_library_tests_passed": 132,
+    "app_library_tests_passed": 238,
+    "app_manual_tests_ignored": 5,
+    "manual_camera_benchmark_passed": 1,
+    "clippy": "Native app/io all-targets -D warnings passed",
+    "format_and_diff_check": "passed"
+  },
+  "limitations": [
+    "Initial load and real content changes still require full serialization.",
+    "Cached camera update still copies the native text; workspace JSON escaping remains synchronous.",
+    "64 MiB retention budget preserved; documents exceeding it do not gain persistent caching.",
+    "No browser latency claim, UI test, web rebuild or deployment in this pass."
+  ],
+  "benchmark_setup_note": "First workspace benchmark invocation used a relative fixture path and failed to find the file from the crate test working directory; rerun with absolute path passed."
+}

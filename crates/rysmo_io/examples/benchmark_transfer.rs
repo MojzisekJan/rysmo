@@ -33,6 +33,15 @@ fn main() -> Result<(), Box<dyn Error>> {
             black_box(rysmo_io::save(black_box(&doc)));
             Ok(())
         })?;
+        let saved = rysmo_io::native::SavedText::new(&doc);
+        let camera = rysmo_math::OrbitCamera { yaw: 0.123456789123, ..Default::default() };
+        let mut viewed = doc.clone();
+        viewed.camera = Some(camera);
+        assert_eq!(saved.with_camera(camera).text().as_str(), rysmo_io::save(&viewed));
+        let update_saved_camera = measure(|| {
+            black_box(saved.with_camera(black_box(camera)));
+            Ok(())
+        })?;
         let load = measure(|| {
             black_box(rysmo_io::load(black_box(&text))?);
             Ok(())
@@ -48,7 +57,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!(
             "{}",
             serde_json::json!({"file":path,"native_bytes":text.len(),"transfer_bytes":transfer.len(),
-            "load":load,"validate_geometry":validate_geometry,"save_native":save_native,"serialize_for_worker_transfer":encode,"reconstruct_on_recipient":reconstruct})
+            "load":load,"validate_geometry":validate_geometry,"save_native":save_native,"update_saved_camera":update_saved_camera,"serialize_for_worker_transfer":encode,"reconstruct_on_recipient":reconstruct})
         );
     }
     Ok(())

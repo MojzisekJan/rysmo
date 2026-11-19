@@ -839,3 +839,38 @@ workspace JSON wrapping and browser storage.
 
 Validation passed 759 library tests (two manual benchmarks ignored), strict
 all-target native Clippy for mesh/model/I/O/tools/worker, formatting and diff checks.
+
+## Camera-only recovery updates, 2026-11-19
+
+Reviewed recovery cache invalidation, native camera serialization, immutable
+snapshot ownership, cache eviction and workspace JSON construction. Previously a
+camera change serialized the entire document even when its content revision was
+unchanged. `native::SavedText` now keeps the camera byte range recorded by the
+writer. A camera-only update builds a new immutable string from the unchanged
+prefix/suffix and the canonical camera record; it does not search or parse text.
+The ordinary writer and this update share rounding and formatting. The range
+cannot be supplied by a file or changed by a caller.
+
+The recovery cache uses this only when generation/content revision still match.
+Edits, undo/redo and document replacement use full serialization. Old asynchronous
+snapshots retain their own immutable strings. The 64 MiB retained-capacity budget
+and admission policy remain in place, including after camera updates and eviction.
+
+On the 72,000-face fixture, native full serialization took 31.93 ms versus 0.316 ms
+for replacing a cached camera record. The whole single-document workspace snapshot
+(including JSON wrapping) took 55.43 ms with full serialization versus 23.17 ms with
+camera reuse. These are native CPU medians (3 warmups, 21 samples), not browser
+latency. The full-serialization proxy clears its cache outside the timed operation;
+each measured snapshot is checked against the legacy content after timing.
+The small dimension fixture measured 0.01246 ms versus 0.000542 ms for text creation.
+
+Tests cover absent/existing cameras, repeated updates, canonical rounding, Unicode
+and escaped camera-like text, old snapshot immutability, content edits after camera
+updates, undo/redo, tab identity and memory-budget exhaustion. All 132 I/O and 238
+application tests passed (five manual tests ignored); the camera benchmark and
+strict native app/I/O all-target Clippy also passed.
+
+First opening and content edits still pay full serialization. The optimized path
+still copies native text and escapes it into workspace JSON; browser transfer and
+IndexedDB costs are not included. No web rebuild or deployment was done here.
+[Measurements and reviewed areas](verification/camera-recovery-2026-11-19.json).
