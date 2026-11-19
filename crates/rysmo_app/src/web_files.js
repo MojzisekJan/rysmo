@@ -157,6 +157,7 @@ export async function pick_open() {
   if (window.top === window && typeof window.showOpenFilePicker === "function") {
     try {
       const [handle] = await window.showOpenFilePicker({ types });
+      profile_sample("file_selected", 0, 0, 0);
       const text = await (await handle.getFile()).text();
       const token = stage_file(handle);
       await remember(handle.name, text, handle);
@@ -177,6 +178,7 @@ export async function pick_open() {
       const file = input.files[0];
       if (!file) return finish(null);
       try {
+        profile_sample("file_selected", 0, 0, 0);
         const text = await file.text();
         const token = stage_file(null);
         await remember(file.name, text, null);
@@ -193,6 +195,7 @@ export async function pick_open() {
 
 // [name, text] of a recent file, from its stored copy.
 export async function open_recent(name) {
+  profile_sample("file_selected", 0, 0, 0);
   try {
     const text = await get("files", name);
     if (text === undefined) return null;
@@ -462,7 +465,7 @@ export function profile_sample(stage, milliseconds, generation, revision) {
   if (stage === "editor_update") profile.editorUpdates = (profile.editorUpdates || 0) + 1;
   const sample = { stage, milliseconds, time: performance.now(), generation: String(generation), revision: String(revision), wasmBytes: profile.memory?.buffer.byteLength ?? null };
   profile.samples.push(sample);
-  if (["model_open", "model_installed", "surfaces_ready", "surfaces_uploaded"].includes(stage)) {
+  if (["file_selected", "model_open", "model_installed", "surfaces_ready", "surfaces_uploaded"].includes(stage)) {
     if (profile.milestones.length >= 256) profile.milestones.shift();
     profile.milestones.push(sample);
   }

@@ -368,7 +368,7 @@ fn poll_open(app: &mut App3d) {
         return;
     }
     let _profile = ProfileSpan::new("model_open_result", app.document_generation, app.editor.content_revision());
-    let Some(result) = pending.job.poll_open() else {
+    let Some(result) = pending.job.poll_open(app.document_generation, app.editor.content_revision()) else {
         app.web_open.pending = Some(pending);
         return;
     };
@@ -678,16 +678,21 @@ pub fn activate_tab(id: u64) {
 }
 
 fn recovery_snapshot(app: &App3d) -> crate::recovery_cache::Snapshot {
+    let _profile = ProfileSpan::new("workspace_snapshot", app.document_generation, app.editor.content_revision());
     thread_local! {
         static TEXTS: RefCell<crate::recovery_cache::Cache> = RefCell::default();
     }
     TEXTS.with_borrow_mut(|cache| cache.snapshot(app))
 }
 async fn write_workspace(snapshot: &crate::recovery_cache::Snapshot) -> bool {
-    let texts = js_sys::Array::new();
-    for text in &snapshot.texts {
-        texts.push(&JsValue::from_str(text));
-    }
+    let texts = {
+        let _profile = ProfileSpan::new("workspace_transfer_strings", 0, 0);
+        let texts = js_sys::Array::new();
+        for text in &snapshot.texts {
+            texts.push(&JsValue::from_str(text));
+        }
+        texts
+    };
     save_workspace_parts(&snapshot.metadata, &texts).await.as_bool().unwrap_or(false)
 }
 

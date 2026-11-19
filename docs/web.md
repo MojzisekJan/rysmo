@@ -46,6 +46,11 @@ still take place on the editor thread; the worker does not eliminate their cost.
 Add `?diagnostics` for the local performance overlay. **Reset profile** clears the
 bounded timing samples, milestones and browser long-task observations. **Download
 profile** saves those observations as JSON for inspection without developer tools.
+**View profile** opens the same report in a read-only dialog when downloads are
+unavailable. The Open timeline starts at `file_selected` and separates worker
+snapshot decoding, document installation, recovery serialization and JS string
+transfer. `surfaces_uploaded` means render assets were submitted, not a measured
+GPU presentation timestamp.
 The report includes the editor's visible status and allocated WASM capacity, not
 the model or WASM memory contents. A browser without the Long Tasks API reports
 that limitation rather than claiming zero long tasks. Timings remain local and

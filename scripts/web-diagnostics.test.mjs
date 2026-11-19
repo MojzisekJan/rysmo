@@ -13,7 +13,7 @@ function fixture(supported = true) {
         addEventListener() {},
         createElement(tag) {
             const element = { tag, style: {}, dataset: {}, setAttribute() {}, append() {}, remove() {},
-                addEventListener(name, callback) { this[name] = callback; }, click() {} };
+                addEventListener(name, callback) { this[name] = callback; }, click() {}, showModal() { this.modal = true; } };
             elements.push(element);
             return element;
         },
@@ -61,4 +61,18 @@ test('reset excludes queued earlier observations and unsupported observers remai
         assert.deepEqual(report.samples, []);
         assert.equal(report.droppedSamples, 0);
     }
+});
+
+test('visible profile uses the same bounded report without exporting WASM memory', () => {
+    const f = fixture();
+    f.elements.find(e => e.textContent === 'View profile').click();
+    const dialog = f.elements.find(e => e.tag === 'dialog');
+    const output = f.elements.find(e => e.tag === 'textarea');
+    const report = JSON.parse(output.textContent);
+    assert.equal(dialog.modal, true);
+    assert.equal(output.readOnly, true);
+    assert.deepEqual(report.samples, [{ stage: 'test' }]);
+    assert.equal(report.droppedSamples, 2);
+    assert.equal(report.memory, undefined);
+    assert.equal(f.blobs.length, 0);
 });

@@ -16,10 +16,16 @@ impl Job {
         Self(start_open(text))
     }
 
-    pub fn poll_open(&self) -> Option<Result<(rysmo_model::Document, rysmo_math::OrbitCamera), String>> {
+    pub fn poll_open(
+        &self,
+        generation: u64,
+        revision: u64,
+    ) -> Option<Result<(rysmo_model::Document, rysmo_math::OrbitCamera), String>> {
         self.poll().map(|result| {
             let value = result?;
-            serde_json::from_str(&string_field(&value, "document")?).map_err(|error| error.to_string())
+            let _profile = crate::web::ProfileSpan::new("model_open_decode", generation, revision);
+            rysmo_io::native::decode_open_snapshot(&string_field(&value, "document")?)
+                .map_err(|error| error.to_string())
         })
     }
 

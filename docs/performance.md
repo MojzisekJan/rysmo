@@ -910,3 +910,35 @@ component collections can still make metadata expensive.
 Validation: 239 application tests and 36 JavaScript tests passed; two manual
 benchmarks passed separately. Native all-target Clippy, WASM compilation and
 WASM Clippy passed, as did formatting and diff checks.
+
+## Browser release verification, 2026-11-20
+
+Measured the actual web editor opening the 72,000-face / 15.1 MB fixture through
+surface preparation and render asset submission. Added separate profile stages for
+file selection, worker snapshot decoding, installation, recovery snapshot creation
+and JS string transfer. The diagnostics-only View profile dialog exposes the same
+bounded report as Download profile without requiring a working download handler.
+
+The observed worker snapshot decode fell from 160.8 to 119.0 ms and cold recovery
+snapshot preparation from 70.3 to 27.0 ms after compiling `rysmo_io` for speed and
+moving concrete snapshot decoding into that crate. Mesh deserialization validation
+is retained. Main WASM grew from 29,359,443 to 30,302,442 bytes (3.2%); worker WASM
+from 5,863,036 to 6,055,554 bytes. The rest of the application still prioritizes size.
+
+These are single browser traces, not repeated controlled benchmarks. The second
+run restored an additional large tab. End-to-end file selection to render asset
+submission was 1,565.3 ms before and 1,810.0 ms after; **no overall latency win is
+claimed**. Largest observed long task fell from 363 to 304 ms, but synchronous
+main-thread work remains. A small Open Recent trace took 64.1 ms to asset submission.
+Asset submission does not timestamp GPU presentation; each model was also checked
+visually. See the evidence for stage timings, allocation and experiment conditions.
+
+Cursor-driven checks covered dirty geometry/camera recovery in a fresh page,
+switching documents, invalid mesh and truncated JSON rejection, and cancelling an
+Open while retaining changes and usable Undo/Redo. Cancel used a separate origin
+with a delayed worker response, excluded from performance results. The completed
+package passed 132 I/O tests, 3 worker tests, 39 JS tests (one manual test skipped),
+strict I/O/worker Clippy and static asset validation. Offline macOS build-tool cache
+discovery was corrected and exercised by the successful full web build.
+
+[Measurements, checks and limitations](verification/web-release-performance-2026-11-20.json).

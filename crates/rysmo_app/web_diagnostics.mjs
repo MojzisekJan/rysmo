@@ -14,7 +14,9 @@ if (new URLSearchParams(location.search).has("diagnostics")) {
   reset.textContent = "Reset profile";
   const download = document.createElement("button");
   download.textContent = "Download profile";
-  controls.append(reset, download);
+  const view = document.createElement("button");
+  view.textContent = "View profile";
+  controls.append(reset, view, download);
   document.body.append(controls);
   let started = performance.now(), longTasks = [], droppedLongTasks = 0;
   if (typeof PerformanceObserver !== "undefined" && PerformanceObserver.supportedEntryTypes?.includes("longtask")) {
@@ -32,15 +34,36 @@ if (new URLSearchParams(location.search).has("diagnostics")) {
     if (profile) { profile.samples = []; profile.milestones = []; profile.dropped = 0; }
     reset.textContent = "Profile reset";
   });
-  download.addEventListener("click", () => {
+  function report() {
     const profile = window.rysmoPerformance;
-    const report = {
+    return {
       started, ended: performance.now(), longTasks, droppedLongTasks,
       longTasksSupported: typeof PerformanceObserver !== "undefined" && PerformanceObserver.supportedEntryTypes?.includes("longtask"),
       samples: profile?.samples ?? [], milestones: profile?.milestones ?? [], droppedSamples: profile?.dropped ?? 0,
       wasmBytes: memory?.buffer.byteLength ?? null, editor: panel.dataset.editor ?? null,
     };
-    const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }));
+  }
+  view.addEventListener("click", () => {
+    const dialog = document.createElement("dialog");
+    dialog.style.cssText = "width:min(800px,85vw);padding:20px;border:1px solid #66758a;border-radius:8px";
+    const title = document.createElement("h2");
+    title.textContent = "Performance profile";
+    const output = document.createElement("textarea");
+    output.setAttribute("aria-label", "Performance profile JSON");
+    output.readOnly = true;
+    output.style.cssText = "box-sizing:border-box;width:100%;height:55vh;font:12px monospace";
+    output.textContent = JSON.stringify(report(), null, 2);
+    const close = document.createElement("button");
+    close.textContent = "Close";
+    close.style.cssText = "display:block;margin:12px 0 0 auto;padding:6px 16px";
+    close.addEventListener("click", () => dialog.close());
+    dialog.addEventListener("close", () => dialog.remove());
+    dialog.append(title, output, close);
+    document.body.append(dialog);
+    dialog.showModal();
+  });
+  download.addEventListener("click", () => {
+    const url = URL.createObjectURL(new Blob([JSON.stringify(report(), null, 2)], { type: "application/json" }));
     const link = document.createElement("a");
     link.href = url; link.download = "rysmo-profile.json";
     document.body.append(link); link.click(); link.remove();

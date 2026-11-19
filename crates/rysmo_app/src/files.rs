@@ -138,6 +138,9 @@ pub(crate) fn install_loaded(
     camera: rysmo_math::OrbitCamera,
     name: &str,
 ) -> Result<String, String> {
+    #[cfg(target_arch = "wasm32")]
+    let _profile =
+        crate::web::ProfileSpan::new("model_install", app.document_generation, app.editor.content_revision());
     if !crate::documents::create(app) {
         return Err("Document limit reached".into());
     }

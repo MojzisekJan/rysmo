@@ -81,6 +81,10 @@ opt-level = 3
 [profile.web-release.package.rysmo_infer]
 opt-level = 3
 
+# Native file serialization and worker snapshot decoding are on the UI path.
+[profile.web-release.package.rysmo_io]
+opt-level = 3
+
 # Cross-platform smoke builds avoid multi-gigabyte debug symbols and incremental data.
 [profile.portable]
 inherits = "dev"

@@ -325,6 +325,12 @@ pub fn save(doc: &Document) -> String {
     save_document(doc).0
 }
 
+/// Decode the internal Open worker snapshot, retaining mesh deserialization checks.
+/// Keep this concrete entry point in the speed-optimized I/O crate on the web.
+pub fn decode_open_snapshot(text: &str) -> Result<(Document, OrbitCamera), serde_json::Error> {
+    serde_json::from_str(text)
+}
+
 /// Immutable canonical native text with the camera record located by the writer.
 /// Updating the view copies text but does not serialize unchanged geometry again.
 pub struct SavedText {

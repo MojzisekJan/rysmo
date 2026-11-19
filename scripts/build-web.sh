@@ -7,7 +7,13 @@ if [[ "${1:-}" != "--package-only" ]]; then
     export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}"
     # Trunk's offline mode searches PATH before consulting its own download cache.
     bindgen_version="$(python3 -c 'import sys,tomllib; print(next(p["version"] for p in tomllib.load(open(sys.argv[1],"rb"))["package"] if p["name"]=="wasm-bindgen"))' "$project_root/Cargo.lock")"
-    trunk_cache="${RYSMO_TRUNK_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/trunk}"
+    if [[ -n "${RYSMO_TRUNK_CACHE:-}" ]]; then
+        trunk_cache="$RYSMO_TRUNK_CACHE"
+    elif [[ "$(uname -s)" == "Darwin" ]]; then
+        trunk_cache="$HOME/Library/Caches/dev.trunkrs.trunk"
+    else
+        trunk_cache="${XDG_CACHE_HOME:-$HOME/.cache}/trunk"
+    fi
     cached_bindgen="$trunk_cache/wasm-bindgen-$bindgen_version"
     if [[ -x "$cached_bindgen/wasm-bindgen" ]]; then export PATH="$cached_bindgen:$PATH"; fi
     for cached_optimizer in "$trunk_cache"/wasm-opt-*/bin/wasm-opt; do

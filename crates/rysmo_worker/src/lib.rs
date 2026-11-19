@@ -89,8 +89,8 @@ mod tests {
     fn native_open_preserves_document_and_rejects_invalid_files() {
         let text = include_str!("../../../testdata/dimensions-preview.rysmo");
         let expected = rysmo_io::load(text).unwrap();
-        let (document, camera): (rysmo_model::Document, serde_json::Value) =
-            serde_json::from_str(&open_native(text).unwrap()).unwrap();
+        let (document, camera) = rysmo_io::native::decode_open_snapshot(&open_native(text).unwrap()).unwrap();
+        let camera = serde_json::to_value(camera).unwrap();
         assert_eq!(rysmo_io::save(&document), rysmo_io::save(&expected));
         assert!(camera.is_object());
         if let Some(saved) = expected.camera {

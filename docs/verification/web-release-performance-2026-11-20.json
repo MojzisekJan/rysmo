@@ -1,0 +1,448 @@
+{
+  "date": "2026-11-20",
+  "baseline": "c9e8ab662fd185e1a328c70a27c32b03ce6b90a9",
+  "change": "Speed-optimize rysmo_io in web-release and instantiate Open snapshot decoding in that crate; add stage profiling and a visible diagnostic report. No format, validation or recovery schema changes.",
+  "reviewed": [
+    "Actual browser file selection through surface asset submission",
+    "Worker snapshot decoding and document installation",
+    "Cold recovery snapshot and WASM-to-JS string conversion",
+    "Dirty document and camera recovery with multiple tabs",
+    "Malformed JSON and invalid mesh rejection without replacing dirty document",
+    "Cancel followed by late worker response and undo/redo",
+    "Offline macOS Trunk cache discovery and packaged worker fingerprint"
+  ],
+  "environment": {
+    "browser": "ChatGPT in-app Chromium browser on macOS",
+    "viewport": "1280x720 during performance traces",
+    "file_picker": "Existing HTML input fallback in same-origin iframe; unmodified packaged editor assets",
+    "fixture_bytes": 15071084,
+    "fixture_sha256": "452264d84d46440054a24fe200b36d810dc18f6e44c4209c9254e719579dffad",
+    "method": "One trace per build, same host and fixture. Baseline starts with two small tabs; candidate restores a prior large tab as well. Not controlled repeated A/B; do not infer an end-to-end speedup."
+  },
+  "small_baseline": {
+    "milestones_ms_from_selection": {
+      "file_selected": 0.0,
+      "model_installed": 47.9,
+      "surfaces_ready": 64.1,
+      "surfaces_uploaded": 64.1
+    },
+    "stages": {
+      "editor_update": {
+        "count": 52,
+        "max_ms": 0,
+        "sum_ms": 0
+      },
+      "asset_prepare_cpu": {
+        "count": 52,
+        "max_ms": 0.6,
+        "sum_ms": 8.0
+      },
+      "render_cpu": {
+        "count": 52,
+        "max_ms": 4.1,
+        "sum_ms": 59.7
+      },
+      "pointer_event": {
+        "count": 6,
+        "max_ms": 0.6,
+        "sum_ms": 1.1
+      },
+      "file_selected": {
+        "count": 1,
+        "max_ms": 0,
+        "sum_ms": 0
+      },
+      "model_open_result": {
+        "count": 2,
+        "max_ms": 0.8,
+        "sum_ms": 0.9
+      },
+      "model_open_decode": {
+        "count": 1,
+        "max_ms": 0.3,
+        "sum_ms": 0.3
+      },
+      "model_installed": {
+        "count": 1,
+        "max_ms": 0,
+        "sum_ms": 0
+      },
+      "model_install": {
+        "count": 1,
+        "max_ms": 0.2,
+        "sum_ms": 0.2
+      },
+      "workspace_snapshot": {
+        "count": 1,
+        "max_ms": 0.3,
+        "sum_ms": 0.3
+      },
+      "highlight_batch": {
+        "count": 2,
+        "max_ms": 0,
+        "sum_ms": 0
+      },
+      "workspace_transfer_strings": {
+        "count": 1,
+        "max_ms": 0,
+        "sum_ms": 0
+      },
+      "surfaces_ready": {
+        "count": 1,
+        "max_ms": 0,
+        "sum_ms": 0
+      },
+      "surface_batch": {
+        "count": 1,
+        "max_ms": 0.1,
+        "sum_ms": 0.1
+      },
+      "surfaces_uploaded": {
+        "count": 1,
+        "max_ms": 0,
+        "sum_ms": 0
+      },
+      "render_assets_submitted": {
+        "count": 1,
+        "max_ms": 0,
+        "sum_ms": 0
+      }
+    },
+    "long_tasks": [],
+    "allocated_wasm_bytes": 47185920,
+    "dropped_samples": 0,
+    "profile_sha256": "c05db71af50e52e6f18763d7f56a1a567fab50f2f36b84a398399319dd746167"
+  },
+  "large_baseline": {
+    "milestones_ms_from_selection": {
+      "file_selected": 0.0,
+      "model_installed": 739.9,
+      "surfaces_ready": 1236.5,
+      "surfaces_uploaded": 1565.3
+    },
+    "stages": {
+      "editor_update": {
+        "count": 115,
+        "max_ms": 0,
+        "sum_ms": 0
+      },
+      "asset_prepare_cpu": {
+        "count": 115,
+        "max_ms": 1.3,
+        "sum_ms": 40.2
+      },
+      "render_cpu": {
+        "count": 115,
+        "max_ms": 48.7,
+        "sum_ms": 433.8
+      },
+      "file_selected": {
+        "count": 1,
+        "max_ms": 0,
+        "sum_ms": 0
+      },
+      "model_open_result": {
+        "count": 26,
+        "max_ms": 231.4,
+        "sum_ms": 232.8
+      },
+      "model_open_decode": {
+        "count": 1,
+        "max_ms": 160.8,
+        "sum_ms": 160.8
+      },
+      "model_installed": {
+        "count": 1,
+        "max_ms": 0,
+        "sum_ms": 0
+      },
+      "model_install": {
+        "count": 1,
+        "max_ms": 0.1,
+        "sum_ms": 0.1
+      },
+      "workspace_snapshot": {
+        "count": 1,
+        "max_ms": 70.3,
+        "sum_ms": 70.3
+      },
+      "highlight_batch": {
+        "count": 38,
+        "max_ms": 0,
+        "sum_ms": 0
+      },
+      "workspace_transfer_strings": {
+        "count": 1,
+        "max_ms": 1.9,
+        "sum_ms": 1.9
+      },
+      "surface_batch": {
+        "count": 19,
+        "max_ms": 6.1,
+        "sum_ms": 114.2
+      },
+      "surfaces_ready": {
+        "count": 1,
+        "max_ms": 0,
+        "sum_ms": 0
+      },
+      "render_assets_submitted": {
+        "count": 19,
+        "max_ms": 6.6,
+        "sum_ms": 114.4
+      },
+      "surfaces_uploaded": {
+        "count": 1,
+        "max_ms": 0,
+        "sum_ms": 0
+      }
+    },
+    "long_tasks": [
+      {
+        "start": 48359.09999999404,
+        "duration": 82
+      },
+      {
+        "start": 48867.89999999106,
+        "duration": 363
+      },
+      {
+        "start": 49519.09999999404,
+        "duration": 63
+      }
+    ],
+    "allocated_wasm_bytes": 188678144,
+    "dropped_samples": 0,
+    "profile_sha256": "988316f0842d0c8d2129134f39a9825c973c56f512dd7424dc3db0f0802a4137"
+  },
+  "large_candidate": {
+    "milestones_ms_from_selection": {
+      "file_selected": 0.0,
+      "model_installed": 1008.8,
+      "surfaces_ready": 1494.6,
+      "surfaces_uploaded": 1810.0
+    },
+    "stages": {
+      "editor_update": {
+        "count": 115,
+        "max_ms": 0,
+        "sum_ms": 0
+      },
+      "asset_prepare_cpu": {
+        "count": 115,
+        "max_ms": 1.5,
+        "sum_ms": 40.3
+      },
+      "render_cpu": {
+        "count": 115,
+        "max_ms": 48.4,
+        "sum_ms": 413.1
+      },
+      "file_selected": {
+        "count": 1,
+        "max_ms": 0,
+        "sum_ms": 0
+      },
+      "model_open_result": {
+        "count": 21,
+        "max_ms": 146.3,
+        "sum_ms": 147.5
+      },
+      "model_open_decode": {
+        "count": 1,
+        "max_ms": 119,
+        "sum_ms": 119
+      },
+      "model_installed": {
+        "count": 1,
+        "max_ms": 0,
+        "sum_ms": 0
+      },
+      "model_install": {
+        "count": 1,
+        "max_ms": 0.1,
+        "sum_ms": 0.1
+      },
+      "workspace_snapshot": {
+        "count": 1,
+        "max_ms": 27,
+        "sum_ms": 27
+      },
+      "highlight_batch": {
+        "count": 37,
+        "max_ms": 0,
+        "sum_ms": 0
+      },
+      "workspace_transfer_strings": {
+        "count": 1,
+        "max_ms": 7,
+        "sum_ms": 7
+      },
+      "surface_batch": {
+        "count": 19,
+        "max_ms": 6.1,
+        "sum_ms": 112.6
+      },
+      "surfaces_ready": {
+        "count": 1,
+        "max_ms": 0,
+        "sum_ms": 0
+      },
+      "render_assets_submitted": {
+        "count": 18,
+        "max_ms": 6.5,
+        "sum_ms": 109.5
+      },
+      "surfaces_uploaded": {
+        "count": 1,
+        "max_ms": 0,
+        "sum_ms": 0
+      }
+    },
+    "long_tasks": [
+      {
+        "start": 20206.29999999702,
+        "duration": 80
+      },
+      {
+        "start": 21015.90000000596,
+        "duration": 304
+      },
+      {
+        "start": 21616.5,
+        "duration": 61
+      }
+    ],
+    "allocated_wasm_bytes": 263979008,
+    "dropped_samples": 0,
+    "profile_sha256": "d008f1cfcd1fe8a8441915e4f11a99a1e68dcdfcf0b986a4074f0e3eff14e8d4"
+  },
+  "package": {
+    "main_wasm_before_bytes": 29359443,
+    "main_wasm_after_bytes": 30302442,
+    "worker_wasm_before_bytes": 5863036,
+    "worker_wasm_after_bytes": 6055554,
+    "candidate_build_info": {
+      "revision": "c9e8ab662fd185e1a328c70a27c32b03ce6b90a9",
+      "tracked_changes": true,
+      "assets": {
+        "LICENSE": {
+          "bytes": 35147,
+          "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+        },
+        "SOURCE.txt": {
+          "bytes": 193,
+          "sha256": "fc40c89896ab12f394cb0b5b2bc841050ca92fae252be0fdf3ea1c852fcfc89f"
+        },
+        "b99cc1f056c3f5f1-loader.mjs": {
+          "bytes": 1751,
+          "sha256": "8047af76fb0ae2d185d1f6748a05dd6304bde1033c4efee6ab116356af184330"
+        },
+        "brand/apple-touch-icon.png": {
+          "bytes": 13178,
+          "sha256": "e33310f819e794621e39ab714798b4c2e15b72edb3d7b55ce8ad66e8c0bf2ec6"
+        },
+        "brand/favicon.ico": {
+          "bytes": 33424,
+          "sha256": "fb4f280743220ed8a14d91cb220fb54b9443fcd0220a042573288a8065ffcab7"
+        },
+        "brand/favicon.svg": {
+          "bytes": 1054,
+          "sha256": "eee05956dd4ca13ea3b20586843156b25faf40f103dfaa819a808499c1343b11"
+        },
+        "brand/icon-192.png": {
+          "bytes": 16065,
+          "sha256": "d50aea8ee951aea6e2b477ce045796cd7b0c4e96d27eed2d1f75b5cf8cfb0302"
+        },
+        "brand/icon-32.png": {
+          "bytes": 1983,
+          "sha256": "4341db96fb52ce7d2611991b3801fbf519db437bf1c378ddc41cbbd2d2770724"
+        },
+        "brand/icon-512.png": {
+          "bytes": 51433,
+          "sha256": "993a60b1aee20f363a332483e54a274c30fc294eb3c315140577ddb73d2c29a4"
+        },
+        "brand/icon-64.png": {
+          "bytes": 4613,
+          "sha256": "bb0a1ce62d65d33eeaa8d04607f8da5fda25f944038335972099049121f9bda1"
+        },
+        "brand/logo.png": {
+          "bytes": 47005,
+          "sha256": "c906402124b899a867190327509c41c27151b9cf31afc80aa7df6fb037a115dd"
+        },
+        "brand/logo.svg": {
+          "bytes": 999,
+          "sha256": "ac618f2e5eb9d3f16b08918d8b47184c494c219e55fe413006e0e58856a8d366"
+        },
+        "index.html": {
+          "bytes": 5988,
+          "sha256": "fd86d9bc83e91037057d43ac715e1fc5236abdfe5f3b026e6dc4f39702761525"
+        },
+        "rysmo-16f64a0c3bf50a79.js": {
+          "bytes": 121865,
+          "sha256": "16f64a0c3bf50a79c967df4f085106b05c8c8a74ef78ab0b374c93295cc189d7"
+        },
+        "rysmo-e45712c5094139de_bg.wasm": {
+          "bytes": 30302442,
+          "sha256": "5a8f588505b95d2900d95e703ee23674e1a5d78b0c79b73f5cae47f6fceeb2fd"
+        },
+        "snippets/rysmo_app-0350a70e4d910bc5/src/web_files.js": {
+          "bytes": 19914,
+          "sha256": "672f07efd17839a2f72de31646134ecc37d2466a3e64e46b92d3d5608b5bde5b"
+        },
+        "snippets/rysmo_app-0350a70e4d910bc5/src/web_worker.js": {
+          "bytes": 2109,
+          "sha256": "1fe6ac0f62c8473ce0af79913d06790a55ee4ecd5f8a53bfcf935fdd69309f0e"
+        },
+        "source.tar.gz": {
+          "bytes": 10504864,
+          "sha256": "068963578663936eacb766be75f634533548b4397154ece9a4a4ec15bc35435d"
+        },
+        "web_diagnostics.mjs": {
+          "bytes": 5447,
+          "sha256": "463a14cc23addeab1072068daa63e918b4c04b72d8dab51859a9243af8e922a6"
+        },
+        "worker-6ab87a9d977a7612/rysmo_worker.js": {
+          "bytes": 10903,
+          "sha256": "2243b006cd0870e900639248bf075be294bcae435ba499b061e28b336ec20636"
+        },
+        "worker-6ab87a9d977a7612/rysmo_worker_bg.wasm": {
+          "bytes": 6055554,
+          "sha256": "2daa04b963eb2a487e4d584940ecc8f5e938025b529ee8f58b55460ac8b2ec3c"
+        },
+        "worker-6ab87a9d977a7612/worker.mjs": {
+          "bytes": 1073,
+          "sha256": "b2cba4322766ec62665c68249b066ee6a672fcc3c60f655caae8acc12a92b2ff"
+        }
+      }
+    }
+  },
+  "functional_checks": {
+    "fresh_page_recovery": "Passed: 3 tabs, unsaved line (2 faces / 29 edges), dirty flag and visually identical camera. Undo history is not persisted across page loads.",
+    "tab_switching": "Passed: switched large/small; dirty geometry and camera retained.",
+    "missing_vertex": "Passed: invalid mesh: edge 1 uses missing vertex 2; existing dirty model retained.",
+    "truncated_json": "Passed: JSON EOF while parsing a list at line 1 column 43; existing dirty model retained.",
+    "cancel": "Passed: 45-second delay of worker module response on separate test origin; clicked Cancel; dirty 1-edge model and undo history retained beyond response deadline; undo removed and redo restored the line. Delay excluded from performance traces.",
+    "automation_notes": "File-chooser automation sometimes paused for minutes before dispatch; no timing includes that pause because file_selected is emitted by the page change handler. An old tab requested a worker fingerprint removed during rebuild and displayed a worker error; validation tests were repeated on the completed build."
+  },
+  "checks": {
+    "io_tests_passed": 132,
+    "worker_tests_passed": 3,
+    "javascript_tests_passed": 39,
+    "javascript_manual_test_skipped": 1,
+    "io_worker_all_target_clippy": "passed -D warnings",
+    "web_release_build": "passed",
+    "static_dist_validation": "passed; 22 assets",
+    "format_shell_js_syntax_diff": "passed"
+  },
+  "limitations": [
+    "Main-thread decode and cold recovery serialization remain synchronous. Candidate largest browser long task was 304 ms.",
+    "Surface upload milestone is render asset submission, not GPU presentation.",
+    "These single traces do not establish overall open latency improvement: baseline 1565.3 ms, candidate 1810.0 ms.",
+    "Allocated WASM capacity is not total browser/process peak memory.",
+    "Native OS picker and download interception were not verified in this pass; HTML fallback and visible profile were used.",
+    "Independent SketchUp vendor compatibility remains unverified as previously accepted."
+  ],
+  "local_evidence_directory": "target/web-final-verification",
+  "deployment": "Run build-web.sh --package-only after committing to refresh source archive/provenance, then deploy-pages.sh; verify live build-info revision and assets."
+}
