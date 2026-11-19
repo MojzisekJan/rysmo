@@ -802,3 +802,40 @@ A local iframe exercised the standard file-input fallback; a 15-second worker
 HTTP delay made cancellation deterministic. This is functional verification, not
 a browser performance benchmark. The native File System Access picker itself was
 not automated. [Full evidence](verification/native-open-worker-2026-11-19.json).
+
+## Geometry validation experiment, 2026-11-19
+
+Reviewed the native Open worker recipient, mesh index construction, face validation,
+installation and recovery serialization. `benchmark_transfer` now also measures
+geometry validation alone and native serialization, in addition to loading and
+snapshot reconstruction. These are sequential native CPU measurements (3 warmups,
+21 samples), not browser frame times or end-to-end opening latency.
+
+An experiment replacing the adjacency hash table with sorted endpoint/edge pairs
+was rejected: large-model reconstruction was 95.71 versus 95.35 ms and native load
+135.46 versus 135.91 ms, insufficient evidence of a useful improvement. Production
+adjacency construction is unchanged; the high-valence regression test is retained.
+
+Face validation already resolves outer-loop positions to construct the plane. It
+now reuses those positions for distance checks instead of looking up every outer
+vertex again. Hole vertices still undergo the same checks, as do missing edges,
+non-finite coordinates, degenerate planes and overflow. Tests displace an outer
+vertex and a vertex in each of two holes, checking rejection by direct validation,
+assembly and snapshot deserialization; a valid holed mesh still round-trips.
+
+No asynchronous installation or new trusted-input path was introduced. Recovery
+serialization and final rendering preparation remain separate optimization targets.
+The public web package was not rebuilt or deployed for this experiment.
+
+Final 72,000-face CPU medians: geometry validation 33.58 → 26.18 ms,
+snapshot reconstruction 95.06 → 89.24 ms, and native load 134.08 → 128.43 ms.
+A preceding pair run in the opposite order measured reconstruction 96.61 →
+91.84 ms. Unchanged serialization also varies between runs, so these are observed
+measurements, not a guaranteed percentage speedup. The small fixture's load
+median increased from 0.02654 to 0.02904 ms; no small-model speedup is claimed.
+Native save still costs about 32–35 ms on the large fixture, independently of
+workspace JSON wrapping and browser storage.
+[Measurements and reviewed areas](verification/geometry-validation-2026-11-19.json).
+
+Validation passed 759 library tests (two manual benchmarks ignored), strict
+all-target native Clippy for mesh/model/I/O/tools/worker, formatting and diff checks.

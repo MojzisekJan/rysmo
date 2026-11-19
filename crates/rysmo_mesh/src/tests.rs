@@ -628,3 +628,55 @@ fn rebuilt_edge_index_matches_endpoint_scan_in_both_directions() {
         assert_eq!(mesh, original);
     }
 }
+
+#[test]
+fn rebuilt_adjacency_handles_high_valence_and_rejects_invalid_endpoints() {
+    let vertices = std::iter::once((VertexId(1), Vertex { pos: DVec3::ZERO }))
+        .chain((1..=512u64).map(|i| (VertexId(i * 1024), Vertex { pos: DVec3::new(i as f64, 1., 0.) })))
+        .collect();
+    let edges = (1..=512u64)
+        .map(|i| {
+            let endpoint = VertexId((513 - i) * 1024);
+            (
+                EdgeId(1000000 + i),
+                if i % 2 == 0 { Edge::new(VertexId(1), endpoint) } else { Edge::new(endpoint, VertexId(1)) },
+            )
+        })
+        .collect();
+    let mut mesh = Mesh::from_parts(vertices, edges, Default::default()).unwrap();
+    let snapshot = mesh.clone();
+    mesh.reindex();
+    assert_eq!(mesh, snapshot);
+    for (vertex, _) in mesh.vertices() {
+        let expected: Vec<_> = mesh.edges().filter(|(_, edge)| edge.v.contains(&vertex)).map(|(id, _)| id).collect();
+        assert_eq!(mesh.edges_of_vertex(vertex), expected);
+    }
+    assert_eq!(mesh.edges_of_vertex(VertexId(1)).len(), 512);
+    for endpoints in [[1, 1], [1, 9999999]] {
+        let vertices = [(VertexId(1), Vertex { pos: DVec3::ZERO })].into_iter().collect();
+        let edges = [(EdgeId(2), Edge::new(VertexId(endpoints[0]), VertexId(endpoints[1])))].into_iter().collect();
+        assert!(Mesh::from_parts(vertices, edges, Default::default()).is_err());
+    }
+}
+
+#[test]
+fn validation_checks_planarity_of_outer_loop_and_every_hole() {
+    let mut mesh = Mesh::new();
+    rect(&mut mesh, 0., 0., 10., 10., 0.);
+    rect(&mut mesh, 1., 1., 2., 2., 0.);
+    rect(&mut mesh, 5., 5., 6., 6., 0.);
+    let face = mesh.faces().find(|(_, face)| face.holes.len() == 2).unwrap().1;
+    let probes = [face.outer[0], face.holes[0][0], face.holes[1][0]];
+    mesh.validate().unwrap();
+    let restored: Mesh = serde_json::from_str(&serde_json::to_string(&mesh).unwrap()).unwrap();
+    assert_eq!(restored, mesh);
+    for vertex in probes {
+        let mut invalid = mesh.clone();
+        invalid.vertices.get_mut(&vertex).unwrap().pos.z = 0.25;
+        let error = invalid.validate().unwrap_err().to_string();
+        assert!(error.contains("not planar"), "{error}");
+        // Worker snapshots must retain the same validation as direct assembly.
+        assert!(serde_json::from_str::<Mesh>(&serde_json::to_string(&invalid).unwrap()).is_err());
+        assert!(Mesh::assemble(invalid.vertices, invalid.edges, invalid.faces, invalid.curves).is_err());
+    }
+}

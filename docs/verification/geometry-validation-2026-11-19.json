@@ -1,0 +1,292 @@
+{
+  "date": "2026-11-19",
+  "baseline": "b23297df92e9d418246b66c88ab9ae37a496f339",
+  "method": "Native aarch64 portable-profile CPU proxy; sequential operations, 3 warmups and 21 samples; no browser/GPU/disk I/O or peak-memory measurement. Benchmarks completed before regression-test compilation.",
+  "accepted_change": "Reuse resolved outer-loop positions during face planarity validation; all validation conditions retained.",
+  "before": [
+    {
+      "file": "target/skp-browser-verification/raw-72000.rysmo",
+      "load": {
+        "median_ms": 134.076584,
+        "p95_ms": 150.943833,
+        "samples": 21
+      },
+      "native_bytes": 15071084,
+      "reconstruct_on_recipient": {
+        "median_ms": 95.063208,
+        "p95_ms": 105.555292,
+        "samples": 21
+      },
+      "save_native": {
+        "median_ms": 34.582916,
+        "p95_ms": 42.043541,
+        "samples": 21
+      },
+      "serialize_for_worker_transfer": {
+        "median_ms": 28.363083,
+        "p95_ms": 29.203709,
+        "samples": 21
+      },
+      "transfer_bytes": 15409280,
+      "validate_geometry": {
+        "median_ms": 33.575958,
+        "p95_ms": 44.770542000000006,
+        "samples": 21
+      },
+      "sha256": "452264d84d46440054a24fe200b36d810dc18f6e44c4209c9254e719579dffad"
+    },
+    {
+      "file": "testdata/dimensions-preview.rysmo",
+      "load": {
+        "median_ms": 0.026542,
+        "p95_ms": 0.028,
+        "samples": 21
+      },
+      "native_bytes": 3573,
+      "reconstruct_on_recipient": {
+        "median_ms": 0.021124999999999998,
+        "p95_ms": 0.023333,
+        "samples": 21
+      },
+      "save_native": {
+        "median_ms": 0.012707999999999999,
+        "p95_ms": 0.013167,
+        "samples": 21
+      },
+      "serialize_for_worker_transfer": {
+        "median_ms": 0.013083,
+        "p95_ms": 0.013209,
+        "samples": 21
+      },
+      "transfer_bytes": 6288,
+      "validate_geometry": {
+        "median_ms": 0.001042,
+        "p95_ms": 0.001166,
+        "samples": 21
+      },
+      "sha256": "c7f7374d2b644c8069116388420c4a8068aa38390a51e09f1ca7c2f2b042bc77"
+    }
+  ],
+  "after": [
+    {
+      "file": "target/skp-browser-verification/raw-72000.rysmo",
+      "load": {
+        "median_ms": 128.43454100000002,
+        "p95_ms": 135.46275,
+        "samples": 21
+      },
+      "native_bytes": 15071084,
+      "reconstruct_on_recipient": {
+        "median_ms": 89.2385,
+        "p95_ms": 94.192125,
+        "samples": 21
+      },
+      "save_native": {
+        "median_ms": 31.688458000000004,
+        "p95_ms": 31.981792000000002,
+        "samples": 21
+      },
+      "serialize_for_worker_transfer": {
+        "median_ms": 28.052457999999998,
+        "p95_ms": 29.005416,
+        "samples": 21
+      },
+      "transfer_bytes": 15409280,
+      "validate_geometry": {
+        "median_ms": 26.179750000000002,
+        "p95_ms": 29.254833,
+        "samples": 21
+      }
+    },
+    {
+      "file": "testdata/dimensions-preview.rysmo",
+      "load": {
+        "median_ms": 0.029042000000000002,
+        "p95_ms": 0.035250000000000004,
+        "samples": 21
+      },
+      "native_bytes": 3573,
+      "reconstruct_on_recipient": {
+        "median_ms": 0.020832999999999997,
+        "p95_ms": 0.022792,
+        "samples": 21
+      },
+      "save_native": {
+        "median_ms": 0.013042,
+        "p95_ms": 0.013417,
+        "samples": 21
+      },
+      "serialize_for_worker_transfer": {
+        "median_ms": 0.013458999999999999,
+        "p95_ms": 0.016416999999999998,
+        "samples": 21
+      },
+      "transfer_bytes": 6288,
+      "validate_geometry": {
+        "median_ms": 0.000916,
+        "p95_ms": 0.000959,
+        "samples": 21
+      }
+    }
+  ],
+  "earlier_reverse_order_pair": {
+    "after": [
+      {
+        "file": "target/skp-browser-verification/raw-72000.rysmo",
+        "load": {
+          "median_ms": 136.915458,
+          "p95_ms": 145.26125000000002,
+          "samples": 21
+        },
+        "native_bytes": 15071084,
+        "reconstruct_on_recipient": {
+          "median_ms": 91.842667,
+          "p95_ms": 98.49275,
+          "samples": 21
+        },
+        "serialize_for_worker_transfer": {
+          "median_ms": 28.957250000000002,
+          "p95_ms": 29.305457999999998,
+          "samples": 21
+        },
+        "transfer_bytes": 15409280
+      }
+    ],
+    "before": [
+      {
+        "file": "target/skp-browser-verification/raw-72000.rysmo",
+        "load": {
+          "median_ms": 138.920333,
+          "p95_ms": 144.793375,
+          "samples": 21
+        },
+        "native_bytes": 15071084,
+        "reconstruct_on_recipient": {
+          "median_ms": 96.608792,
+          "p95_ms": 109.957084,
+          "samples": 21
+        },
+        "serialize_for_worker_transfer": {
+          "median_ms": 29.485084,
+          "p95_ms": 31.467375,
+          "samples": 21
+        },
+        "transfer_bytes": 15409280
+      }
+    ]
+  },
+  "rejected_adjacency_experiment": {
+    "reason": "No useful large-model improvement; reverted",
+    "before": [
+      {
+        "file": "target/skp-browser-verification/raw-72000.rysmo",
+        "load": {
+          "median_ms": 135.46004200000002,
+          "p95_ms": 136.777708,
+          "samples": 21
+        },
+        "native_bytes": 15071084,
+        "reconstruct_on_recipient": {
+          "median_ms": 95.708084,
+          "p95_ms": 97.50387500000001,
+          "samples": 21
+        },
+        "serialize_for_worker_transfer": {
+          "median_ms": 28.226708,
+          "p95_ms": 28.515792,
+          "samples": 21
+        },
+        "transfer_bytes": 15409280
+      },
+      {
+        "file": "testdata/dimensions-preview.rysmo",
+        "load": {
+          "median_ms": 0.026334,
+          "p95_ms": 0.031292,
+          "samples": 21
+        },
+        "native_bytes": 3573,
+        "reconstruct_on_recipient": {
+          "median_ms": 0.021208,
+          "p95_ms": 0.022208000000000002,
+          "samples": 21
+        },
+        "serialize_for_worker_transfer": {
+          "median_ms": 0.013292,
+          "p95_ms": 0.013458000000000001,
+          "samples": 21
+        },
+        "transfer_bytes": 6288
+      }
+    ],
+    "after": [
+      {
+        "file": "target/skp-browser-verification/raw-72000.rysmo",
+        "load": {
+          "median_ms": 135.90745800000002,
+          "p95_ms": 151.817417,
+          "samples": 21
+        },
+        "native_bytes": 15071084,
+        "reconstruct_on_recipient": {
+          "median_ms": 95.3525,
+          "p95_ms": 96.37275,
+          "samples": 21
+        },
+        "serialize_for_worker_transfer": {
+          "median_ms": 28.714582999999998,
+          "p95_ms": 29.027957999999998,
+          "samples": 21
+        },
+        "transfer_bytes": 15409280
+      },
+      {
+        "file": "testdata/dimensions-preview.rysmo",
+        "load": {
+          "median_ms": 0.025375,
+          "p95_ms": 0.027541,
+          "samples": 21
+        },
+        "native_bytes": 3573,
+        "reconstruct_on_recipient": {
+          "median_ms": 0.02025,
+          "p95_ms": 0.020542,
+          "samples": 21
+        },
+        "serialize_for_worker_transfer": {
+          "median_ms": 0.013166,
+          "p95_ms": 0.013292,
+          "samples": 21
+        },
+        "transfer_bytes": 6288
+      }
+    ]
+  },
+  "reviewed": [
+    "Worker result deserialization",
+    "Mesh edge/vertex index construction",
+    "Face plane and hole validation",
+    "Document installation",
+    "Workspace recovery serialization"
+  ],
+  "limitations": [
+    "Timing noise remains: unchanged native serialization also varies between runs.",
+    "Small-fixture load median increased from 0.026542 to 0.029042 ms; no small-model speedup claimed.",
+    "No browser responsiveness or fully asynchronous Open claim.",
+    "Web build and deployment not performed; existing package retained."
+  ],
+  "validation": {
+    "library_tests_passed": 759,
+    "manual_benchmarks_ignored": 2,
+    "crates": [
+      "rysmo_mesh",
+      "rysmo_model",
+      "rysmo_io",
+      "rysmo_tools",
+      "rysmo_worker"
+    ],
+    "clippy": "Same crates, all targets, native aarch64 portable profile, -D warnings: passed",
+    "format_and_diff_check": "passed",
+    "web_build": "Not rebuilt; WASM compilation cache removed after disk exhaustion, packaged build preserved."
+  }
+}

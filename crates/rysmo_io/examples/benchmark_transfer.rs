@@ -22,6 +22,17 @@ fn main() -> Result<(), Box<dyn Error>> {
         let transfer = serde_json::to_string(&doc)?;
         let reconstructed: rysmo_model::Document = serde_json::from_str(&transfer)?;
         assert_eq!(rysmo_io::save(&reconstructed), rysmo_io::save(&doc));
+        let validate_geometry = measure(|| {
+            black_box(&doc.root.mesh).validate()?;
+            for definition in doc.definitions.values() {
+                black_box(&definition.mesh).validate()?;
+            }
+            Ok(())
+        })?;
+        let save_native = measure(|| {
+            black_box(rysmo_io::save(black_box(&doc)));
+            Ok(())
+        })?;
         let load = measure(|| {
             black_box(rysmo_io::load(black_box(&text))?);
             Ok(())
@@ -37,7 +48,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!(
             "{}",
             serde_json::json!({"file":path,"native_bytes":text.len(),"transfer_bytes":transfer.len(),
-            "load":load,"serialize_for_worker_transfer":encode,"reconstruct_on_recipient":reconstruct})
+            "load":load,"validate_geometry":validate_geometry,"save_native":save_native,"serialize_for_worker_transfer":encode,"reconstruct_on_recipient":reconstruct})
         );
     }
     Ok(())

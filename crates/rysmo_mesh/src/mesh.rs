@@ -452,12 +452,12 @@ impl Mesh {
             let plane = Plane::from_polygon(&points)
                 .filter(|plane| plane.normal.is_finite() && plane.d.is_finite())
                 .ok_or_else(|| MeshError::Invalid(format!("face {id} is degenerate or its plane overflows")))?;
-            for l in f.loops() {
-                for v in l {
-                    let distance = plane.distance(self.pos(*v));
-                    if !distance.is_finite() || distance.abs() > EPS * 10.0 {
-                        return Err(MeshError::Invalid(format!("face {id} is not planar")));
-                    }
+            // The outer positions were already resolved for the plane. Reuse
+            // them instead of repeating a block lookup for each outer vertex.
+            for point in points.iter().copied().chain(f.holes.iter().flatten().map(|v| self.pos(*v))) {
+                let distance = plane.distance(point);
+                if !distance.is_finite() || distance.abs() > EPS * 10.0 {
+                    return Err(MeshError::Invalid(format!("face {id} is not planar")));
                 }
             }
         }
