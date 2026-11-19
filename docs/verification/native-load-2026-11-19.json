@@ -1,0 +1,73 @@
+{
+  "date": "2026-11-19",
+  "baseline_revision": "5a363bb80970cc476e5168c7ce6041a556e127de",
+  "platform": "macOS aarch64; portable profile; native CPU-only",
+  "protocol": "Same preloaded strings; 3 warmups and 21 load/validate/drop samples per file, binaries run sequentially after all compilation completed. Baseline binary retained before candidate linking. Round-trip check outside timings. No browser/disk/GPU measurement.",
+  "runs": {
+    "before": [
+      {
+        "bytes": 15071084,
+        "file": "target/skp-browser-verification/raw-72000.rysmo",
+        "median_ms": 138.837041,
+        "p95_ms": 143.161667,
+        "samples": 21
+      },
+      {
+        "bytes": 3573,
+        "file": "testdata/dimensions-preview.rysmo",
+        "median_ms": 0.025542,
+        "p95_ms": 0.029207999999999998,
+        "samples": 21
+      }
+    ],
+    "after": [
+      {
+        "bytes": 15071084,
+        "file": "target/skp-browser-verification/raw-72000.rysmo",
+        "median_ms": 131.18887500000002,
+        "p95_ms": 135.984375,
+        "samples": 21
+      },
+      {
+        "bytes": 3573,
+        "file": "testdata/dimensions-preview.rysmo",
+        "median_ms": 0.025959,
+        "p95_ms": 0.028416999999999998,
+        "samples": 21
+      }
+    ],
+    "before-repeat": [
+      {
+        "bytes": 15071084,
+        "file": "target/skp-browser-verification/raw-72000.rysmo",
+        "median_ms": 139.080458,
+        "p95_ms": 140.255417,
+        "samples": 21
+      }
+    ],
+    "after-repeat": [
+      {
+        "bytes": 15071084,
+        "file": "target/skp-browser-verification/raw-72000.rysmo",
+        "median_ms": 130.439708,
+        "p95_ms": 135.459459,
+        "samples": 21
+      }
+    ]
+  },
+  "fixtures": {
+    "target/skp-browser-verification/raw-72000.rysmo": "452264d84d46440054a24fe200b36d810dc18f6e44c4209c9254e719579dffad",
+    "testdata/dimensions-preview.rysmo": "c7f7374d2b644c8069116388420c4a8068aa38390a51e09f1ca7c2f2b042bc77"
+  },
+  "validation": {
+    "passed_distinct_tests": 751,
+    "ignored_manual_benchmarks": 2,
+    "strict_workspace_all_target_clippy": "passed",
+    "fmt_and_diff_check": "passed"
+  },
+  "limitations": [
+    "One desktop host; uncontrolled other desktop activity.",
+    "Deterministic mutation corpus is not exhaustive fuzzing or a memory-exhaustion guarantee.",
+    "No web deployment or browser startup latency measurement in this pass."
+  ]
+}

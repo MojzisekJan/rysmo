@@ -632,3 +632,55 @@ workspace all-target Clippy, formatting, and web release/static package checks.
 The final reservation change was rechecked with 134 mesh/inference tests and Clippy.
 Detailed provenance and measurement limitations are in
 [selection-latency-2026-11-19.json](verification/selection-latency-2026-11-19.json).
+
+## Native loading and malformed input, 2026-11-19
+
+Reviewed `native::load`, mesh assembly/reindexing/validation, document hierarchy
+budgets, native file-worker loading, and `files::open_text` installation. This is
+an initial loading-focused pass, not an exhaustive audit of every renderer or codec.
+
+Mesh validation now reuses its existing unordered-edge index to detect duplicate
+edges instead of building another ordered set. It walks face boundaries without
+allocating a temporary edge list and reuses one polygon-point buffer across faces.
+The duplicate check also detects a stale edge index: every stored edge must map
+back to its own identifier. Forward and reversed duplicate edges and references
+crossing definition boundaries have regression coverage.
+
+The same pass found that empty or two-vertex holes were accepted. Regression tests
+reproduced acceptance before the fix; this was not a reproduced application crash.
+All face loops now need at least three vertices. Mesh validation also refuses
+non-finite vertex positions and non-finite derived planes/distances, including
+arithmetic overflow from otherwise finite JSON numbers. Existing valid round trips
+and modelling operations are covered by the mesh/model/I/O/tool test suites.
+
+A deterministic malformed-input corpus covers truncated JSON, deep JSON nesting,
+wrong top-level and record field types, missing references and extreme identifiers.
+An accepted mutation must validate and survive another save/load. An application
+regression test verifies that an unsuccessful Open preserves the dirty document,
+selection, camera, active tab, document generation, path and Undo history, and that
+Undo still works afterwards. This corpus is not a proof against all malformed files
+or memory exhaustion from arbitrarily large input.
+
+`benchmark_load` is a repeatable CPU-only experiment: 3 warmups and 21 measured
+load/validate/drop runs on an already resident string, with a save/load stability
+check outside the timing. It supports root meshes without instances, unlike the
+existing movement benchmark. It does not measure disk reads, browser frames or GPU
+upload. Run with `cargo run --profile portable -p rysmo_io --example benchmark_load
+-- FILE.rysmo` (plus the host target where the workspace requires it).
+
+Remaining candidates: the native browser Open path still calls `open_text` on the
+main thread; import workers do not make that path asynchronous. JSON currently
+retains deserialized record vectors while constructing the document, and embedded
+images add decoded allocations. Reindexing builds vertex adjacency through an
+intermediate ordered map. Rendering preparation and image decoding need separate
+browser/peak-memory measurements before changing their scheduling or storage.
+
+After compilation completed, two sequential baseline/candidate comparisons on the
+15,071,084-byte, 72,000-face fixture measured median loading at 138.84 → 131.19 ms
+and 139.08 → 130.44 ms (5.5–6.2% faster). The small dimension fixture measured
+0.0255 → 0.0260 ms, effectively unchanged at this scale. All 751 distinct relevant
+mesh/model/I/O/tools and failed-Open application tests passed (two manual benchmarks
+ignored), as did strict workspace all-target Clippy and formatting.
+[Measurement details](verification/native-load-2026-11-19.json) retain the fixture
+hashes, p95 values and scope limitations. No browser speedup is inferred from these
+native CPU measurements.

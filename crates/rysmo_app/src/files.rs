@@ -559,6 +559,41 @@ mod converted_document_tests {
     use super::*;
     use rysmo_math::DVec3;
     #[test]
+    fn failed_open_preserves_dirty_document_selection_camera_and_history() {
+        let mut app = App3d::new(Editor::new());
+        app.editor
+            .apply(rysmo_model::Command::DrawRectangle { corner: DVec3::ZERO, u: DVec3::X, v: DVec3::Y, facing: None })
+            .unwrap();
+        app.editor.select_all();
+        app.path = Some("existing.rysmo".into());
+        let document = app.editor.doc().clone();
+        let selection = app.editor.selection().clone();
+        let camera = app.camera;
+        let active = app.documents.active;
+        let generation = app.document_generation;
+        let revision = app.editor.revision();
+        let undo = app.editor.undo_depth();
+        for source in [
+            "{",
+            r#"{"format":"rysmo","version":999}"#,
+            r#"{"format":"rysmo","version":20,"vertices":[{"id":1,"p":[0,0,0]}],"edges":[{"id":2,"v":[1,999]}]}"#,
+        ] {
+            assert!(open_text(&mut app, source, "invalid.rysmo").is_err());
+            assert_eq!(app.editor.doc(), &document);
+            assert_eq!(app.editor.selection(), &selection);
+            assert_eq!(app.camera, camera);
+            assert_eq!(app.documents.active, active);
+            assert_eq!(app.document_generation, generation);
+            assert_eq!(app.editor.revision(), revision);
+            assert_eq!(app.editor.undo_depth(), undo);
+            assert_eq!(app.path, Some("existing.rysmo".into()));
+            assert!(app.editor.is_dirty());
+        }
+        assert!(app.editor.undo());
+        assert_eq!(app.editor.mesh().face_count(), 0);
+    }
+
+    #[test]
     fn converted_document_is_unsaved_and_preserves_the_existing_dirty_tab() {
         let mut app = App3d::new(Editor::new());
         app.editor

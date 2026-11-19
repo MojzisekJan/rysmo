@@ -398,7 +398,11 @@ impl Mesh {
     /// Checks the invariants: edges join two distinct existing vertices, no two edges
     /// join the same pair, every loop step is an edge, and faces are planar.
     pub fn validate(&self) -> Result<(), MeshError> {
-        let mut seen = BTreeSet::new();
+        for (id, vertex) in &self.vertices {
+            if !vertex.pos.is_finite() {
+                return Err(MeshError::Invalid(format!("vertex {id} has non-finite coordinates")));
+            }
+        }
         for (id, curve) in &self.curves {
             curve.validate().map_err(|e| MeshError::Invalid(format!("curve {id}: {e}")))?;
         }
@@ -414,23 +418,33 @@ impl Mesh {
                     return Err(MeshError::Invalid(format!("edge {id} uses missing vertex {v}")));
                 }
             }
-            if !seen.insert(key(e.v[0], e.v[1])) {
+            // The index stores one id per unordered pair. Duplicate edges cannot
+            // both match it; reuse it instead of allocating a second set of pairs.
+            if self.edge_between(e.v[0], e.v[1]) != Some(*id) {
                 return Err(MeshError::Invalid(format!("edge {id} duplicates another edge")));
             }
         }
+        let mut points = Vec::new();
         for (id, f) in &self.faces {
-            if f.outer.len() < 3 {
-                return Err(MeshError::Invalid(format!("face {id} has fewer than three vertices")));
+            if f.loops().any(|vertices| vertices.len() < 3) {
+                return Err(MeshError::Invalid(format!("face {id} has a loop with fewer than three vertices")));
             }
-            for (a, b) in f.loop_edges() {
+            for (a, b) in
+                f.loops().flat_map(|vertices| vertices.iter().copied().zip(vertices.iter().copied().cycle().skip(1)))
+            {
                 if self.edge_between(a, b).is_none() {
                     return Err(MeshError::Invalid(format!("face {id} steps from {a} to {b} without an edge")));
                 }
             }
-            let plane = self.face_plane(*id).ok_or_else(|| MeshError::Invalid(format!("face {id} is degenerate")))?;
+            points.clear();
+            points.extend(f.outer.iter().map(|v| self.pos(*v)));
+            let plane = Plane::from_polygon(&points)
+                .filter(|plane| plane.normal.is_finite() && plane.d.is_finite())
+                .ok_or_else(|| MeshError::Invalid(format!("face {id} is degenerate or its plane overflows")))?;
             for l in f.loops() {
                 for v in l {
-                    if plane.distance(self.pos(*v)).abs() > EPS * 10.0 {
+                    let distance = plane.distance(self.pos(*v));
+                    if !distance.is_finite() || distance.abs() > EPS * 10.0 {
                         return Err(MeshError::Invalid(format!("face {id} is not planar")));
                     }
                 }
